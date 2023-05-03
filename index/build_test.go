@@ -6,6 +6,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephant/revisor"
+	"github.com/ttab/elephant/revisor/constraints"
 	"github.com/ttab/elephantine"
 )
 
@@ -14,7 +15,6 @@ func TestBuildDocument(t *testing.T) {
 		state            index.DocumentState
 		baseMappings     index.Mappings
 		golden           map[string]index.Field
-		constraints      revisor.ConstraintSet
 		extraConstraints revisor.ConstraintSet
 	)
 
@@ -36,19 +36,18 @@ func TestBuildDocument(t *testing.T) {
 		t.Fatalf("failed to load base mappings: %v", err)
 	}
 
-	err = elephantine.UnmarshalFile(
-		"../revisor/constraints/core.json", &constraints)
+	coreConstraints, err := constraints.CoreSchema()
 	if err != nil {
 		t.Fatalf("failed to load base constraints: %v", err)
 	}
 
 	err = elephantine.UnmarshalFile(
-		"../revisor/constraints/tt.json", &extraConstraints)
+		"testdata/tt.json", &extraConstraints)
 	if err != nil {
 		t.Fatalf("failed to load org constraints: %v", err)
 	}
 
-	validator, err := revisor.NewValidator(constraints, extraConstraints)
+	validator, err := revisor.NewValidator(coreConstraints, extraConstraints)
 	if err != nil {
 		t.Fatalf("failed to create validator: %v", err)
 	}
