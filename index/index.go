@@ -24,6 +24,7 @@ import (
 	rpc "github.com/ttab/elephant/rpc/repository"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
@@ -549,12 +550,20 @@ func (iw *indexWorker) Process(
 		case <-job.done:
 		}
 
-		if job.err != nil {
+		var twErr twirp.Error
+		if errors.As(job.err, &twErr) && twErr.Code() == twirp.NotFound {
+			iw.logger.DebugCtx(ctx, "the document has been deleted, removing from index",
+				elephantine.LogKeyDocumentUUID, job.UUID,
+				elephantine.LogKeyError, job.err)
+
+			job.Operation = opDelete
+			job.err = nil
+		} else if job.err != nil {
 			iw.idx.enrichErrors.WithLabelValues(
 				iw.contentType, iw.indexName,
 			).Inc()
 
-			iw.logger.DebugCtx(ctx, "failed to enrich document for indexing",
+			iw.logger.ErrorCtx(ctx, "failed to enrich document for indexing",
 				elephantine.LogKeyDocumentUUID, job.UUID,
 				elephantine.LogKeyError, job.err)
 
