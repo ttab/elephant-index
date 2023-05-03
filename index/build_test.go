@@ -1,8 +1,6 @@
 package index_test
 
 import (
-	"encoding/json"
-	"os"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -60,7 +58,4 @@ func TestBuildDocument(t *testing.T) {
 	if diff := cmp.Diff(golden, doc.Fields); diff != "" {
 		t.Errorf("DiscoverFields() mismatch (-want +got):\n%s", diff)
 	}
-
-	data, _ := json.MarshalIndent(doc.Values(), "", "  ")
-	os.WriteFile("testdata/raw_1.values.json", data, 0o600)
 }

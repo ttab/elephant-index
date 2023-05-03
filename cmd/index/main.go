@@ -28,7 +28,7 @@ func main() {
 		Name:        "run",
 		Description: "Runs the indexing serve",
 		Action:      runIndexer,
-		Flags: append([]cli.Flag{
+		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "addr",
 				Value: ":1080",
@@ -78,7 +78,7 @@ func main() {
 				Name:    "shared-secret-parameter",
 				EnvVars: []string{"SHARED_SECRET_PARAMETER"},
 			},
-		}),
+		},
 	}
 
 	app := cli.App{
@@ -191,6 +191,9 @@ func runIndexer(c *cli.Context) error {
 		Documents: documents,
 		Validator: loader,
 	})
+	if err != nil {
+		return fmt.Errorf("create indexer: %w", err)
+	}
 
 	serverGroup.Go(func() error {
 		err := indexer.Run(gCtx)

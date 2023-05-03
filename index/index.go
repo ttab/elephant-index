@@ -63,7 +63,7 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 
 	indexerFailures := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "elephant_indexer_failures",
+			Name: "elephant_indexer_failures_total",
 			Help: "Counts the number of times the indexer failed process a batch of events.",
 		},
 		[]string{"name"},
@@ -74,7 +74,7 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 
 	unknownEvents := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "elephant_indexer_unknown_events",
+			Name: "elephant_indexer_unknown_events_total",
 			Help: "Unknown event types from the elephant event log.",
 		},
 		[]string{"type"},
@@ -85,7 +85,7 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 
 	mappingUpdate := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "elephant_indexer_mapping_update",
+			Name: "elephant_indexer_mapping_update_total",
 			Help: "Number of times the index mapping has been updated.",
 		},
 		[]string{"index"},
@@ -96,7 +96,7 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 
 	indexedDocument := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "elephant_indexer_index_doc",
+			Name: "elephant_indexer_doc_total",
 			Help: "Document indexing counter, tracks index and delete successes and failures.",
 		},
 		[]string{"type", "index", "result"},
@@ -107,7 +107,7 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 
 	enrichErrors := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "elephant_indexer_enrich_errors",
+			Name: "elephant_indexer_enrich_errors_total",
 			Help: "Document enricher errors.",
 		},
 		[]string{"type", "index"},
@@ -309,7 +309,7 @@ func (idx *Indexer) loopIteration(
 				name, docType, 8)
 			if err != nil {
 				return 0, fmt.Errorf(
-					"failed to create index worker: %w", err)
+					"create index worker: %w", err)
 			}
 
 			idx.indexes[docType] = index
@@ -343,16 +343,18 @@ func (idx *Indexer) ensureIndex(
 	name := fmt.Sprintf("documents-%s-%s",
 		idx.name, nonAlphaNum.ReplaceAllString(docType, "_"))
 
-	existRes, err := idx.client.Indices.Exists([]string{name})
+	existRes, err := idx.client.Indices.Exists([]string{name},
+		idx.client.Indices.Exists.WithContext(ctx))
 	if err != nil {
-		return "", fmt.Errorf("failed to check if index exists: %w", err)
+		return "", fmt.Errorf("check if index exists: %w", err)
 	}
 
 	if existRes.StatusCode == http.StatusOK {
 		return name, nil
 	}
 
-	res, err := idx.client.Indices.Create(name)
+	res, err := idx.client.Indices.Create(name,
+		idx.client.Indices.Create.WithContext(ctx))
 	if err != nil {
 		return "", fmt.Errorf("create index %q: %w", name, err)
 	}
@@ -523,6 +525,7 @@ func (iw *indexWorker) Process(
 		for _, job := range documents {
 			if job.Operation != opUpdate {
 				job.Finish(nil, nil)
+
 				continue
 			}
 
@@ -542,7 +545,7 @@ func (iw *indexWorker) Process(
 	for _, job := range documents {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return ctx.Err() //nolint:wrapcheck
 		case <-job.done:
 		}
 
@@ -687,7 +690,7 @@ func (iw *indexWorker) attemptMappingUpdate(
 
 		changes = mappings.ChangesFrom(current)
 
-		// If our mappings were diffrent because they were outdated,
+		// If our mappings were different because they were outdated,
 		// just update them and return.
 		if !changes.HasNew() {
 			iw.knownMappings = current

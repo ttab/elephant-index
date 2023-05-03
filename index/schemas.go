@@ -68,6 +68,7 @@ func (sl *SchemaLoader) loadLoop(ctx context.Context) {
 			// the server in case something goes awry. During normal
 			// operations we should land naturally at 1req/10sec
 			// unless the schemas are being constantly updated.
+			continue
 		}
 	}
 }
