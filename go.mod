@@ -12,7 +12,7 @@ require (
 	github.com/opensearch-project/opensearch-go/v2 v2.2.0
 	github.com/prometheus/client_golang v1.15.0
 	github.com/ttab/elephant v0.1.0-alpha9
-	github.com/ttab/elephantine v0.1.0
+	github.com/ttab/elephantine v0.1.1-0.20230503181716-54c2a11d43f0
 	github.com/urfave/cli/v2 v2.25.1
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 	golang.org/x/oauth2 v0.7.0
