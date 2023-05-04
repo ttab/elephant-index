@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -46,16 +45,6 @@ type IndexerOptions struct {
 func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 	if opts.MetricsRegisterer == nil {
 		opts.MetricsRegisterer = prometheus.DefaultRegisterer
-	}
-
-	if opts.Client == nil {
-		c, err := opensearch.NewDefaultClient()
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to create default client: %w", err)
-		}
-
-		opts.Client = c
 	}
 
 	// TODO: When we get to running multiple indexers (reindexing) we will
@@ -299,7 +288,16 @@ func (idx *Indexer) loopIteration(
 	for docType := range changes {
 		index, ok := idx.indexes[docType]
 		if !ok {
-			name, err := idx.ensureIndex(ctx, docType)
+			name, err := idx.ensureIndex(
+				ctx, "documents", docType)
+			if err != nil {
+				return 0, fmt.Errorf(
+					"ensure index for doc type %q: %w",
+					docType, err)
+			}
+
+			percolateName, err := idx.ensureIndex(
+				ctx, "percolate", docType)
 			if err != nil {
 				return 0, fmt.Errorf(
 					"ensure index for doc type %q: %w",
@@ -307,7 +305,7 @@ func (idx *Indexer) loopIteration(
 			}
 
 			index, err = newIndexWorker(ctx, idx,
-				name, docType, 8)
+				name, percolateName, docType, 8)
 			if err != nil {
 				return 0, fmt.Errorf(
 					"create index worker: %w", err)
@@ -339,10 +337,10 @@ func (idx *Indexer) loopIteration(
 }
 
 func (idx *Indexer) ensureIndex(
-	ctx context.Context, docType string,
+	ctx context.Context, indexType string, docType string,
 ) (string, error) {
-	name := fmt.Sprintf("documents-%s-%s",
-		idx.name, nonAlphaNum.ReplaceAllString(docType, "_"))
+	name := fmt.Sprintf("%s-%s-%s",
+		indexType, idx.name, nonAlphaNum.ReplaceAllString(docType, "_"))
 
 	existRes, err := idx.client.Indices.Exists([]string{name},
 		idx.client.Indices.Exists.WithContext(ctx))
@@ -371,7 +369,7 @@ func (idx *Indexer) ensureIndex(
 
 func newIndexWorker(
 	ctx context.Context, idx *Indexer,
-	name, contentType string,
+	name, percolateIndex, contentType string,
 	concurrency int,
 ) (*indexWorker, error) {
 	iw := indexWorker{
@@ -379,10 +377,11 @@ func newIndexWorker(
 		logger: idx.logger.With(
 			elephantine.LogKeyIndex, name,
 		),
-		contentType:   contentType,
-		indexName:     name,
-		knownMappings: NewMappings(),
-		jobQueue:      make(chan *enrichJob, concurrency),
+		contentType:        contentType,
+		indexName:          name,
+		percolateIndexName: percolateIndex,
+		knownMappings:      NewMappings(),
+		jobQueue:           make(chan *enrichJob, concurrency),
 	}
 
 	mappingData, err := idx.q.GetIndexMappings(ctx, name)
@@ -404,7 +403,7 @@ func newIndexWorker(
 			"get current index mappings: %w", err)
 	}
 
-	err = json.Unmarshal(mappingData, &iw.knownMappings)
+	err = json.Unmarshal(mappingData, &iw.knownMappings.Properties)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"unmarshal current index mappings: %w", err)
@@ -418,13 +417,13 @@ func newIndexWorker(
 }
 
 type indexWorker struct {
-	idx         *Indexer
-	logger      *slog.Logger
-	contentType string
-	indexName   string
-	jobQueue    chan *enrichJob
+	idx                *Indexer
+	logger             *slog.Logger
+	contentType        string
+	indexName          string
+	percolateIndexName string
+	jobQueue           chan *enrichJob
 
-	m             sync.RWMutex
 	knownMappings Mappings
 }
 
@@ -590,9 +589,7 @@ func (iw *indexWorker) Process(
 
 		mappings := idxDoc.Mappings()
 
-		iw.m.RLock()
 		changes := mappings.ChangesFrom(iw.knownMappings)
-		iw.m.RUnlock()
 
 		if changes.HasNew() {
 			err := iw.attemptMappingUpdate(ctx, mappings)
@@ -669,9 +666,6 @@ func (iw *indexWorker) Process(
 func (iw *indexWorker) attemptMappingUpdate(
 	ctx context.Context, mappings Mappings,
 ) error {
-	iw.m.Lock()
-	defer iw.m.Unlock()
-
 	err := pg.WithTX(ctx, iw.logger, iw.idx.database, "mapping update", func(tx pgx.Tx) error {
 		// Abort if another goroutine has updated the mappings and added
 		// the mappings we were missing.
@@ -691,7 +685,7 @@ func (iw *indexWorker) attemptMappingUpdate(
 
 		var current Mappings
 
-		err = json.Unmarshal(mappingData, &current)
+		err = json.Unmarshal(mappingData, &current.Properties)
 		if err != nil {
 			return fmt.Errorf(
 				"unmarshal current index mappings: %w", err)
@@ -709,29 +703,38 @@ func (iw *indexWorker) attemptMappingUpdate(
 
 		newMappings := changes.Superset(iw.knownMappings)
 
-		mappingData, err = json.Marshal(newMappings)
+		err = iw.updateIndexMapping(ctx, iw.indexName, newMappings)
+		if err != nil {
+			return fmt.Errorf("update document index mappings: %w", err)
+		}
+
+		percolatorMappings := Mappings{
+			Properties: map[string]Mapping{
+				"query": {
+					Type: TypePercolator,
+				},
+			},
+		}
+
+		for k, v := range newMappings.Properties {
+			if k == "query" {
+				continue
+			}
+
+			percolatorMappings.Properties[k] = v
+		}
+
+		err = iw.updateIndexMapping(ctx, iw.percolateIndexName, percolatorMappings)
+		if err != nil {
+			return fmt.Errorf("update document index mappings: %w", err)
+		}
+
+		mappingData, err = json.Marshal(newMappings.Properties)
 		if err != nil {
 			return fmt.Errorf("marshal mappings: %w", err)
 		}
 
-		res, err := iw.idx.client.Indices.PutMapping(
-			bytes.NewReader(mappingData),
-			iw.idx.client.Indices.PutMapping.WithIndex(iw.indexName),
-		)
-		if err != nil {
-			return fmt.Errorf("mapping update request: %w", err)
-		}
-
-		err = res.Body.Close()
-		if err != nil {
-			return fmt.Errorf("close mapping response body: %w", err)
-		}
-
-		if res.StatusCode != http.StatusOK {
-			return fmt.Errorf("error response to mapping update: %s", res.Status())
-		}
-
-		err = iw.idx.q.UpdateIndexMappings(ctx, postgres.UpdateIndexMappingsParams{
+		err = q.UpdateIndexMappings(ctx, postgres.UpdateIndexMappingsParams{
 			Name:     iw.indexName,
 			Mappings: mappingData,
 		})
@@ -745,6 +748,35 @@ func (iw *indexWorker) attemptMappingUpdate(
 	})
 	if err != nil {
 		return fmt.Errorf("update mappings in transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (iw *indexWorker) updateIndexMapping(
+	ctx context.Context, index string, newMappings Mappings,
+) error {
+	mappingData, err := json.Marshal(newMappings)
+	if err != nil {
+		return fmt.Errorf("marshal mappings: %w", err)
+	}
+
+	res, err := iw.idx.client.Indices.PutMapping(
+		bytes.NewReader(mappingData),
+		iw.idx.client.Indices.PutMapping.WithContext(ctx),
+		iw.idx.client.Indices.PutMapping.WithIndex(index),
+	)
+	if err != nil {
+		return fmt.Errorf("mapping update request: %w", err)
+	}
+
+	err = res.Body.Close()
+	if err != nil {
+		return fmt.Errorf("close mapping response body: %w", err)
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("error response to mapping update: %s", res.Status())
 	}
 
 	return nil

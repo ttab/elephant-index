@@ -9,6 +9,7 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/ttab/elephant/doc"
 	"github.com/ttab/elephant/revisor"
+	"golang.org/x/exp/slices"
 )
 
 func BuildDocument(validator *revisor.Validator, state *DocumentState) *Document {
@@ -40,6 +41,14 @@ func BuildDocument(validator *revisor.Validator, state *DocumentState) *Document
 		for k, v := range status.Meta {
 			d.AddField(base+".meta."+k, TypeKeyword, v)
 		}
+	}
+
+	for _, a := range state.ACL {
+		if !slices.Contains(a.Permissions, "r") {
+			continue
+		}
+
+		d.AddField("readers", TypeKeyword, a.URI)
 	}
 
 	policy := bluemonday.StrictPolicy()

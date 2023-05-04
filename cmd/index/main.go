@@ -5,6 +5,7 @@
 package main
 
 import (
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,10 +13,12 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/julienschmidt/httprouter"
+	"github.com/opensearch-project/opensearch-go/v2"
+	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/ttab/elephant-index/index"
-	"github.com/ttab/elephant/rpc/repository"
+	rpc "github.com/ttab/elephant/rpc/repository"
 	"github.com/ttab/elephantine"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/exp/slog"
@@ -103,6 +106,7 @@ func runIndexer(c *cli.Context) error {
 		profileAddr        = c.String("profile-addr")
 		logLevel           = c.String("log-level")
 		tokenEndpoint      = c.String("token-endpoint")
+		jwksEndpoint       = c.String("jwks-endpoint")
 		repositoryEndpoint = c.String("repository-endpoint")
 	)
 
@@ -151,6 +155,26 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("connect to database: %w", err)
 	}
 
+	var keySet jwk.KeySpecSet
+
+	err = elephantine.UnmarshalHTTPResource(jwksEndpoint, &keySet)
+	if err != nil {
+		return fmt.Errorf("retrieve JWT keys: %w", err)
+	}
+
+	jwtKey := keySet.Filter(func(key *jwk.KeySpec) bool {
+		return key.Use == "sig" && key.Algorithm == jwt.SigningMethodES384.Alg()
+	}).PrimaryKey("EC")
+
+	if jwtKey == nil {
+		return errors.New("no usable JWT key")
+	}
+
+	publicJWTKey, ok := jwtKey.Key.(*ecdsa.PublicKey)
+	if !ok {
+		return errors.New("the returned signing key wasn't a public ECDSA key")
+	}
+
 	authConf := oauth2.Config{
 		Endpoint: oauth2.Endpoint{
 			TokenURL: tokenEndpoint,
@@ -167,10 +191,10 @@ func runIndexer(c *cli.Context) error {
 	authClient := oauth2.NewClient(c.Context,
 		authConf.TokenSource(c.Context, pwToken))
 
-	documents := repository.NewDocumentsProtobufClient(
+	documents := rpc.NewDocumentsProtobufClient(
 		repositoryEndpoint, authClient)
 
-	schemas := repository.NewSchemasProtobufClient(
+	schemas := rpc.NewSchemasProtobufClient(
 		repositoryEndpoint, authClient)
 
 	loader, err := index.NewSchemaLoader(c.Context, logger.With(
@@ -180,13 +204,20 @@ func runIndexer(c *cli.Context) error {
 	}
 
 	healthServer := elephantine.NewHealthServer(profileAddr)
-	router := httprouter.New()
+	router := http.NewServeMux()
 	serverGroup, gCtx := errgroup.WithContext(c.Context)
+
+	searchClient, err := opensearch.NewDefaultClient()
+	if err != nil {
+		return fmt.Errorf(
+			"failed to create default client: %w", err)
+	}
 
 	indexer, err := index.NewIndexer(c.Context, index.IndexerOptions{
 		Logger: logger.With(
 			elephantine.LogKeyComponent, "indexer"),
 		SetName:   "v1",
+		Client:    searchClient,
 		Database:  dbpool,
 		Documents: documents,
 		Validator: loader,
@@ -194,6 +225,10 @@ func runIndexer(c *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("create indexer: %w", err)
 	}
+
+	proxy := index.NewElasticProxy(logger, searchClient, publicJWTKey)
+
+	router.Handle("/", proxy)
 
 	serverGroup.Go(func() error {
 		err := indexer.Run(gCtx)

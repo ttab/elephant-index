@@ -3,13 +3,14 @@ package index
 type FieldType string
 
 const (
-	TypeUnknown FieldType = ""
-	TypeBoolean FieldType = "boolean"
-	TypeDouble  FieldType = "double"
-	TypeLong    FieldType = "long"
-	TypeDate    FieldType = "date"
-	TypeText    FieldType = "text"
-	TypeKeyword FieldType = "keyword"
+	TypeUnknown    FieldType = ""
+	TypeBoolean    FieldType = "boolean"
+	TypeDouble     FieldType = "double"
+	TypeLong       FieldType = "long"
+	TypeDate       FieldType = "date"
+	TypeText       FieldType = "text"
+	TypeKeyword    FieldType = "keyword"
+	TypePercolator FieldType = "percolator"
 )
 
 // We should not have colliding types, but if something first is defined as text
