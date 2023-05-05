@@ -73,6 +73,30 @@ func (q *Queries) GetIndexSetPosition(ctx context.Context, name string) (int64, 
 	return position, err
 }
 
+const listIndexSets = `-- name: ListIndexSets :many
+SELECT name FROM index_set
+`
+
+func (q *Queries) ListIndexSets(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, listIndexSets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateIndexMappings = `-- name: UpdateIndexMappings :exec
 UPDATE document_index
 SET mappings = $1

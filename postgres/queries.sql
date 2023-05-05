@@ -1,3 +1,6 @@
+-- name: ListIndexSets :many
+SELECT name FROM index_set;
+
 -- name: CreateIndexSet :exec
 INSERT INTO index_set(name, position)
 VALUES (@name, @position);

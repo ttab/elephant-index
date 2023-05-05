@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
@@ -13,11 +14,14 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/opensearch-project/opensearch-go/v2"
+	"github.com/opensearch-project/opensearch-go/v2/signer/awsv2"
 	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/ttab/elephant-index/index"
+	"github.com/ttab/elephant-index/postgres"
 	rpc "github.com/ttab/elephant/rpc/repository"
 	"github.com/ttab/elephantine"
 	"github.com/urfave/cli/v2"
@@ -61,6 +65,11 @@ func main() {
 				Required: true,
 			},
 			&cli.StringFlag{
+				Name:     "opensearch-endpoint",
+				EnvVars:  []string{"OPENSEARCH_ENDPOINT"},
+				Required: true,
+			},
+			&cli.StringFlag{
 				Name:    "parameter-source",
 				EnvVars: []string{"PARAMETER_SOURCE"},
 			},
@@ -80,6 +89,10 @@ func main() {
 			&cli.StringFlag{
 				Name:    "shared-secret-parameter",
 				EnvVars: []string{"SHARED_SECRET_PARAMETER"},
+			},
+			&cli.BoolFlag{
+				Name:    "managed-opensearch",
+				EnvVars: []string{"MANAGED_OPEN_SEARCH"},
 			},
 		},
 	}
@@ -107,7 +120,9 @@ func runIndexer(c *cli.Context) error {
 		logLevel           = c.String("log-level")
 		tokenEndpoint      = c.String("token-endpoint")
 		jwksEndpoint       = c.String("jwks-endpoint")
+		opensearchEndpoint = c.String("opensearch-endpoint")
 		repositoryEndpoint = c.String("repository-endpoint")
+		managedOS          = c.Bool("managed-opensearch")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -207,10 +222,29 @@ func runIndexer(c *cli.Context) error {
 	router := http.NewServeMux()
 	serverGroup, gCtx := errgroup.WithContext(c.Context)
 
-	searchClient, err := opensearch.NewDefaultClient()
+	osConfig := opensearch.Config{
+		Addresses: []string{opensearchEndpoint},
+	}
+
+	if managedOS {
+		awsCfg, err := config.LoadDefaultConfig(c.Context)
+		if err != nil {
+			return fmt.Errorf("load default AWS config: %w", err)
+		}
+
+		// Create an AWS request Signer and load AWS configuration using default config folder or env vars.
+		signer, err := awsv2.NewSignerWithService(awsCfg, "es")
+		if err != nil {
+			return fmt.Errorf("create request signer for opensearch: %w", err)
+		}
+
+		osConfig.Signer = signer
+	}
+
+	searchClient, err := opensearch.NewClient(osConfig)
 	if err != nil {
 		return fmt.Errorf(
-			"failed to create default client: %w", err)
+			"failed to create opensearch client: %w", err)
 	}
 
 	indexer, err := index.NewIndexer(c.Context, index.IndexerOptions{
@@ -229,6 +263,75 @@ func runIndexer(c *cli.Context) error {
 	proxy := index.NewElasticProxy(logger, searchClient, publicJWTKey)
 
 	router.Handle("/", proxy)
+
+	router.Handle("/health/alive", http.HandlerFunc(func(
+		w http.ResponseWriter, req *http.Request,
+	) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+
+		_, _ = fmt.Fprintln(w, "I AM ALIVE!")
+	}))
+
+	healthServer.AddReadyFunction("api_liveness", func(ctx context.Context) error {
+		req, err := http.NewRequestWithContext(
+			ctx, http.MethodGet, fmt.Sprintf(
+				"http://localhost%s/health/alive",
+				addr,
+			), nil,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to create liveness check request: %w", err)
+		}
+
+		var client http.Client
+
+		res, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to perform liveness check request: %w", err)
+		}
+
+		_ = res.Body.Close()
+
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf(
+				"api liveness endpoint returned non-ok status:: %s",
+				res.Status)
+		}
+
+		return nil
+	})
+
+	healthServer.AddReadyFunction("postgres", func(ctx context.Context) error {
+		q := postgres.New(dbpool)
+
+		_, err := q.ListIndexSets(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to list index sets: %w", err)
+		}
+
+		return nil
+	})
+
+	healthServer.AddReadyFunction("opensearch", func(ctx context.Context) error {
+		get := searchClient.Indices.Get
+
+		res, err := get([]string{"documents-*"}, get.WithContext(ctx))
+		if err != nil {
+			return fmt.Errorf("list indices: %w", err)
+		}
+
+		_ = res.Body.Close()
+
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf(
+				"error response from server: %v", res.Status())
+		}
+
+		return nil
+	})
 
 	serverGroup.Go(func() error {
 		err := indexer.Run(gCtx)
