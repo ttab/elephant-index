@@ -13,12 +13,14 @@ import (
 type RawSearchRequest struct {
 	Query  json.RawMessage `json:"query"`
 	Fields json.RawMessage `json:"fields"`
+	Sort   json.RawMessage `json:"sort"`
 	Source *bool           `json:"_source,omitempty"`
 }
 
 type ElasticSearchRequest struct {
 	Query  ElasticQuery    `json:"query"`
-	Fields json.RawMessage `json:"fields"`
+	Fields json.RawMessage `json:"fields,omitempty"`
+	Sort   json.RawMessage `json:"sort,omitempty"`
 	Source *bool           `json:"_source,omitempty"`
 }
 
