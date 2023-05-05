@@ -29,7 +29,7 @@ import (
 func main() {
 	runCmd := cli.Command{
 		Name:        "run",
-		Description: "Runs the indexing serve",
+		Description: "Runs the index server",
 		Action:      runIndexer,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -43,7 +43,7 @@ func main() {
 			&cli.StringFlag{
 				Name:    "log-level",
 				EnvVars: []string{"LOG_LEVEL"},
-				Value:   "error",
+				Value:   "debug",
 			},
 			&cli.StringFlag{
 				Name:     "jwks-endpoint",

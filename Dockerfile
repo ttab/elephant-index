@@ -22,4 +22,4 @@ EXPOSE 1080
 # Debug/profiling server
 EXPOSE 1081
 
-ENTRYPOINT ["main"]
+ENTRYPOINT ["main", "run"]
