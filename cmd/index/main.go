@@ -227,6 +227,8 @@ func runIndexer(c *cli.Context) error {
 	}
 
 	if managedOS {
+		logger.DebugCtx(c.Context, "using AWS request signing for opensearch")
+
 		awsCfg, err := config.LoadDefaultConfig(c.Context)
 		if err != nil {
 			return fmt.Errorf("load default AWS config: %w", err)
