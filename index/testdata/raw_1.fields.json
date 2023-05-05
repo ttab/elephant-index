@@ -264,6 +264,10 @@
       "2023-04-02T03:18:54Z"
     ]
   },
+  "readers": {
+    "type": "keyword",
+    "values": ["core://unit/redaktionen"]
+  },
   "text": {
     "type": "text",
     "values": [

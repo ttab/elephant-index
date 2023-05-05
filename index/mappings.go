@@ -32,6 +32,8 @@ func (ft FieldType) Priority() int {
 		return 11
 	case TypeLong:
 		return 12
+	case TypePercolator:
+		return 20
 	}
 
 	return 0
