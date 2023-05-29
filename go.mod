@@ -11,7 +11,7 @@ require (
 	github.com/kyleconroy/sqlc v1.17.2
 	github.com/microcosm-cc/bluemonday v1.0.23
 	github.com/opensearch-project/opensearch-go/v2 v2.2.0
-	github.com/prometheus/client_golang v1.15.0
+	github.com/prometheus/client_golang v1.15.1
 	github.com/rakutentech/jwk-go v1.1.2
 	github.com/ttab/elephant-api v0.3.0
 	github.com/ttab/elephantine v0.6.0
