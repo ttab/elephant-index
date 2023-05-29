@@ -4,19 +4,18 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ttab/elephant/doc"
-	"github.com/ttab/elephant/repository"
+	"github.com/ttab/newsdoc"
 	"golang.org/x/exp/slices"
 )
 
 // DocumentState is the full state that we want to index.
 type DocumentState struct {
-	Created        time.Time                    `json:"created"`
-	Modified       time.Time                    `json:"modified"`
-	CurrentVersion int64                        `json:"current_version"`
-	ACL            []repository.ACLEntry        `json:"acl"`
-	Heads          map[string]repository.Status `json:"heads"`
-	Document       doc.Document                 `json:"document"`
+	Created        time.Time         `json:"created"`
+	Modified       time.Time         `json:"modified"`
+	CurrentVersion int64             `json:"current_version"`
+	ACL            []ACLEntry        `json:"acl"`
+	Heads          map[string]Status `json:"heads"`
+	Document       newsdoc.Document  `json:"document"`
 }
 
 type Document struct {

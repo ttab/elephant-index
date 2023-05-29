@@ -17,12 +17,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/postgres"
-	"github.com/ttab/elephant/repository"
-	"github.com/ttab/elephant/revisor"
-	rpc "github.com/ttab/elephant/rpc/repository"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
@@ -37,7 +36,7 @@ type IndexerOptions struct {
 	SetName           string
 	Database          *pgxpool.Pool
 	Client            *opensearch.Client
-	Documents         rpc.Documents
+	Documents         repository.Documents
 	Validator         ValidatorSource
 	MetricsRegisterer prometheus.Registerer
 }
@@ -152,7 +151,7 @@ type Indexer struct {
 	logger    *slog.Logger
 	name      string
 	database  *pgxpool.Pool
-	documents rpc.Documents
+	documents repository.Documents
 	vSource   ValidatorSource
 	client    *opensearch.Client
 
@@ -242,7 +241,7 @@ func (ij *enrichJob) Finish(state *DocumentState, err error) {
 func (idx *Indexer) loopIteration(
 	ctx context.Context, pos int64,
 ) (int64, error) {
-	log, err := idx.documents.Eventlog(ctx, &rpc.GetEventlogRequest{
+	log, err := idx.documents.Eventlog(ctx, &repository.GetEventlogRequest{
 		After:       pos,
 		WaitMs:      10000,
 		BatchWaitMs: 200,
@@ -446,13 +445,13 @@ func (iw *indexWorker) enrich(
 	job *enrichJob,
 ) (*DocumentState, error) {
 	state := DocumentState{
-		Heads: make(map[string]repository.Status),
+		Heads: make(map[string]Status),
 	}
 
 	ctx, cancel := context.WithTimeout(job.ctx, 5*time.Second)
 	defer cancel()
 
-	metaRes, err := iw.idx.documents.GetMeta(ctx, &rpc.GetMetaRequest{
+	metaRes, err := iw.idx.documents.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: job.UUID,
 	})
 	if err != nil {
@@ -477,7 +476,7 @@ func (iw *indexWorker) enrich(
 	state.Modified = modified
 
 	for _, v := range metaRes.Meta.Acl {
-		state.ACL = append(state.ACL, repository.ACLEntry{
+		state.ACL = append(state.ACL, ACLEntry{
 			URI:         v.Uri,
 			Permissions: v.Permissions,
 		})
@@ -490,7 +489,7 @@ func (iw *indexWorker) enrich(
 				name, err)
 		}
 
-		status := repository.Status{
+		status := Status{
 			ID:      v.Id,
 			Version: v.Version,
 			Creator: v.Creator,
@@ -501,7 +500,7 @@ func (iw *indexWorker) enrich(
 		state.Heads[name] = status
 	}
 
-	docRes, err := iw.idx.documents.Get(ctx, &rpc.GetDocumentRequest{
+	docRes, err := iw.idx.documents.Get(ctx, &repository.GetDocumentRequest{
 		Uuid:    job.UUID,
 		Version: state.CurrentVersion,
 	})
@@ -509,9 +508,9 @@ func (iw *indexWorker) enrich(
 		return nil, fmt.Errorf("get document: %w", err)
 	}
 
-	d := repository.RPCToDocument(docRes.Document)
+	d := repository.DocumentFromRPC(docRes.Document)
 
-	state.Document = *d
+	state.Document = d
 
 	return &state, nil
 }

@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ttab/elephant/revisor"
-	"github.com/ttab/elephant/rpc/repository"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/revisor"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slog"
 )

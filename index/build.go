@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/microcosm-cc/bluemonday"
-	"github.com/ttab/elephant/doc"
-	"github.com/ttab/elephant/revisor"
+	"github.com/ttab/newsdoc"
+	"github.com/ttab/revisor"
 	"golang.org/x/exp/slices"
 )
 
@@ -144,7 +144,7 @@ func BuildDocument(validator *revisor.Validator, state *DocumentState) *Document
 	return d
 }
 
-func blockText(policy *bluemonday.Policy, b doc.Block, text []string) []string {
+func blockText(policy *bluemonday.Policy, b newsdoc.Block, text []string) []string {
 	if b.Data != nil {
 		t := b.Data["text"]
 		if t != "" {
@@ -175,7 +175,7 @@ func isKind(r revisor.EntityRef, kind ...revisor.BlockKind) bool {
 
 var nonAlphaNum = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
 
-func entityRefsToPath(doc *doc.Document, refs []revisor.EntityRef) string {
+func entityRefsToPath(doc *newsdoc.Document, refs []revisor.EntityRef) string {
 	r := make([]string, len(refs))
 
 	var source revisor.BlockSource = revisor.NewDocumentBlocks(doc)

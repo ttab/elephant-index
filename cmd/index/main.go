@@ -20,9 +20,9 @@ import (
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/opensearch-project/opensearch-go/v2/signer/awsv2"
 	"github.com/rakutentech/jwk-go/jwk"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephant-index/postgres"
-	rpc "github.com/ttab/elephant/rpc/repository"
 	"github.com/ttab/elephantine"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/exp/slog"
@@ -144,13 +144,13 @@ func runIndexer(c *cli.Context) error {
 	}
 
 	connString, err := elephantine.ResolveParameter(
-		c, paramSource, "db")
+		c.Context, c, paramSource, "db")
 	if err != nil {
 		return fmt.Errorf("resolve db parameter: %w", err)
 	}
 
 	sharedSecret, err := elephantine.ResolveParameter(
-		c, paramSource, "shared-secret")
+		c.Context, c, paramSource, "shared-secret")
 	if err != nil {
 		return fmt.Errorf("resolve shared secret parameter: %w", err)
 	}
@@ -206,10 +206,10 @@ func runIndexer(c *cli.Context) error {
 	authClient := oauth2.NewClient(c.Context,
 		authConf.TokenSource(c.Context, pwToken))
 
-	documents := rpc.NewDocumentsProtobufClient(
+	documents := repository.NewDocumentsProtobufClient(
 		repositoryEndpoint, authClient)
 
-	schemas := rpc.NewSchemasProtobufClient(
+	schemas := repository.NewSchemasProtobufClient(
 		repositoryEndpoint, authClient)
 
 	loader, err := index.NewSchemaLoader(c.Context, logger.With(

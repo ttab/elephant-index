@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/opensearch-project/opensearch-go/v2"
-	"github.com/ttab/elephant/repository"
 	"github.com/ttab/elephantine"
 	"golang.org/x/exp/slog"
 )
@@ -87,10 +86,7 @@ func (ep *ElasticProxy) searchHandler(
 		}
 	}
 
-	// TODO: this dependency doesn't sit right. Ideally we
-	// only want to depend on the RPC layer. Deferred
-	// refactor.
-	auth, err := repository.AuthInfoFromHeader(
+	auth, err := elephantine.AuthInfoFromHeader(
 		ep.publicJWTKey, authorization)
 	if err != nil {
 		return ElasticErrorf(

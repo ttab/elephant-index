@@ -3,6 +3,7 @@ FROM registry.a.tt.se/docker/golang:1.20.3-alpine3.17 AS build
 WORKDIR /usr/src
 
 ADD go.mod go.sum ./
+RUN go mod download && go mod verify
 
 ADD . ./
 

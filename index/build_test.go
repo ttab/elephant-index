@@ -5,9 +5,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ttab/elephant-index/index"
-	"github.com/ttab/elephant/revisor"
-	"github.com/ttab/elephant/revisor/constraints"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/revisor"
+	"github.com/ttab/revisor/constraints"
 )
 
 func TestBuildDocument(t *testing.T) {
