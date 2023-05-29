@@ -7,7 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/go-cmp v0.5.9
 	github.com/jackc/pgx/v5 v5.3.1
-	github.com/jackc/tern/v2 v2.0.1
+	github.com/jackc/tern/v2 v2.1.0
 	github.com/kyleconroy/sqlc v1.17.2
 	github.com/microcosm-cc/bluemonday v1.0.23
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
