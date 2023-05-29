@@ -9,7 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/jackc/tern/v2 v2.0.1
 	github.com/kyleconroy/sqlc v1.17.2
-	github.com/microcosm-cc/bluemonday v1.0.23
+	github.com/microcosm-cc/bluemonday v1.0.24
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/prometheus/client_golang v1.15.1
 	github.com/rakutentech/jwk-go v1.1.2
