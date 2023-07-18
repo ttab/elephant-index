@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
@@ -508,7 +509,7 @@ func (iw *indexWorker) enrich(
 		return nil, fmt.Errorf("get document: %w", err)
 	}
 
-	d := repository.DocumentFromRPC(docRes.Document)
+	d := newsdoc.DocumentFromRPC(docRes.Document)
 
 	state.Document = d
 
