@@ -1,5 +1,3 @@
-service_name = repository-indexer
-
 pg_conn?=postgres://indexer:pass@localhost/indexer
 rollback_to?=0
 
