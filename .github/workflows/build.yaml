@@ -37,11 +37,12 @@ jobs:
 
       - name: Set up TT environment
         run: |
-          safe_ref=$(echo ${{ github.ref_name }} | sed -E 's/[^a-zA-Z0-9_.]+/-/g')
+          version_ref=$(git describe --tags HEAD 2>&- || \
+            echo v0.0.0-$(git rev-list HEAD --count)-$(git rev-parse --short HEAD))
           (
-          echo safe_ref=${safe_ref}
+          echo version_ref=${version_ref}
           echo docker_repo=registry.a.tt.se/${{ github.repository }}
-          echo docker_image=registry.a.tt.se/${{ github.repository }}:${safe_ref}
+          echo docker_image=registry.a.tt.se/${{ github.repository }}:${version_ref}
           ) >> $GITHUB_ENV
 
       - name: Build and push release image
