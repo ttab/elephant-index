@@ -194,7 +194,7 @@ func runIndexer(c *cli.Context) error {
 		Endpoint: oauth2.Endpoint{
 			TokenURL: tokenEndpoint,
 		},
-		Scopes: []string{"doc_read", "superuser"},
+		Scopes: []string{"eventlog_read", "doc_read_all", "doc_read", "superuser"},
 	}
 
 	pwToken, err := authConf.PasswordCredentialsToken(c.Context,
