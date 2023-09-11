@@ -20,7 +20,7 @@ require (
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.25.7
 	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1
-	golang.org/x/oauth2 v0.10.0
+	golang.org/x/oauth2 v0.12.0
 	golang.org/x/sync v0.3.0
 )
 
@@ -89,10 +89,10 @@ require (
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
 	go.uber.org/zap v1.19.1 // indirect
-	golang.org/x/crypto v0.11.0 // indirect
-	golang.org/x/net v0.12.0 // indirect
-	golang.org/x/sys v0.10.0 // indirect
-	golang.org/x/text v0.11.0 // indirect
+	golang.org/x/crypto v0.13.0 // indirect
+	golang.org/x/net v0.15.0 // indirect
+	golang.org/x/sys v0.12.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
 	google.golang.org/grpc v1.56.2 // indirect
