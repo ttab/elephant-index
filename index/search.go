@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/ttab/elephantine"
-	"golang.org/x/exp/slog"
 )
 
 type RawSearchRequest struct {
@@ -142,7 +142,7 @@ func ElasticHandler(
 
 	encErr := enc.Encode(ee)
 	if encErr != nil {
-		logger.ErrorCtx(r.Context(),
+		logger.ErrorContext(r.Context(),
 			"failed to write error to client",
 			elephantine.LogKeyError, encErr)
 	}

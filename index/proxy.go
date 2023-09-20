@@ -5,12 +5,12 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/ttab/elephantine"
-	"golang.org/x/exp/slog"
 )
 
 type ElasticProxy struct {
@@ -176,7 +176,7 @@ func (ep *ElasticProxy) searchHandler(
 
 	_, err = io.Copy(w, res.Body)
 	if err != nil {
-		ep.logger.ErrorCtx(ctx,
+		ep.logger.ErrorContext(ctx,
 			"failed to proxy search response to client",
 			elephantine.LogKeyError, err)
 	}

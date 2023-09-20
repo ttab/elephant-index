@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -24,7 +25,6 @@ import (
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -174,7 +174,7 @@ func (idx *Indexer) Run(ctx context.Context) error {
 		return fmt.Errorf("fetching current index set position: %w", err)
 	}
 
-	idx.logger.DebugCtx(ctx, "starting from",
+	idx.logger.DebugContext(ctx, "starting from",
 		elephantine.LogKeyEventID, pos)
 
 	for {
@@ -182,7 +182,7 @@ func (idx *Indexer) Run(ctx context.Context) error {
 		if err != nil {
 			idx.indexerFailures.WithLabelValues(idx.name).Inc()
 
-			idx.logger.ErrorCtx(ctx, "indexer failure",
+			idx.logger.ErrorContext(ctx, "indexer failure",
 				elephantine.LogKeyError, err,
 				elephantine.LogKeyEventID, pos)
 
@@ -551,7 +551,7 @@ func (iw *indexWorker) Process(
 
 		var twErr twirp.Error
 		if errors.As(job.err, &twErr) && twErr.Code() == twirp.NotFound {
-			iw.logger.DebugCtx(ctx, "the document has been deleted, removing from index",
+			iw.logger.DebugContext(ctx, "the document has been deleted, removing from index",
 				elephantine.LogKeyDocumentUUID, job.UUID,
 				elephantine.LogKeyError, job.err)
 
@@ -562,7 +562,7 @@ func (iw *indexWorker) Process(
 				iw.contentType, iw.indexName,
 			).Inc()
 
-			iw.logger.ErrorCtx(ctx, "failed to enrich document for indexing",
+			iw.logger.ErrorContext(ctx, "failed to enrich document for indexing",
 				elephantine.LogKeyDocumentUUID, job.UUID,
 				elephantine.LogKeyError, job.err)
 
@@ -636,7 +636,7 @@ func (iw *indexWorker) Process(
 		case item.Index != nil:
 			counters["index_err"]++
 
-			iw.logger.ErrorCtx(ctx, "failed to index document",
+			iw.logger.ErrorContext(ctx, "failed to index document",
 				elephantine.LogKeyDocumentUUID, item.Index.ID,
 				elephantine.LogKeyError, item.Index.Error.String(),
 			)
@@ -647,7 +647,7 @@ func (iw *indexWorker) Process(
 
 			counters["delete_err"]++
 
-			iw.logger.ErrorCtx(ctx, "failed to delete document from index",
+			iw.logger.ErrorContext(ctx, "failed to delete document from index",
 				elephantine.LogKeyDocumentUUID, item.Index.ID,
 				elephantine.LogKeyError, item.Index.Error.String(),
 			)
