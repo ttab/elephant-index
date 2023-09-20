@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -286,10 +287,11 @@ func (idx *Indexer) loopIteration(
 	group, gCtx := errgroup.WithContext(ctx)
 
 	for docType := range changes {
-		index, ok := idx.indexes[docType]
+		key := fmt.Sprintf("%s-%s", docType, "swedish")
+		index, ok := idx.indexes[key]
 		if !ok {
 			name, err := idx.ensureIndex(
-				ctx, "documents", docType)
+				ctx, "documents", docType, "swedish")
 			if err != nil {
 				return 0, fmt.Errorf(
 					"ensure index for doc type %q: %w",
@@ -297,7 +299,7 @@ func (idx *Indexer) loopIteration(
 			}
 
 			percolateName, err := idx.ensureIndex(
-				ctx, "percolate", docType)
+				ctx, "percolate", docType, "swedish")
 			if err != nil {
 				return 0, fmt.Errorf(
 					"ensure index for doc type %q: %w",
@@ -311,7 +313,7 @@ func (idx *Indexer) loopIteration(
 					"create index worker: %w", err)
 			}
 
-			idx.indexes[docType] = index
+			idx.indexes[key] = index
 		}
 
 		var jobs []*enrichJob
@@ -337,10 +339,13 @@ func (idx *Indexer) loopIteration(
 }
 
 func (idx *Indexer) ensureIndex(
-	ctx context.Context, indexType string, docType string,
+	ctx context.Context, indexType string, docType string, lang string,
 ) (string, error) {
-	name := fmt.Sprintf("%s-%s-%s",
+	alias := fmt.Sprintf("%s-%s-%s",
 		indexType, idx.name, nonAlphaNum.ReplaceAllString(docType, "_"))
+	name := fmt.Sprintf("%s-%s-%s-%s",
+		indexType, idx.name, nonAlphaNum.ReplaceAllString(docType, "_"),
+		nonAlphaNum.ReplaceAllString(lang, "_"))
 
 	existRes, err := idx.client.Indices.Exists([]string{name},
 		idx.client.Indices.Exists.WithContext(ctx))
@@ -353,6 +358,17 @@ func (idx *Indexer) ensureIndex(
 	}
 
 	res, err := idx.client.Indices.Create(name,
+		idx.client.Indices.Create.WithBody(strings.NewReader(`{
+				"settings": {
+					"analysis": {
+						"analyzer": {
+							"default": {
+								"type": "swedish"
+							}
+						}
+					}
+				}
+			}`)),
 		idx.client.Indices.Create.WithContext(ctx))
 	if err != nil {
 		return "", fmt.Errorf("create index %q: %w", name, err)
@@ -362,6 +378,11 @@ func (idx *Indexer) ensureIndex(
 
 	if res.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("server response: %s", res.Status())
+	}
+
+	res, err = idx.client.Indices.PutAlias([]string{name}, alias)
+	if err != nil {
+		return "", fmt.Errorf("create alias %q: %q", alias, err)
 	}
 
 	return name, nil
