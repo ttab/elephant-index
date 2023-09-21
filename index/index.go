@@ -232,6 +232,7 @@ type enrichJob struct {
 	UUID      string
 	Operation int
 	State     *DocumentState
+	doc       *newsdoc.Document
 }
 
 func (ij *enrichJob) Finish(state *DocumentState, err error) {
@@ -253,29 +254,47 @@ func (idx *Indexer) loopIteration(
 		return 0, fmt.Errorf("get eventlog entries: %w", err)
 	}
 
-	changes := make(map[string]map[string]*enrichJob)
+	changes := make(map[string]map[string]map[string]*enrichJob)
 
 	for _, item := range log.Items {
 		if item.Type == "" {
 			continue
 		}
 
+		docRes, err := idx.documents.Get(ctx, &repository.GetDocumentRequest{
+			Uuid:    item.Uuid,
+			Version: item.Version,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("get document: %w", err)
+		}
+
+		doc := docRes.Document
+
 		byType, ok := changes[item.Type]
 		if !ok {
-			byType = make(map[string]*enrichJob)
+			byType = make(map[string]map[string]*enrichJob)
 			changes[item.Type] = byType
+		}
+
+		byLang, ok := byType[doc.Language]
+		if !ok {
+			byLang = make(map[string]*enrichJob)
+			byType[doc.Language] = byLang
 		}
 
 		switch item.Event {
 		case "delete_document":
-			byType[item.Uuid] = &enrichJob{
+			byLang[item.Uuid] = &enrichJob{
 				UUID:      item.Uuid,
 				Operation: opDelete,
+				doc:       doc,
 			}
 		case "document", "acl", "status":
-			byType[item.Uuid] = &enrichJob{
+			byLang[item.Uuid] = &enrichJob{
 				UUID:      item.Uuid,
 				Operation: opUpdate,
+				doc:       doc,
 			}
 		default:
 			idx.unknownEvents.WithLabelValues(item.Event).Inc()
@@ -287,47 +306,49 @@ func (idx *Indexer) loopIteration(
 	group, gCtx := errgroup.WithContext(ctx)
 
 	for docType := range changes {
-		key := fmt.Sprintf("%s-%s", docType, "swedish")
-		index, ok := idx.indexes[key]
-		if !ok {
-			name, err := idx.ensureIndex(
-				ctx, "documents", docType, "swedish")
-			if err != nil {
-				return 0, fmt.Errorf(
-					"ensure index for doc type %q: %w",
-					docType, err)
+		for lang := range changes[docType] {
+			key := fmt.Sprintf("%s-%s", docType, lang)
+			index, ok := idx.indexes[key]
+			if !ok {
+				name, err := idx.ensureIndex(
+					ctx, "documents", docType, lang)
+				if err != nil {
+					return 0, fmt.Errorf(
+						"ensure index for doc type %q: %w",
+						docType, err)
+				}
+
+				percolateName, err := idx.ensureIndex(
+					ctx, "percolate", docType, lang)
+				if err != nil {
+					return 0, fmt.Errorf(
+						"ensure index for doc type %q: %w",
+						docType, err)
+				}
+
+				index, err = newIndexWorker(ctx, idx,
+					name, percolateName, docType, 8)
+				if err != nil {
+					return 0, fmt.Errorf(
+						"create index worker: %w", err)
+				}
+
+				idx.indexes[key] = index
 			}
 
-			percolateName, err := idx.ensureIndex(
-				ctx, "percolate", docType, "swedish")
-			if err != nil {
-				return 0, fmt.Errorf(
-					"ensure index for doc type %q: %w",
-					docType, err)
+			var jobs []*enrichJob
+
+			for _, j := range changes[docType][lang] {
+				j.start = time.Now()
+				j.done = make(chan struct{})
+
+				jobs = append(jobs, j)
 			}
 
-			index, err = newIndexWorker(ctx, idx,
-				name, percolateName, docType, 8)
-			if err != nil {
-				return 0, fmt.Errorf(
-					"create index worker: %w", err)
-			}
-
-			idx.indexes[key] = index
+			group.Go(func() error {
+				return index.Process(gCtx, jobs)
+			})
 		}
-
-		var jobs []*enrichJob
-
-		for _, j := range changes[docType] {
-			j.start = time.Now()
-			j.done = make(chan struct{})
-
-			jobs = append(jobs, j)
-		}
-
-		group.Go(func() error {
-			return index.Process(gCtx, jobs)
-		})
 	}
 
 	err = group.Wait()
@@ -522,15 +543,7 @@ func (iw *indexWorker) enrich(
 		state.Heads[name] = status
 	}
 
-	docRes, err := iw.idx.documents.Get(ctx, &repository.GetDocumentRequest{
-		Uuid:    job.UUID,
-		Version: state.CurrentVersion,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("get document: %w", err)
-	}
-
-	d := newsdoc.DocumentFromRPC(docRes.Document)
+	d := newsdoc.DocumentFromRPC(job.doc)
 
 	state.Document = d
 
