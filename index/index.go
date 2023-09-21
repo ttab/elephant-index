@@ -362,11 +362,16 @@ func (idx *Indexer) loopIteration(
 func (idx *Indexer) ensureIndex(
 	ctx context.Context, indexType string, docType string, lang string,
 ) (string, error) {
+	settings, ok := LanguageSettings[lang]
+	if !ok {
+		settings = DefaultLanguageSetting
+	}
+
 	alias := fmt.Sprintf("%s-%s-%s",
 		indexType, idx.name, nonAlphaNum.ReplaceAllString(docType, "_"))
 	name := fmt.Sprintf("%s-%s-%s-%s",
 		indexType, idx.name, nonAlphaNum.ReplaceAllString(docType, "_"),
-		nonAlphaNum.ReplaceAllString(lang, "_"))
+		settings.Name)
 
 	existRes, err := idx.client.Indices.Exists([]string{name},
 		idx.client.Indices.Exists.WithContext(ctx))
@@ -379,17 +384,7 @@ func (idx *Indexer) ensureIndex(
 	}
 
 	res, err := idx.client.Indices.Create(name,
-		idx.client.Indices.Create.WithBody(strings.NewReader(`{
-				"settings": {
-					"analysis": {
-						"analyzer": {
-							"default": {
-								"type": "swedish"
-							}
-						}
-					}
-				}
-			}`)),
+		idx.client.Indices.Create.WithBody(strings.NewReader(settings.Settings)),
 		idx.client.Indices.Create.WithContext(ctx))
 	if err != nil {
 		return "", fmt.Errorf("create index %q: %w", name, err)
