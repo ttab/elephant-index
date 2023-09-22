@@ -9,6 +9,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"runtime/debug"
@@ -25,7 +26,6 @@ import (
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/urfave/cli/v2"
-	"golang.org/x/exp/slog"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 )
@@ -129,7 +129,7 @@ func runIndexer(c *cli.Context) error {
 
 	defer func() {
 		if p := recover(); p != nil {
-			slog.ErrorCtx(c.Context, "panic during setup",
+			slog.ErrorContext(c.Context, "panic during setup",
 				elephantine.LogKeyError, p,
 				"stack", string(debug.Stack()),
 			)
@@ -227,7 +227,7 @@ func runIndexer(c *cli.Context) error {
 	}
 
 	if managedOS {
-		logger.DebugCtx(c.Context, "using AWS request signing for opensearch")
+		logger.DebugContext(c.Context, "using AWS request signing for opensearch")
 
 		awsCfg, err := config.LoadDefaultConfig(c.Context)
 		if err != nil {

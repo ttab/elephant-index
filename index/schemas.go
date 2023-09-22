@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/ttab/revisor"
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slog"
 )
 
 type SchemaLoader struct {
@@ -56,7 +56,7 @@ func (sl *SchemaLoader) loadLoop(ctx context.Context) {
 
 		err := sl.loadSchemas(ctx)
 		if err != nil {
-			sl.logger.ErrorCtx(ctx, "failed to load schemas",
+			sl.logger.ErrorContext(ctx, "failed to load schemas",
 				elephantine.LogKeyError, err)
 		}
 

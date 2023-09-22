@@ -1,4 +1,4 @@
-FROM registry.a.tt.se/docker/golang:1.20.3-alpine3.17 AS build
+FROM golang:1.21.1-alpine3.18 AS build
 
 WORKDIR /usr/src
 
@@ -9,13 +9,14 @@ ADD . ./
 
 ARG COMMAND
 
-RUN go build -o /build/main ./cmd/${COMMAND}
+RUN go build -o /build/index ./cmd/index
 
-FROM registry.a.tt.se/docker/alpine:3.17.3
+FROM alpine:3.18
 
-COPY --from=build /build/main /usr/local/bin/main
+COPY --from=build /build/index /usr/local/bin/index
 
-RUN apk upgrade --no-cache
+RUN apk upgrade --no-cache \
+    && apk add tzdata
 
 # API server
 EXPOSE 1080
@@ -23,4 +24,4 @@ EXPOSE 1080
 # Debug/profiling server
 EXPOSE 1081
 
-ENTRYPOINT ["main", "run"]
+ENTRYPOINT ["index", "run"]

@@ -36,7 +36,7 @@ func TestBuildDocument(t *testing.T) {
 		t.Fatalf("failed to load base mappings: %v", err)
 	}
 
-	coreConstraints, err := constraints.CoreSchema()
+	constraints, err := constraints.CoreSchema()
 	if err != nil {
 		t.Fatalf("failed to load base constraints: %v", err)
 	}
@@ -47,7 +47,9 @@ func TestBuildDocument(t *testing.T) {
 		t.Fatalf("failed to load org constraints: %v", err)
 	}
 
-	validator, err := revisor.NewValidator(coreConstraints, extraConstraints)
+	constraints = append(constraints, extraConstraints)
+
+	validator, err := revisor.NewValidator(constraints...)
 	if err != nil {
 		t.Fatalf("failed to create validator: %v", err)
 	}
