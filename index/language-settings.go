@@ -11,28 +11,29 @@ type LanguageSettings struct {
 	Settings string
 }
 
-type IndexSettings struct {
+type Settings struct {
 	Name     string
 	Language string
 	Settings string
 }
 
-func GetIndexSettings(code string) (IndexSettings, error) {
+func GetIndexSettings(code string) (Settings, error) {
 	tag, i := language.MatchStrings(languages, code)
 	if i == 0 {
-		return IndexSettings{
+		return Settings{
 			Name:     "standard",
 			Language: "",
 			Settings: "",
 		}, nil
-	} else {
-		lang, _ := tag.Base()
-		return IndexSettings{
-			Name:     strings.ToLower(code),
-			Language: lang.String(),
-			Settings: languageSettings[i].Settings,
-		}, nil
 	}
+
+	lang, _ := tag.Base()
+
+	return Settings{
+		Name:     strings.ToLower(code),
+		Language: lang.String(),
+		Settings: languageSettings[i].Settings,
+	}, nil
 }
 
 var languages = (func() language.Matcher {
@@ -40,6 +41,7 @@ var languages = (func() language.Matcher {
 	for _, lang := range languageSettings {
 		tags = append(tags, lang.Tag)
 	}
+
 	return language.NewMatcher(tags)
 })()
 

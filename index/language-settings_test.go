@@ -28,15 +28,17 @@ var params = []expectation{
 func TestGetLanguageSetting(t *testing.T) {
 	for i := range params {
 		s, _ := index.GetIndexSettings(params[i].code)
+
 		if s.Name != params[i].name {
 			t.Fatalf("expected Name: %q, got %q", params[i].name, s.Name)
 		}
+
 		if s.Language != params[i].language {
 			t.Fatalf("expected Language: %q, got %q", params[i].language, s.Language)
 		}
+
 		if !strings.Contains(s.Settings, params[i].analyzer) {
 			t.Fatalf("expected settings default Analyzer: %q, got %q", params[i].analyzer, s.Settings)
 		}
 	}
-
 }

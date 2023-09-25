@@ -309,6 +309,7 @@ func (idx *Indexer) loopIteration(
 		for lang := range changes[docType] {
 			key := fmt.Sprintf("%s-%s", docType, lang)
 			index, ok := idx.indexes[key]
+
 			if !ok {
 				name, err := idx.ensureIndex(
 					ctx, "documents", docType, lang)
@@ -366,15 +367,10 @@ func (idx *Indexer) ensureIndex(
 	if err != nil {
 		return "", fmt.Errorf("could not get language settings: %w", err)
 	}
-	fmt.Println(settings)
 
-	alias := strings.ToLower(
-		fmt.Sprintf("%s-%s-%s",
-			indexType, idx.name, nonAlphaNum.ReplaceAllString(docType, "_")))
-	name := strings.ToLower(
-		fmt.Sprintf("%s-%s-%s-%s-%s",
-			indexType, idx.name, nonAlphaNum.ReplaceAllString(docType, "_"),
-			settings.Language, settings.Name))
+	safeDocType := nonAlphaNum.ReplaceAllString(docType, "_")
+	alias := fmt.Sprintf("%s-%s-%s", indexType, idx.name, safeDocType)
+	name := fmt.Sprintf("%s-%s-%s-%s-%s", indexType, idx.name, safeDocType, settings.Language, settings.Name)
 
 	existRes, err := idx.client.Indices.Exists([]string{name},
 		idx.client.Indices.Exists.WithContext(ctx))
@@ -399,9 +395,9 @@ func (idx *Indexer) ensureIndex(
 		return "", fmt.Errorf("server response: %s", res.Status())
 	}
 
-	res, err = idx.client.Indices.PutAlias([]string{name}, alias)
+	_, err = idx.client.Indices.PutAlias([]string{name}, alias)
 	if err != nil {
-		return "", fmt.Errorf("create alias %q: %q", alias, err)
+		return "", fmt.Errorf("create alias %q: %w", alias, err)
 	}
 
 	return name, nil
