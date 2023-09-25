@@ -362,16 +362,19 @@ func (idx *Indexer) loopIteration(
 func (idx *Indexer) ensureIndex(
 	ctx context.Context, indexType string, docType string, lang string,
 ) (string, error) {
-	settings, ok := LanguageSettings[lang]
-	if !ok {
-		settings = DefaultLanguageSetting
+	settings, err := GetIndexSettings(lang)
+	if err != nil {
+		return "", fmt.Errorf("could not get language settings: %w", err)
 	}
+	fmt.Println(settings)
 
-	alias := fmt.Sprintf("%s-%s-%s",
-		indexType, idx.name, nonAlphaNum.ReplaceAllString(docType, "_"))
-	name := fmt.Sprintf("%s-%s-%s-%s",
-		indexType, idx.name, nonAlphaNum.ReplaceAllString(docType, "_"),
-		settings.Name)
+	alias := strings.ToLower(
+		fmt.Sprintf("%s-%s-%s",
+			indexType, idx.name, nonAlphaNum.ReplaceAllString(docType, "_")))
+	name := strings.ToLower(
+		fmt.Sprintf("%s-%s-%s-%s-%s",
+			indexType, idx.name, nonAlphaNum.ReplaceAllString(docType, "_"),
+			settings.Language, settings.Name))
 
 	existRes, err := idx.client.Indices.Exists([]string{name},
 		idx.client.Indices.Exists.WithContext(ctx))

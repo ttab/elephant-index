@@ -1,463 +1,198 @@
 package index
 
-type LanguageSetting struct {
-	Name     string
+import (
+	"strings"
+
+	"golang.org/x/text/language"
+)
+
+type LanguageSettings struct {
+	Tag      language.Tag
 	Settings string
 }
 
-var DefaultLanguageSetting = LanguageSetting{
-	Name:     "standard",
-	Settings: "",
+type IndexSettings struct {
+	Name     string
+	Language string
+	Settings string
 }
 
+func GetIndexSettings(code string) (IndexSettings, error) {
+	tag, i := language.MatchStrings(languages, code)
+	if i == 0 {
+		return IndexSettings{
+			Name:     "standard",
+			Language: "",
+			Settings: "",
+		}, nil
+	} else {
+		lang, _ := tag.Base()
+		return IndexSettings{
+			Name:     strings.ToLower(code),
+			Language: lang.String(),
+			Settings: languageSettings[i].Settings,
+		}, nil
+	}
+}
+
+var languages = (func() language.Matcher {
+	tags := []language.Tag{}
+	for _, lang := range languageSettings {
+		tags = append(tags, lang.Tag)
+	}
+	return language.NewMatcher(tags)
+})()
+
 // These are the language-specific settings that Opensearch can handle.
-var LanguageSettings = map[string]LanguageSetting{
-	"ar": {
-		Name: "arabic",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "arabic"
-						}
+var languageSettings = []LanguageSettings{
+	{
+		Tag:      language.Tag{},
+		Settings: "",
+	},
+	{
+		Tag:      language.Arabic,
+		Settings: makeSettings("arabic"),
+	},
+	{
+		Tag:      language.Armenian,
+		Settings: makeSettings("armenian"),
+	},
+	{
+		Tag:      language.Make("eu"),
+		Settings: makeSettings("basque"),
+	},
+	{
+		Tag:      language.Bengali,
+		Settings: makeSettings("bengali"),
+	},
+	{
+		Tag:      language.BrazilianPortuguese,
+		Settings: makeSettings("brazilian"),
+	},
+	{
+		Tag:      language.Bulgarian,
+		Settings: makeSettings("bulgarian"),
+	},
+	{
+		Tag:      language.Catalan,
+		Settings: makeSettings("catalan"),
+	},
+	{
+		Tag:      language.Czech,
+		Settings: makeSettings("czech"),
+	},
+	{
+		Tag:      language.Danish,
+		Settings: makeSettings("danish"),
+	},
+	{
+		Tag:      language.Dutch,
+		Settings: makeSettings("dutch"),
+	},
+	{
+		Tag:      language.English,
+		Settings: makeSettings("english"),
+	},
+	{
+		Tag:      language.Estonian,
+		Settings: makeSettings("estonian"),
+	},
+	{
+		Tag:      language.Finnish,
+		Settings: makeSettings("finnish"),
+	},
+	{
+		Tag:      language.French,
+		Settings: makeSettings("french"),
+	},
+	{
+		Tag:      language.Make("gl"),
+		Settings: makeSettings("galician"),
+	},
+	{
+		Tag:      language.German,
+		Settings: makeSettings("german"),
+	},
+	{
+		Tag:      language.Greek,
+		Settings: makeSettings("greek"),
+	},
+	{
+		Tag:      language.Hindi,
+		Settings: makeSettings("hindi"),
+	},
+	{
+		Tag:      language.Hungarian,
+		Settings: makeSettings("hungarian"),
+	},
+	{
+		Tag:      language.Indonesian,
+		Settings: makeSettings("indonesian"),
+	},
+	{
+		Tag:      language.Make("ga"),
+		Settings: makeSettings("irish"),
+	},
+	{
+		Tag:      language.Italian,
+		Settings: makeSettings("italian"),
+	},
+	{
+		Tag:      language.Latvian,
+		Settings: makeSettings("latvian"),
+	},
+	{
+		Tag:      language.Lithuanian,
+		Settings: makeSettings("lithuanian"),
+	},
+	{
+		Tag:      language.Norwegian,
+		Settings: makeSettings("norwegian"),
+	},
+	{
+		Tag:      language.Persian,
+		Settings: makeSettings("persian"),
+	},
+	{
+		Tag:      language.EuropeanPortuguese,
+		Settings: makeSettings("portuguese"),
+	},
+	{
+		Tag:      language.Romanian,
+		Settings: makeSettings("romanian"),
+	},
+	{
+		Tag:      language.Russian,
+		Settings: makeSettings("russian"),
+	},
+	{
+		Tag:      language.Spanish,
+		Settings: makeSettings("spanish"),
+	},
+	{
+		Tag:      language.Swedish,
+		Settings: makeSettings("swedish"),
+	},
+	{
+		Tag:      language.Turkish,
+		Settings: makeSettings("turkish"),
+	},
+	{
+		Tag:      language.Thai,
+		Settings: makeSettings("thai"),
+	},
+}
+
+func makeSettings(analyzer string) string {
+	return `{
+		"settings": {
+			"analysis": {
+				"analyzer": {
+					"default": {
+						"type": "` + analyzer + `"
 					}
 				}
 			}
-		}`,
-	},
-	"hy": {
-		Name: "armenian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "armenian"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"eu": {
-		Name: "basque",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "basque"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"bn": {
-		Name: "bengali",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "bengali"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"bg": {
-		Name: "bulgarian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "bulgarian"
-						}
-					}
-				}		
-			}
-		}`,
-	},
-	"ca": {
-		Name: "catalan",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "catalan"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"cs": {
-		Name: "czech",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "czech"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"da": {
-		Name: "danish",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "danish"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"nl": {
-		Name: "dutch",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "dutch"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"en": {
-		Name: "english",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "english"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"et": {
-		Name: "estonian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "estonian"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"fi": {
-		Name: "finnish",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "finnish"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"fr": {
-		Name: "french",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "french"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"gl": {
-		Name: "galician",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "galician"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"de": {
-		Name: "german",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "german"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"el": {
-		Name: "greek",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "greek"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"hi": {
-		Name: "hindi",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "hindi"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"hu": {
-		Name: "hungarian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "hungarian"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"ic": {
-		Name: "indonesian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "indonesian"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"ga": {
-		Name: "irish",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "irish"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"it": {
-		Name: "italian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "italian"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"lv": {
-		Name: "latvian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "latvian"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"lt": {
-		Name: "lithuanian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "lithuanian"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"no": {
-		Name: "norwegian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "norwegian"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"fa": {
-		Name: "persian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "persian"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"pt": {
-		Name: "portuguese",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "portuguese"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"ro": {
-		Name: "romanian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "romanian"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"ru": {
-		Name: "russian",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "russian"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"es": {
-		Name: "spanish",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "spanish"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"sv": {
-		Name: "swedish",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "swedish"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"tr": {
-		Name: "turkish",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "turkish"
-						}
-					}
-				}
-			}
-		}`,
-	},
-	"th": {
-		Name: "thai",
-		Settings: `{
-			"settings": {
-				"analysis": {
-					"analyzer": {
-						"default": {
-							"type": "thai"
-						}
-					}
-				}
-			}
-		}`,
-	},
+		}
+	}`
 }
