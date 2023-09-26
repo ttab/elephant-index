@@ -392,14 +392,18 @@ func (idx *Indexer) ensureIndex(
 		}
 	}
 
-	err = idx.ensureAlias(index, typeAlias)
-	if err != nil {
-		return "", fmt.Errorf("could not ensure alias: %w", err)
+	if typeAlias != "" {
+		err = idx.ensureAlias(index, typeAlias)
+		if err != nil {
+			return "", fmt.Errorf("could not ensure alias: %w", err)
+		}
 	}
 
-	err = idx.ensureAlias(index, langAlias)
-	if err != nil {
-		return "", fmt.Errorf("could not ensure alias: %w", err)
+	if langAlias != "" {
+		err = idx.ensureAlias(index, langAlias)
+		if err != nil {
+			return "", fmt.Errorf("could not ensure alias: %w", err)
+		}
 	}
 
 	return index, nil
@@ -593,7 +597,7 @@ func (iw *indexWorker) Process(
 
 		var twErr twirp.Error
 		if errors.As(job.err, &twErr) && twErr.Code() == twirp.NotFound {
-			iw.logger.DebugContext(ctx, "the document has been deleted, removing from index",
+			iw.logger.DebugCtx(ctx, "the document has been deleted, removing from index",
 				elephantine.LogKeyDocumentUUID, job.UUID,
 				elephantine.LogKeyError, job.err)
 
@@ -604,7 +608,7 @@ func (iw *indexWorker) Process(
 				iw.contentType, iw.indexName,
 			).Inc()
 
-			iw.logger.ErrorContext(ctx, "failed to enrich document for indexing",
+			iw.logger.ErrorCtx(ctx, "failed to enrich document for indexing",
 				elephantine.LogKeyDocumentUUID, job.UUID,
 				elephantine.LogKeyError, job.err)
 
@@ -678,7 +682,7 @@ func (iw *indexWorker) Process(
 		case item.Index != nil:
 			counters["index_err"]++
 
-			iw.logger.ErrorContext(ctx, "failed to index document",
+			iw.logger.ErrorCtx(ctx, "failed to index document",
 				elephantine.LogKeyDocumentUUID, item.Index.ID,
 				elephantine.LogKeyError, item.Index.Error.String(),
 			)
@@ -689,7 +693,7 @@ func (iw *indexWorker) Process(
 
 			counters["delete_err"]++
 
-			iw.logger.ErrorContext(ctx, "failed to delete document from index",
+			iw.logger.ErrorCtx(ctx, "failed to delete document from index",
 				elephantine.LogKeyDocumentUUID, item.Index.ID,
 				elephantine.LogKeyError, item.Index.Error.String(),
 			)
