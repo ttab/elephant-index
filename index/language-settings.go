@@ -17,14 +17,14 @@ type Settings struct {
 	Settings string
 }
 
-func GetIndexSettings(code string) (Settings, error) {
+func GetIndexSettings(code string) Settings {
 	tag, i := language.MatchStrings(languages, code)
 	if i == 0 {
 		return Settings{
 			Name:     "standard",
 			Language: "",
 			Settings: "",
-		}, nil
+		}
 	}
 
 	lang, _ := tag.Base()
@@ -33,7 +33,7 @@ func GetIndexSettings(code string) (Settings, error) {
 		Name:     strings.ToLower(code),
 		Language: lang.String(),
 		Settings: languageSettings[i].Settings,
-	}, nil
+	}
 }
 
 var languages = (func() language.Matcher {

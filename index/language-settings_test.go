@@ -27,7 +27,7 @@ var params = []expectation{
 
 func TestGetLanguageSetting(t *testing.T) {
 	for i := range params {
-		s, _ := index.GetIndexSettings(params[i].code)
+		s := index.GetIndexSettings(params[i].code)
 
 		if s.Name != params[i].name {
 			t.Fatalf("expected Name: %q, got %q", params[i].name, s.Name)

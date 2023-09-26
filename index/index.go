@@ -363,44 +363,58 @@ func (idx *Indexer) loopIteration(
 func (idx *Indexer) ensureIndex(
 	ctx context.Context, indexType string, docType string, lang string,
 ) (string, error) {
-	settings, err := GetIndexSettings(lang)
-	if err != nil {
-		return "", fmt.Errorf("could not get language settings: %w", err)
-	}
-
 	safeDocType := nonAlphaNum.ReplaceAllString(docType, "_")
-	alias := fmt.Sprintf("%s-%s-%s", indexType, idx.name, safeDocType)
-	name := fmt.Sprintf("%s-%s-%s-%s-%s", indexType, idx.name, safeDocType, settings.Language, settings.Name)
+	settings := GetIndexSettings(lang)
 
-	existRes, err := idx.client.Indices.Exists([]string{name},
+	index := fmt.Sprintf("%s-%s-%s-%s", indexType, idx.name, safeDocType, settings.Name)
+
+	typeAlias := fmt.Sprintf("%s-%s-%s", indexType, idx.name, safeDocType)
+	langAlias := fmt.Sprintf("%s-%s-%s-%s", indexType, idx.name, safeDocType, settings.Language)
+
+	existRes, err := idx.client.Indices.Exists([]string{index},
 		idx.client.Indices.Exists.WithContext(ctx))
 	if err != nil {
 		return "", fmt.Errorf("check if index exists: %w", err)
 	}
 
-	if existRes.StatusCode == http.StatusOK {
-		return name, nil
+	if existRes.StatusCode != http.StatusOK {
+		res, err := idx.client.Indices.Create(index,
+			idx.client.Indices.Create.WithBody(strings.NewReader(settings.Settings)),
+			idx.client.Indices.Create.WithContext(ctx))
+		if err != nil {
+			return "", fmt.Errorf("create index %q: %w", index, err)
+		}
+
+		defer res.Body.Close()
+
+		if res.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("server response: %s", res.Status())
+		}
 	}
 
-	res, err := idx.client.Indices.Create(name,
-		idx.client.Indices.Create.WithBody(strings.NewReader(settings.Settings)),
-		idx.client.Indices.Create.WithContext(ctx))
+	err = idx.ensureAlias(index, typeAlias)
 	if err != nil {
-		return "", fmt.Errorf("create index %q: %w", name, err)
+		return "", fmt.Errorf("could not ensure alias: %w", err)
 	}
+
+	err = idx.ensureAlias(index, langAlias)
+	if err != nil {
+		return "", fmt.Errorf("could not ensure alias: %w", err)
+	}
+
+	return index, nil
+}
+
+func (idx *Indexer) ensureAlias(index string, alias string) error {
+	res, err := idx.client.Indices.PutAlias([]string{index}, alias)
 
 	defer res.Body.Close()
 
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("server response: %s", res.Status())
-	}
-
-	_, err = idx.client.Indices.PutAlias([]string{name}, alias)
 	if err != nil {
-		return "", fmt.Errorf("create alias %q: %w", alias, err)
+		return fmt.Errorf("could not create alias %s for index %s: %w", alias, index, err)
 	}
 
-	return name, nil
+	return nil
 }
 
 func newIndexWorker(
