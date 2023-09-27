@@ -28,15 +28,17 @@ func GetLanguageConfig(code string) (LanguageConfig, error) {
 	if len(parts) != 2 {
 		return LanguageConfig{}, fmt.Errorf("malformed language code: %s", code)
 	}
-	lang := parts[0]
 
+	lang := parts[0]
 	analyzer := "standard"
 
 	for _, ls := range Languages {
 		if ls.Code == code {
 			analyzer = ls.Analyzer
+
 			break
 		}
+
 		if ls.Language == lang {
 			analyzer = ls.Analyzer
 		}

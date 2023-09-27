@@ -363,6 +363,7 @@ func (idx *Indexer) ensureIndex(
 	ctx context.Context, indexType string, docType string, lang string,
 ) (string, error) {
 	safeDocType := nonAlphaNum.ReplaceAllString(docType, "_")
+
 	config, err := GetLanguageConfig(lang)
 	if err != nil {
 		return "", fmt.Errorf("could not get language config: %w", err)
