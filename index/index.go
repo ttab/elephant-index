@@ -417,7 +417,7 @@ func (idx *Indexer) ensureAlias(index string, alias string) error {
 		return fmt.Errorf("could not create alias %s for index %s: %w", alias, index, err)
 	}
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("put alias status code: %w", res.Status())
+		return fmt.Errorf("put alias status code: %s", res.Status())
 	}
 
 	return nil
