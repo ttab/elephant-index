@@ -20,13 +20,12 @@ var params = []expectation{
 	{code: "pt-PT", name: "pt-pt", language: "pt", analyzer: "portuguese"},
 	{code: "en-US", name: "en-us", language: "en", analyzer: "english"},
 	{code: "en-NZ", name: "en-nz", language: "en", analyzer: "english"},
-	{code: "az-AZ", name: "az-az", language: "ru", analyzer: "russian"},
 	{code: "ja-JP", name: "ja-jp", language: "ja", analyzer: "standard"},
 }
 
 func TestGetLanguageSetting(t *testing.T) {
 	for i := range params {
-		s := index.GetLanguageConfig(params[i].code)
+		s, _ := index.GetLanguageConfig(params[i].code)
 
 		if s.Name != params[i].name {
 			t.Fatalf("expected Name: %q, got %q", params[i].name, s.Name)
