@@ -392,18 +392,14 @@ func (idx *Indexer) ensureIndex(
 		}
 	}
 
-	if typeAlias != "" {
-		err = idx.ensureAlias(index, typeAlias)
-		if err != nil {
-			return "", fmt.Errorf("could not ensure alias: %w", err)
-		}
+	err = idx.ensureAlias(index, typeAlias)
+	if err != nil {
+		return "", fmt.Errorf("could not ensure alias: %w", err)
 	}
 
-	if langAlias != "" {
-		err = idx.ensureAlias(index, langAlias)
-		if err != nil {
-			return "", fmt.Errorf("could not ensure alias: %w", err)
-		}
+	err = idx.ensureAlias(index, langAlias)
+	if err != nil {
+		return "", fmt.Errorf("could not ensure alias: %w", err)
 	}
 
 	return index, nil

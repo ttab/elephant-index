@@ -21,8 +21,8 @@ var params = []expectation{
 	{code: "pt-PT", name: "pt-pt", language: "pt", analyzer: "portuguese"},
 	{code: "en-US", name: "en-us", language: "en", analyzer: "english"},
 	{code: "en-NZ", name: "en-nz", language: "en", analyzer: "english"},
-	{code: "az", name: "az", language: "ru", analyzer: "russian"},
-	{code: "jp", name: "standard", language: "", analyzer: ""},
+	{code: "az-AZ", name: "az-az", language: "ru", analyzer: "russian"},
+	{code: "ja-JP", name: "ja-jp", language: "ja", analyzer: ""},
 }
 
 func TestGetLanguageSetting(t *testing.T) {

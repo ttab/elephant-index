@@ -20,11 +20,7 @@ type Settings struct {
 func GetIndexSettings(code string) Settings {
 	tag, i := language.MatchStrings(languages, code)
 	if i == 0 {
-		return Settings{
-			Name:     "standard",
-			Language: "",
-			Settings: "",
-		}
+		tag = language.Make(code)
 	}
 
 	lang, _ := tag.Base()
