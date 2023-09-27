@@ -373,6 +373,9 @@ func (idx *Indexer) ensureIndex(
 
 	existRes, err := idx.client.Indices.Exists([]string{index},
 		idx.client.Indices.Exists.WithContext(ctx))
+
+	defer elephantine.SafeClose(idx.logger, "index exists", existRes.Body)
+
 	if err != nil {
 		return "", fmt.Errorf("check if index exists: %w", err)
 	}
@@ -385,7 +388,7 @@ func (idx *Indexer) ensureIndex(
 			return "", fmt.Errorf("create index %q: %w", index, err)
 		}
 
-		defer res.Body.Close()
+		defer elephantine.SafeClose(idx.logger, "index create", res.Body)
 
 		if res.StatusCode != http.StatusOK {
 			return "", fmt.Errorf("server response: %s", res.Status())
@@ -408,7 +411,7 @@ func (idx *Indexer) ensureIndex(
 func (idx *Indexer) ensureAlias(index string, alias string) error {
 	res, err := idx.client.Indices.PutAlias([]string{index}, alias)
 
-	defer res.Body.Close()
+	defer elephantine.SafeClose(idx.logger, "put alias", res.Body)
 
 	if err != nil {
 		return fmt.Errorf("could not create alias %s for index %s: %w", alias, index, err)
