@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -364,12 +363,17 @@ func (idx *Indexer) ensureIndex(
 	ctx context.Context, indexType string, docType string, lang string,
 ) (string, error) {
 	safeDocType := nonAlphaNum.ReplaceAllString(docType, "_")
-	settings := GetIndexSettings(lang)
+	config := GetLanguageConfig(lang)
 
-	index := fmt.Sprintf("%s-%s-%s-%s", indexType, idx.name, safeDocType, settings.Name)
+	index := fmt.Sprintf("%s-%s-%s-%s", indexType, idx.name, safeDocType, config.Name)
 
 	typeAlias := fmt.Sprintf("%s-%s-%s", indexType, idx.name, safeDocType)
-	langAlias := fmt.Sprintf("%s-%s-%s-%s", indexType, idx.name, safeDocType, settings.Language)
+	langAlias := fmt.Sprintf("%s-%s-%s-%s", indexType, idx.name, safeDocType, config.Language)
+
+	settings, err := json.Marshal(config.Settings)
+	if err != nil {
+		return "", fmt.Errorf("could not marshal index settings: %w", err)
+	}
 
 	existRes, err := idx.client.Indices.Exists([]string{index},
 		idx.client.Indices.Exists.WithContext(ctx))
@@ -382,7 +386,7 @@ func (idx *Indexer) ensureIndex(
 
 	if existRes.StatusCode != http.StatusOK {
 		res, err := idx.client.Indices.Create(index,
-			idx.client.Indices.Create.WithBody(strings.NewReader(settings.Settings)),
+			idx.client.Indices.Create.WithBody(bytes.NewReader(settings)),
 			idx.client.Indices.Create.WithContext(ctx))
 		if err != nil {
 			return "", fmt.Errorf("create index %q: %w", index, err)

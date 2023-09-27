@@ -1,7 +1,6 @@
 package index_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/ttab/elephant-index/index"
@@ -37,7 +36,7 @@ func TestGetLanguageSetting(t *testing.T) {
 			t.Fatalf("expected Language: %q, got %q", params[i].language, s.Language)
 		}
 
-		if !strings.Contains(s.Settings, params[i].analyzer) {
+		if s.Settings.Settings.Analysis.Analyzer.Default.Type != params[i].analyzer {
 			t.Fatalf("expected settings default Analyzer: %q, got %q", params[i].analyzer, s.Settings)
 		}
 	}

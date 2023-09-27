@@ -8,16 +8,28 @@ import (
 
 type LanguageSettings struct {
 	Tag      language.Tag
-	Settings string
+	Analyzer string
 }
 
-type Settings struct {
+type LanguageConfig struct {
 	Name     string
 	Language string
-	Settings string
+	Settings OpensearchSettings
 }
 
-func GetIndexSettings(code string) Settings {
+type OpensearchSettings struct {
+	Settings struct {
+		Analysis struct {
+			Analyzer struct {
+				Default struct {
+					Type string `json:"type"`
+				} `json:"default"`
+			} `json:"analyzer"`
+		} `json:"analysis"`
+	} `json:"settings"`
+}
+
+func GetLanguageConfig(code string) LanguageConfig {
 	tag, i := language.MatchStrings(languages, code)
 	if i == 0 {
 		tag = language.Make(code)
@@ -25,10 +37,13 @@ func GetIndexSettings(code string) Settings {
 
 	lang, _ := tag.Base()
 
-	return Settings{
+	s := OpensearchSettings{}
+	s.Settings.Analysis.Analyzer.Default.Type = languageSettings[i].Analyzer
+
+	return LanguageConfig{
 		Name:     strings.ToLower(code),
 		Language: lang.String(),
-		Settings: languageSettings[i].Settings,
+		Settings: s,
 	}
 }
 
@@ -45,139 +60,139 @@ var languages = (func() language.Matcher {
 var languageSettings = []LanguageSettings{
 	{
 		Tag:      language.Tag{},
-		Settings: "",
+		Analyzer: "standard",
 	},
 	{
 		Tag:      language.Arabic,
-		Settings: makeSettings("arabic"),
+		Analyzer: "arabic",
 	},
 	{
 		Tag:      language.Armenian,
-		Settings: makeSettings("armenian"),
+		Analyzer: "armenian",
 	},
 	{
 		Tag:      language.Make("eu"),
-		Settings: makeSettings("basque"),
+		Analyzer: "basque",
 	},
 	{
 		Tag:      language.Bengali,
-		Settings: makeSettings("bengali"),
+		Analyzer: "bengali",
 	},
 	{
 		Tag:      language.BrazilianPortuguese,
-		Settings: makeSettings("brazilian"),
+		Analyzer: "brazilian",
 	},
 	{
 		Tag:      language.Bulgarian,
-		Settings: makeSettings("bulgarian"),
+		Analyzer: "bulgarian",
 	},
 	{
 		Tag:      language.Catalan,
-		Settings: makeSettings("catalan"),
+		Analyzer: "catalan",
 	},
 	{
 		Tag:      language.Czech,
-		Settings: makeSettings("czech"),
+		Analyzer: "czech",
 	},
 	{
 		Tag:      language.Danish,
-		Settings: makeSettings("danish"),
+		Analyzer: "danish",
 	},
 	{
 		Tag:      language.Dutch,
-		Settings: makeSettings("dutch"),
+		Analyzer: "dutch",
 	},
 	{
 		Tag:      language.English,
-		Settings: makeSettings("english"),
+		Analyzer: "english",
 	},
 	{
 		Tag:      language.Estonian,
-		Settings: makeSettings("estonian"),
+		Analyzer: "estonian",
 	},
 	{
 		Tag:      language.Finnish,
-		Settings: makeSettings("finnish"),
+		Analyzer: "finnish",
 	},
 	{
 		Tag:      language.French,
-		Settings: makeSettings("french"),
+		Analyzer: "french",
 	},
 	{
 		Tag:      language.Make("gl"),
-		Settings: makeSettings("galician"),
+		Analyzer: "galician",
 	},
 	{
 		Tag:      language.German,
-		Settings: makeSettings("german"),
+		Analyzer: "german",
 	},
 	{
 		Tag:      language.Greek,
-		Settings: makeSettings("greek"),
+		Analyzer: "greek",
 	},
 	{
 		Tag:      language.Hindi,
-		Settings: makeSettings("hindi"),
+		Analyzer: "hindi",
 	},
 	{
 		Tag:      language.Hungarian,
-		Settings: makeSettings("hungarian"),
+		Analyzer: "hungarian",
 	},
 	{
 		Tag:      language.Indonesian,
-		Settings: makeSettings("indonesian"),
+		Analyzer: "indonesian",
 	},
 	{
 		Tag:      language.Make("ga"),
-		Settings: makeSettings("irish"),
+		Analyzer: "irish",
 	},
 	{
 		Tag:      language.Italian,
-		Settings: makeSettings("italian"),
+		Analyzer: "italian",
 	},
 	{
 		Tag:      language.Latvian,
-		Settings: makeSettings("latvian"),
+		Analyzer: "latvian",
 	},
 	{
 		Tag:      language.Lithuanian,
-		Settings: makeSettings("lithuanian"),
+		Analyzer: "lithuanian",
 	},
 	{
 		Tag:      language.Norwegian,
-		Settings: makeSettings("norwegian"),
+		Analyzer: "norwegian",
 	},
 	{
 		Tag:      language.Persian,
-		Settings: makeSettings("persian"),
+		Analyzer: "persian",
 	},
 	{
 		Tag:      language.EuropeanPortuguese,
-		Settings: makeSettings("portuguese"),
+		Analyzer: "portuguese",
 	},
 	{
 		Tag:      language.Romanian,
-		Settings: makeSettings("romanian"),
+		Analyzer: "romanian",
 	},
 	{
 		Tag:      language.Russian,
-		Settings: makeSettings("russian"),
+		Analyzer: "russian",
 	},
 	{
 		Tag:      language.Spanish,
-		Settings: makeSettings("spanish"),
+		Analyzer: "spanish",
 	},
 	{
 		Tag:      language.Swedish,
-		Settings: makeSettings("swedish"),
+		Analyzer: "swedish",
 	},
 	{
 		Tag:      language.Turkish,
-		Settings: makeSettings("turkish"),
+		Analyzer: "turkish",
 	},
 	{
 		Tag:      language.Thai,
-		Settings: makeSettings("thai"),
+		Analyzer: "thai",
 	},
 }
 
