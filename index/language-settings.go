@@ -26,7 +26,7 @@ type OpensearchSettings struct {
 func GetLanguageConfig(code string) (LanguageConfig, error) {
 	code = strings.ToLower(code)
 	parts := strings.Split(code, "-")
-	if len(parts) != 2 {
+	if len(parts) < 1 || len(parts) > 2 {
 		return LanguageConfig{}, fmt.Errorf("malformed language code: %s", code)
 	}
 
@@ -61,7 +61,14 @@ type Language struct {
 	Analyzer string
 }
 
+// Order matters; the matching algorithm will pick the first exact Code match,
+// or failing that, the last Language match.
 var languages = []Language{
+	// Portuguese is a special case since it can be either european or brazilian
+	// depending on the region. This line makes european the default if no
+	// region was given.
+	{Code: "pt", Language: "pt", Analyzer: "portuguese"},
+
 	{Code: "ar-eg", Language: "ar", Analyzer: "arabic"},
 	{Code: "hy-am", Language: "hy", Analyzer: "armenian"},
 	{Code: "eu-es", Language: "eu", Analyzer: "basque"},
