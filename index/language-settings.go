@@ -32,7 +32,7 @@ func GetLanguageConfig(code string) (LanguageConfig, error) {
 	lang := parts[0]
 	analyzer := "standard"
 
-	for _, ls := range Languages {
+	for _, ls := range languages {
 		if ls.Code == code {
 			analyzer = ls.Analyzer
 
@@ -60,7 +60,7 @@ type Language struct {
 	Analyzer string
 }
 
-var Languages = []Language{
+var languages = []Language{
 	{Code: "ar-EG", Language: "ar", Analyzer: "arabic"},
 	{Code: "hy-AM", Language: "hy", Analyzer: "armenian"},
 	{Code: "eu-ES", Language: "eu", Analyzer: "basque"},
