@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -276,10 +277,13 @@ func (idx *Indexer) loopIteration(
 			changes[item.Type] = byType
 		}
 
-		byLang, ok := byType[doc.Language]
+		// Normalize to lowercase
+		language := strings.ToLower(doc.Language)
+
+		byLang, ok := byType[language]
 		if !ok {
 			byLang = make(map[string]*enrichJob)
-			byType[doc.Language] = byLang
+			byType[language] = byLang
 		}
 
 		switch item.Event {
