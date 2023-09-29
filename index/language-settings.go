@@ -24,6 +24,7 @@ type OpensearchSettings struct {
 }
 
 func GetLanguageConfig(code string) (LanguageConfig, error) {
+	code = strings.ToLower(code)
 	parts := strings.Split(code, "-")
 	if len(parts) != 2 {
 		return LanguageConfig{}, fmt.Errorf("malformed language code: %s", code)
@@ -48,7 +49,7 @@ func GetLanguageConfig(code string) (LanguageConfig, error) {
 	s.Settings.Analysis.Analyzer.Default.Type = analyzer
 
 	return LanguageConfig{
-		Name:     strings.ToLower(code),
+		Name:     code,
 		Language: lang,
 		Settings: s,
 	}, nil
@@ -61,37 +62,37 @@ type Language struct {
 }
 
 var languages = []Language{
-	{Code: "ar-EG", Language: "ar", Analyzer: "arabic"},
-	{Code: "hy-AM", Language: "hy", Analyzer: "armenian"},
-	{Code: "eu-ES", Language: "eu", Analyzer: "basque"},
-	{Code: "bn-BD", Language: "bn", Analyzer: "bengali"},
-	{Code: "pt-BR", Language: "pt", Analyzer: "brazilian"},
-	{Code: "bg-BG", Language: "bg", Analyzer: "bulgarian"},
-	{Code: "ca-ES", Language: "ca", Analyzer: "catalan"},
-	{Code: "cs-CZ", Language: "cs", Analyzer: "czech"},
-	{Code: "da-DK", Language: "da", Analyzer: "danish"},
-	{Code: "nl-NL", Language: "nl", Analyzer: "dutch"},
-	{Code: "en-US", Language: "en", Analyzer: "english"},
-	{Code: "et-EE", Language: "et", Analyzer: "estonian"},
-	{Code: "fi-FI", Language: "fi", Analyzer: "finnish"},
-	{Code: "fr-FR", Language: "fr", Analyzer: "french"},
-	{Code: "gl-ES", Language: "gl", Analyzer: "galician"},
-	{Code: "de-DE", Language: "de", Analyzer: "german"},
-	{Code: "el-GR", Language: "el", Analyzer: "greek"},
-	{Code: "hi-IN", Language: "hi", Analyzer: "hindi"},
-	{Code: "hu-HU", Language: "hu", Analyzer: "hungarian"},
-	{Code: "id-ID", Language: "id", Analyzer: "indonesian"},
-	{Code: "ga-IE", Language: "ga", Analyzer: "irish"},
-	{Code: "it-IT", Language: "it", Analyzer: "italian"},
-	{Code: "lv-LV", Language: "lv", Analyzer: "latvian"},
-	{Code: "lt-LT", Language: "lt", Analyzer: "lithuanian"},
-	{Code: "no-NO", Language: "no", Analyzer: "norwegian"},
-	{Code: "fa-IR", Language: "fa", Analyzer: "persian"},
-	{Code: "pt-PT", Language: "pt", Analyzer: "portuguese"},
-	{Code: "ro-RO", Language: "ro", Analyzer: "romanian"},
-	{Code: "ru-RU", Language: "ru", Analyzer: "russian"},
-	{Code: "es-ES", Language: "es", Analyzer: "spanish"},
-	{Code: "sv-SE", Language: "sv", Analyzer: "swedish"},
-	{Code: "tr-TR", Language: "tr", Analyzer: "turkish"},
-	{Code: "th-TH", Language: "th", Analyzer: "thai"},
+	{Code: "ar-eg", Language: "ar", Analyzer: "arabic"},
+	{Code: "hy-am", Language: "hy", Analyzer: "armenian"},
+	{Code: "eu-es", Language: "eu", Analyzer: "basque"},
+	{Code: "bn-bd", Language: "bn", Analyzer: "bengali"},
+	{Code: "pt-br", Language: "pt", Analyzer: "brazilian"},
+	{Code: "bg-bg", Language: "bg", Analyzer: "bulgarian"},
+	{Code: "ca-es", Language: "ca", Analyzer: "catalan"},
+	{Code: "cs-cz", Language: "cs", Analyzer: "czech"},
+	{Code: "da-dk", Language: "da", Analyzer: "danish"},
+	{Code: "nl-nl", Language: "nl", Analyzer: "dutch"},
+	{Code: "en-us", Language: "en", Analyzer: "english"},
+	{Code: "et-ee", Language: "et", Analyzer: "estonian"},
+	{Code: "fi-fi", Language: "fi", Analyzer: "finnish"},
+	{Code: "fr-fr", Language: "fr", Analyzer: "french"},
+	{Code: "gl-es", Language: "gl", Analyzer: "galician"},
+	{Code: "de-de", Language: "de", Analyzer: "german"},
+	{Code: "el-gr", Language: "el", Analyzer: "greek"},
+	{Code: "hi-in", Language: "hi", Analyzer: "hindi"},
+	{Code: "hu-hu", Language: "hu", Analyzer: "hungarian"},
+	{Code: "id-id", Language: "id", Analyzer: "indonesian"},
+	{Code: "ga-ie", Language: "ga", Analyzer: "irish"},
+	{Code: "it-it", Language: "it", Analyzer: "italian"},
+	{Code: "lv-lv", Language: "lv", Analyzer: "latvian"},
+	{Code: "lt-lt", Language: "lt", Analyzer: "lithuanian"},
+	{Code: "no-no", Language: "no", Analyzer: "norwegian"},
+	{Code: "fa-ir", Language: "fa", Analyzer: "persian"},
+	{Code: "pt-pt", Language: "pt", Analyzer: "portuguese"},
+	{Code: "ro-ro", Language: "ro", Analyzer: "romanian"},
+	{Code: "ru-ru", Language: "ru", Analyzer: "russian"},
+	{Code: "es-es", Language: "es", Analyzer: "spanish"},
+	{Code: "sv-se", Language: "sv", Analyzer: "swedish"},
+	{Code: "tr-tr", Language: "tr", Analyzer: "turkish"},
+	{Code: "th-th", Language: "th", Analyzer: "thai"},
 }
