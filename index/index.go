@@ -373,10 +373,16 @@ func (idx *Indexer) ensureIndex(
 		return "", fmt.Errorf("could not get language config: %w", err)
 	}
 
-	index := fmt.Sprintf("%s-%s-%s-%s", indexType, idx.name, safeDocType, config.Name)
+	indexTypeRoot := fmt.Sprintf("%s-%s-%s", indexType, idx.name, safeDocType)
+	index := fmt.Sprintf("%s-%s", indexTypeRoot, config.NameSuffix)
 
-	typeAlias := fmt.Sprintf("%s-%s-%s", indexType, idx.name, safeDocType)
-	langAlias := fmt.Sprintf("%s-%s-%s-%s", indexType, idx.name, safeDocType, config.Language)
+	aliases := []string{indexTypeRoot}
+
+	// If lang is a fully qualified language-region string, we should also
+	// add a language alias for the index.
+	if lang != config.Language {
+		aliases = append(aliases, fmt.Sprintf("%s-%s", indexTypeRoot, config.Language))
+	}
 
 	settings, err := json.Marshal(config.Settings)
 	if err != nil {
@@ -406,14 +412,11 @@ func (idx *Indexer) ensureIndex(
 		}
 	}
 
-	err = idx.ensureAlias(index, typeAlias)
-	if err != nil {
-		return "", fmt.Errorf("could not ensure alias: %w", err)
-	}
-
-	err = idx.ensureAlias(index, langAlias)
-	if err != nil {
-		return "", fmt.Errorf("could not ensure alias: %w", err)
+	for _, alias := range aliases {
+		err = idx.ensureAlias(index, alias)
+		if err != nil {
+			return "", fmt.Errorf("could not ensure alias: %w", err)
+		}
 	}
 
 	return index, nil

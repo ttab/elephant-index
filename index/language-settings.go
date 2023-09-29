@@ -6,9 +6,9 @@ import (
 )
 
 type LanguageConfig struct {
-	Name     string
-	Language string
-	Settings OpensearchSettings
+	NameSuffix string
+	Language   string
+	Settings   OpensearchSettings
 }
 
 type OpensearchSettings struct {
@@ -31,6 +31,12 @@ func GetLanguageConfig(code string) (LanguageConfig, error) {
 	}
 
 	lang := parts[0]
+
+	region := "unspecified"
+	if len(parts) > 1 {
+		region = parts[1]
+	}
+
 	analyzer := "standard"
 
 	for _, ls := range languages {
@@ -49,9 +55,9 @@ func GetLanguageConfig(code string) (LanguageConfig, error) {
 	s.Settings.Analysis.Analyzer.Default.Type = analyzer
 
 	return LanguageConfig{
-		Name:     code,
-		Language: lang,
-		Settings: s,
+		NameSuffix: fmt.Sprintf("%s-%s", lang, region),
+		Language:   lang,
+		Settings:   s,
 	}, nil
 }
 
