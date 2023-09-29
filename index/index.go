@@ -374,14 +374,11 @@ func (idx *Indexer) ensureIndex(
 	}
 
 	indexTypeRoot := fmt.Sprintf("%s-%s-%s", indexType, idx.name, safeDocType)
+
 	index := fmt.Sprintf("%s-%s", indexTypeRoot, config.NameSuffix)
-
-	aliases := []string{indexTypeRoot}
-
-	// If lang is a fully qualified language-region string, we should also
-	// add a language alias for the index.
-	if lang != config.Language {
-		aliases = append(aliases, fmt.Sprintf("%s-%s", indexTypeRoot, config.Language))
+	aliases := []string{
+		indexTypeRoot,
+		fmt.Sprintf("%s-%s", indexTypeRoot, config.Language),
 	}
 
 	settings, err := json.Marshal(config.Settings)
