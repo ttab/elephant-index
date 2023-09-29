@@ -25,6 +25,7 @@ type OpensearchSettings struct {
 
 func GetLanguageConfig(code string) (LanguageConfig, error) {
 	code = strings.ToLower(code)
+
 	parts := strings.Split(code, "-")
 	if len(parts) < 1 || len(parts) > 2 {
 		return LanguageConfig{}, fmt.Errorf("malformed language code: %s", code)
