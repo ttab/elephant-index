@@ -68,6 +68,7 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 	return &idx, nil
 }
 
+// Indexer takes care of indexing to a named set of indexes in a cluster.
 type Indexer struct {
 	logger          *slog.Logger
 	metrics         *Metrics
@@ -678,7 +679,20 @@ func (iw *indexWorker) Process(
 			}
 		}
 
-		// TODO: metric for non-new mapping changes
+		// Count properties that would have changed type if we followed
+		// the generated mapping. This will be a good metric to keep
+		// track of to see if we need to re-index or adjust the revisor
+		// schema.
+		for p, c := range changes {
+			if c.New {
+				continue
+			}
+
+			iw.idx.m.ignoredMapping.WithLabelValues(
+				iw.indexName, p,
+			).Add(1)
+
+		}
 
 		err := errors.Join(
 			enc.Encode(bulkHeader{Index: &bulkOperation{

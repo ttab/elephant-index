@@ -1,15 +1,12 @@
 package main
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"runtime/debug"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/golang-jwt/jwt/v4"
@@ -20,11 +17,9 @@ import (
 	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/index"
-	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/oauth2"
-	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -234,10 +229,6 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("create schema loader: %w", err)
 	}
 
-	healthServer := elephantine.NewHealthServer(profileAddr)
-	router := http.NewServeMux()
-	serverGroup, gCtx := errgroup.WithContext(c.Context)
-
 	osConfig := opensearch.Config{
 		Addresses: []string{opensearchEndpoint},
 	}
@@ -270,138 +261,22 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("set up metrics: %w", err)
 	}
 
-	indexer, err := index.NewIndexer(c.Context, index.IndexerOptions{
-		Logger: logger.With(
-			elephantine.LogKeyComponent, "indexer"),
-		Metrics:         metrics,
-		SetName:         "v2",
-		DefaultLanguage: defaultLanguage,
-		Client:          searchClient,
+	err = index.RunIndex(c.Context, index.IndexParameters{
+		Addr:            addr,
+		ProfileAddr:     profileAddr,
+		Logger:          logger,
+		DefaultSetName:  "v2",
 		Database:        dbpool,
+		Client:          searchClient,
 		Documents:       documents,
 		Validator:       loader,
+		Metrics:         metrics,
+		DefaultLanguage: defaultLanguage,
+		NoIndexer:       noIndexer,
+		PublicJWTKey:    publicJWTKey,
 	})
 	if err != nil {
-		return fmt.Errorf("create indexer: %w", err)
-	}
-
-	proxy := index.NewElasticProxy(logger, searchClient, publicJWTKey)
-
-	router.Handle("/", proxy)
-
-	router.Handle("/health/alive", http.HandlerFunc(func(
-		w http.ResponseWriter, req *http.Request,
-	) {
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-
-		_, _ = fmt.Fprintln(w, "I AM ALIVE!")
-	}))
-
-	healthServer.AddReadyFunction("api_liveness", func(ctx context.Context) error {
-		req, err := http.NewRequestWithContext(
-			ctx, http.MethodGet, fmt.Sprintf(
-				"http://localhost%s/health/alive",
-				addr,
-			), nil,
-		)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to create liveness check request: %w", err)
-		}
-
-		var client http.Client
-
-		res, err := client.Do(req)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to perform liveness check request: %w", err)
-		}
-
-		_ = res.Body.Close()
-
-		if res.StatusCode != http.StatusOK {
-			return fmt.Errorf(
-				"api liveness endpoint returned non-ok status:: %s",
-				res.Status)
-		}
-
-		return nil
-	})
-
-	healthServer.AddReadyFunction("postgres", func(ctx context.Context) error {
-		q := postgres.New(dbpool)
-
-		_, err := q.ListIndexSets(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to list index sets: %w", err)
-		}
-
-		return nil
-	})
-
-	healthServer.AddReadyFunction("opensearch", func(ctx context.Context) error {
-		get := searchClient.Indices.Get
-
-		res, err := get([]string{"documents-*"}, get.WithContext(ctx))
-		if err != nil {
-			return fmt.Errorf("list indices: %w", err)
-		}
-
-		_ = res.Body.Close()
-
-		if res.StatusCode != http.StatusOK {
-			return fmt.Errorf(
-				"error response from server: %v", res.Status())
-		}
-
-		return nil
-	})
-
-	serverGroup.Go(func() error {
-		if noIndexer {
-			return nil
-		}
-
-		err := indexer.Run(gCtx)
-		if err != nil {
-			return fmt.Errorf("indexer error: %w", err)
-		}
-
-		return nil
-	})
-
-	serverGroup.Go(func() error {
-		logger.Debug("starting health server")
-
-		err := healthServer.ListenAndServe(gCtx)
-		if err != nil {
-			return fmt.Errorf("health server error: %w", err)
-		}
-
-		return nil
-	})
-
-	serverGroup.Go(func() error {
-		server := http.Server{
-			Addr:              addr,
-			Handler:           router,
-			ReadHeaderTimeout: 5 * time.Second,
-		}
-
-		err := elephantine.ListenAndServeContext(gCtx, &server)
-		if err != nil {
-			return fmt.Errorf("API server error: %w", err)
-		}
-
-		return nil
-	})
-
-	err = serverGroup.Wait()
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("server failed to start: %w", err)
+		return fmt.Errorf("run application: %w", err)
 	}
 
 	return nil

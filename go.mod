@@ -8,19 +8,19 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.26.3
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/go-cmp v0.6.0
-	github.com/jackc/pgx/v5 v5.5.1
+	github.com/jackc/pgx/v5 v5.5.2
 	github.com/microcosm-cc/bluemonday v1.0.26
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rakutentech/jwk-go v1.1.3
-	github.com/ttab/elephant-api v0.7.0
+	github.com/ttab/elephant-api v0.8.0-index-b-1
 	github.com/ttab/elephantine v0.9.6
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/newsdoc v0.4.2
 	github.com/ttab/revisor v0.4.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.1
-	golang.org/x/exp v0.0.0-20240103183307-be819d1f06fc
+	golang.org/x/exp v0.0.0-20240112132812-db7319d0e0e3
 	golang.org/x/oauth2 v0.16.0
 	golang.org/x/sync v0.6.0
 )
@@ -84,5 +84,5 @@ require (
 	golang.org/x/time v0.0.0-20220922220347-f3bd1da661af // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/protobuf v1.31.0 // indirect
+	google.golang.org/protobuf v1.32.0 // indirect
 )

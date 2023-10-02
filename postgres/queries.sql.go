@@ -7,22 +7,38 @@ package postgres
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createIndex = `-- name: CreateIndex :exec
+const addCluster = `-- name: AddCluster :exec
+INSERT INTO cluster(name, url) VALUES($1, $2)
+`
+
+type AddClusterParams struct {
+	Name string
+	Url  string
+}
+
+func (q *Queries) AddCluster(ctx context.Context, arg AddClusterParams) error {
+	_, err := q.db.Exec(ctx, addCluster, arg.Name, arg.Url)
+	return err
+}
+
+const createDocumentIndex = `-- name: CreateDocumentIndex :exec
 INSERT INTO document_index(name, set_name, content_type, mappings)
 VALUES ($1, $2, $3, $4)
 `
 
-type CreateIndexParams struct {
+type CreateDocumentIndexParams struct {
 	Name        string
 	SetName     string
 	ContentType string
 	Mappings    []byte
 }
 
-func (q *Queries) CreateIndex(ctx context.Context, arg CreateIndexParams) error {
-	_, err := q.db.Exec(ctx, createIndex,
+func (q *Queries) CreateDocumentIndex(ctx context.Context, arg CreateDocumentIndexParams) error {
+	_, err := q.db.Exec(ctx, createDocumentIndex,
 		arg.Name,
 		arg.SetName,
 		arg.ContentType,
@@ -32,18 +48,118 @@ func (q *Queries) CreateIndex(ctx context.Context, arg CreateIndexParams) error 
 }
 
 const createIndexSet = `-- name: CreateIndexSet :exec
-INSERT INTO index_set(name, position)
-VALUES ($1, $2)
+INSERT INTO index_set(name, position, cluster, streaming, active, enabled, modified)
+VALUES ($1, $2, $3::text, $4, $5, $6, NOW())
 `
 
 type CreateIndexSetParams struct {
-	Name     string
-	Position int64
+	Name      string
+	Position  int64
+	Cluster   string
+	Streaming bool
+	Active    bool
+	Enabled   bool
 }
 
 func (q *Queries) CreateIndexSet(ctx context.Context, arg CreateIndexSetParams) error {
-	_, err := q.db.Exec(ctx, createIndexSet, arg.Name, arg.Position)
+	_, err := q.db.Exec(ctx, createIndexSet,
+		arg.Name,
+		arg.Position,
+		arg.Cluster,
+		arg.Streaming,
+		arg.Active,
+		arg.Enabled,
+	)
 	return err
+}
+
+const deleteOldIndexSets = `-- name: DeleteOldIndexSets :exec
+DELETE FROM index_set
+WHERE modified < $1
+AND NOT active AND NOT enabled
+`
+
+func (q *Queries) DeleteOldIndexSets(ctx context.Context, cutoff pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteOldIndexSets, cutoff)
+	return err
+}
+
+const deleteUnusedClusters = `-- name: DeleteUnusedClusters :exec
+DELETE FROM cluster AS c
+WHERE c.created < $1
+AND NOT EXISTS (
+    SELECT FROM index_set AS s
+    WHERE s.cluster = c.name
+)
+`
+
+func (q *Queries) DeleteUnusedClusters(ctx context.Context, cutoff pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteUnusedClusters, cutoff)
+	return err
+}
+
+const getClusters = `-- name: GetClusters :many
+SELECT name, url FROM cluster
+`
+
+type GetClustersRow struct {
+	Name string
+	Url  string
+}
+
+func (q *Queries) GetClusters(ctx context.Context) ([]GetClustersRow, error) {
+	rows, err := q.db.Query(ctx, getClusters)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetClustersRow
+	for rows.Next() {
+		var i GetClustersRow
+		if err := rows.Scan(&i.Name, &i.Url); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getForActivation = `-- name: GetForActivation :many
+SELECT name, position, cluster, streaming, active, enabled, modified
+FROM index_set
+WHERE active OR name = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetForActivation(ctx context.Context, name string) ([]IndexSet, error) {
+	rows, err := q.db.Query(ctx, getForActivation, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IndexSet
+	for rows.Next() {
+		var i IndexSet
+		if err := rows.Scan(
+			&i.Name,
+			&i.Position,
+			&i.Cluster,
+			&i.Streaming,
+			&i.Active,
+			&i.Enabled,
+			&i.Modified,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getIndexMappings = `-- name: GetIndexMappings :one
@@ -73,6 +189,39 @@ func (q *Queries) GetIndexSetPosition(ctx context.Context, name string) (int64, 
 	return position, err
 }
 
+const getIndexSets = `-- name: GetIndexSets :many
+SELECT name, position, cluster, streaming, active, enabled, modified
+FROM index_set
+`
+
+func (q *Queries) GetIndexSets(ctx context.Context) ([]IndexSet, error) {
+	rows, err := q.db.Query(ctx, getIndexSets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IndexSet
+	for rows.Next() {
+		var i IndexSet
+		if err := rows.Scan(
+			&i.Name,
+			&i.Position,
+			&i.Cluster,
+			&i.Streaming,
+			&i.Active,
+			&i.Enabled,
+			&i.Modified,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIndexSets = `-- name: ListIndexSets :many
 SELECT name FROM index_set
 `
@@ -97,6 +246,47 @@ func (q *Queries) ListIndexSets(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const notify = `-- name: Notify :exec
+SELECT pg_notify($1::text, $2::text)
+`
+
+type NotifyParams struct {
+	Channel string
+	Message string
+}
+
+func (q *Queries) Notify(ctx context.Context, arg NotifyParams) error {
+	_, err := q.db.Exec(ctx, notify, arg.Channel, arg.Message)
+	return err
+}
+
+const setActive = `-- name: SetActive :exec
+UPDATE index_set
+SET active = $1, modified = NOW()
+WHERE name = $2
+`
+
+type SetActiveParams struct {
+	Active bool
+	Name   string
+}
+
+func (q *Queries) SetActive(ctx context.Context, arg SetActiveParams) error {
+	_, err := q.db.Exec(ctx, setActive, arg.Active, arg.Name)
+	return err
+}
+
+const setClusterWhereMissing = `-- name: SetClusterWhereMissing :exec
+UPDATE index_set
+SET cluster = $1::text
+WHERE cluster IS NULL
+`
+
+func (q *Queries) SetClusterWhereMissing(ctx context.Context, cluster string) error {
+	_, err := q.db.Exec(ctx, setClusterWhereMissing, cluster)
+	return err
+}
+
 const updateIndexMappings = `-- name: UpdateIndexMappings :exec
 UPDATE document_index
 SET mappings = $1
@@ -115,7 +305,7 @@ func (q *Queries) UpdateIndexMappings(ctx context.Context, arg UpdateIndexMappin
 
 const updateSetPosition = `-- name: UpdateSetPosition :exec
 UPDATE index_set
-SET position = $1
+SET position = $1, modified = NOW()
 WHERE name = $2
 `
 

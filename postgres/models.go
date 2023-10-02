@@ -8,6 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Cluster struct {
+	Name    string
+	Url     string
+	Created pgtype.Timestamptz
+}
+
 type DocumentIndex struct {
 	Name        string
 	SetName     string
@@ -16,8 +22,13 @@ type DocumentIndex struct {
 }
 
 type IndexSet struct {
-	Name     string
-	Position int64
+	Name      string
+	Position  int64
+	Cluster   pgtype.Text
+	Streaming bool
+	Active    bool
+	Enabled   bool
+	Modified  pgtype.Timestamptz
 }
 
 type IndexingOverride struct {
