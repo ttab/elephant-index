@@ -7,7 +7,7 @@ toolchain go1.21.1
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.18.42
 	github.com/golang-jwt/jwt/v4 v4.5.0
-	github.com/google/go-cmp v0.5.9
+	github.com/google/go-cmp v0.6.0
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/microcosm-cc/bluemonday v1.0.25
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
