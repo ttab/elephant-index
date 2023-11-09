@@ -32,6 +32,30 @@ func NewElasticProxy(
 }
 
 func (ep *ElasticProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	corsRequestMethod := r.Header.Get("Access-Control-Request-Method")
+
+	// Very simple CORS implementation that allows anything.
+	// TODO: whitelist origins through config.
+	if r.Method == http.MethodOptions && corsRequestMethod != "" {
+		header := w.Header()
+
+		header.Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+		header.Set("Access-Control-Allow-Headers",
+			r.Header.Get("Access-Control-Request-Headers"))
+		header.Set("Access-Control-Allow-Origin",
+			r.Header.Get("Origin"))
+		header.Set("Access-Control-Max-Age", "3600")
+
+		w.WriteHeader(http.StatusOK)
+
+		return
+	}
+
+	w.Header().Set(
+		"Access-Control-Allow-Origin",
+		r.Header.Get("Origin"),
+	)
+
 	logger := ep.logger.With(elephantine.LogKeyRoute, r.URL.Path)
 
 	parts := splitPath(r.URL.Path)
