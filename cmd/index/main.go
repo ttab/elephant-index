@@ -90,6 +90,10 @@ func main() {
 				Name:    "managed-opensearch",
 				EnvVars: []string{"MANAGED_OPEN_SEARCH"},
 			},
+			&cli.BoolFlag{
+				Name:    "no-indexer",
+				EnvVars: []string{"NO_INDEXER"},
+			},
 		},
 	}
 
@@ -119,6 +123,7 @@ func runIndexer(c *cli.Context) error {
 		opensearchEndpoint = c.String("opensearch-endpoint")
 		repositoryEndpoint = c.String("repository-endpoint")
 		managedOS          = c.Bool("managed-opensearch")
+		noIndexer          = c.Bool("no-indexer")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -332,6 +337,10 @@ func runIndexer(c *cli.Context) error {
 	})
 
 	serverGroup.Go(func() error {
+		if noIndexer {
+			return nil
+		}
+
 		err := indexer.Run(gCtx)
 		if err != nil {
 			return fmt.Errorf("indexer error: %w", err)
