@@ -174,25 +174,35 @@ func (idx *Indexer) loopIteration(
 			continue
 		}
 
-		docRes, err := idx.documents.Get(ctx,
-			&repository.GetDocumentRequest{
-				Uuid:    item.Uuid,
-				Version: item.Version,
-			})
-		if err != nil {
-			return 0, fmt.Errorf("get document: %w", err)
-		}
-
-		doc := docRes.Document
-
 		byType, ok := changes[item.Type]
 		if !ok {
 			byType = make(map[string]map[string]*enrichJob)
 			changes[item.Type] = byType
 		}
 
-		// Normalize to lowercase
-		language := strings.ToLower(doc.Language)
+		language := idx.defaultLanguage
+
+		docRes, err := idx.documents.Get(ctx,
+			&repository.GetDocumentRequest{
+				Uuid:    item.Uuid,
+				Version: item.Version,
+			})
+		if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
+			// TODO: we need to blanket delete the ID in all indexes
+			// here. Resorting to doing a delete for default
+			// language at the moment.
+			item.Event = "delete_document"
+		} else if err != nil {
+			return 0, fmt.Errorf("get document: %w", err)
+		}
+
+		var doc *newsdoc.Document
+
+		if docRes != nil {
+			doc = docRes.Document
+			// Normalize to lowercase
+			language = strings.ToLower(doc.Language)
+		}
 
 		byLang, ok := byType[language]
 		if !ok {
@@ -282,7 +292,7 @@ func (idx *Indexer) ensureIndex(
 ) (string, error) {
 	safeDocType := nonAlphaNum.ReplaceAllString(docType, "_")
 
-	config, err := GetLanguageConfig(lang)
+	config, err := GetLanguageConfig(lang, idx.defaultLanguage)
 	if err != nil {
 		return "", fmt.Errorf("could not get language config: %w", err)
 	}
@@ -428,6 +438,10 @@ func (iw *indexWorker) enrich(
 ) (*DocumentState, error) {
 	state := DocumentState{
 		Heads: make(map[string]Status),
+	}
+
+	if job.Operation == opDelete {
+		return &state, nil
 	}
 
 	ctx, cancel := context.WithTimeout(job.ctx, 5*time.Second)
