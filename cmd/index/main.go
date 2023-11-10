@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/opensearch-project/opensearch-go/v2/signer/awsv2"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/index"
@@ -48,6 +49,14 @@ func main() {
 			&cli.StringFlag{
 				Name:     "jwks-endpoint",
 				EnvVars:  []string{"JWKS_ENDPOINT"},
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:    "default-language",
+				EnvVars: []string{"DEFAULT_LANGUAGE"},
+				// Required for now, but shouldn't be as we want
+				// the repository to enforce that language is
+				// set.
 				Required: true,
 			},
 			&cli.StringFlag{
@@ -119,6 +128,7 @@ func runIndexer(c *cli.Context) error {
 		profileAddr        = c.String("profile-addr")
 		logLevel           = c.String("log-level")
 		tokenEndpoint      = c.String("token-endpoint")
+		defaultLanguage    = c.String("default-language")
 		jwksEndpoint       = c.String("jwks-endpoint")
 		opensearchEndpoint = c.String("opensearch-endpoint")
 		repositoryEndpoint = c.String("repository-endpoint")
@@ -138,6 +148,11 @@ func runIndexer(c *cli.Context) error {
 			os.Exit(2)
 		}
 	}()
+
+	_, err := index.GetLanguageConfig(defaultLanguage, "")
+	if err != nil {
+		return fmt.Errorf("invalid default language: %w", err)
+	}
 
 	paramSource, err := elephantine.GetParameterSource(paramSourceName)
 	if err != nil {
@@ -250,14 +265,21 @@ func runIndexer(c *cli.Context) error {
 			"failed to create opensearch client: %w", err)
 	}
 
+	metrics, err := index.NewMetrics(prometheus.DefaultRegisterer)
+	if err != nil {
+		return fmt.Errorf("set up metrics: %w", err)
+	}
+
 	indexer, err := index.NewIndexer(c.Context, index.IndexerOptions{
 		Logger: logger.With(
 			elephantine.LogKeyComponent, "indexer"),
-		SetName:   "v1",
-		Client:    searchClient,
-		Database:  dbpool,
-		Documents: documents,
-		Validator: loader,
+		Metrics:         metrics,
+		SetName:         "v1",
+		DefaultLanguage: defaultLanguage,
+		Client:          searchClient,
+		Database:        dbpool,
+		Documents:       documents,
+		Validator:       loader,
 	})
 	if err != nil {
 		return fmt.Errorf("create indexer: %w", err)
