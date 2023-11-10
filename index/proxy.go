@@ -173,6 +173,8 @@ func (ep *ElasticProxy) searchHandler(
 		Fields: rawQuery.Fields,
 		Source: rawQuery.Source,
 		Sort:   rawQuery.Sort,
+		From:   rawQuery.From,
+		Size:   rawQuery.Size,
 	})
 	if err != nil {
 		return ElasticErrorf(

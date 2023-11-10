@@ -15,6 +15,8 @@ type RawSearchRequest struct {
 	Fields json.RawMessage `json:"fields"`
 	Sort   json.RawMessage `json:"sort"`
 	Source *bool           `json:"_source,omitempty"`
+	From   *int            `json:"from,omitempty"`
+	Size   *int            `json:"size,omitempty"`
 }
 
 type ElasticSearchRequest struct {
@@ -22,6 +24,8 @@ type ElasticSearchRequest struct {
 	Fields json.RawMessage `json:"fields,omitempty"`
 	Sort   json.RawMessage `json:"sort,omitempty"`
 	Source *bool           `json:"_source,omitempty"`
+	From   *int            `json:"from,omitempty"`
+	Size   *int            `json:"size,omitempty"`
 }
 
 type ElasticQuery struct {
