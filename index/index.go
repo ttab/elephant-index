@@ -14,7 +14,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/opensearch-project/opensearch-go/v2"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/postgres"
@@ -30,92 +29,20 @@ type ValidatorSource interface {
 }
 
 type IndexerOptions struct {
-	Logger            *slog.Logger
-	SetName           string
-	Database          *pgxpool.Pool
-	Client            *opensearch.Client
-	Documents         repository.Documents
-	Validator         ValidatorSource
-	MetricsRegisterer prometheus.Registerer
+	Logger          *slog.Logger
+	SetName         string
+	Database        *pgxpool.Pool
+	Client          *opensearch.Client
+	Documents       repository.Documents
+	Validator       ValidatorSource
+	Metrics         *Metrics
+	DefaultLanguage string
 }
 
 func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
-	if opts.MetricsRegisterer == nil {
-		opts.MetricsRegisterer = prometheus.DefaultRegisterer
-	}
-
-	// TODO: When we get to running multiple indexers (reindexing) we will
-	// need to create these metrics upstack and pass them to the indexers
-	// instead. Deferring.
-
-	indexerFailures := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_indexer_failures_total",
-			Help: "Counts the number of times the indexer failed process a batch of events.",
-		},
-		[]string{"name"},
-	)
-	if err := opts.MetricsRegisterer.Register(indexerFailures); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	unknownEvents := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_indexer_unknown_events_total",
-			Help: "Unknown event types from the elephant event log.",
-		},
-		[]string{"type"},
-	)
-	if err := opts.MetricsRegisterer.Register(unknownEvents); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	mappingUpdate := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_indexer_mapping_update_total",
-			Help: "Number of times the index mapping has been updated.",
-		},
-		[]string{"index"},
-	)
-	if err := opts.MetricsRegisterer.Register(mappingUpdate); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	indexedDocument := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_indexer_doc_total",
-			Help: "Document indexing counter, tracks index and delete successes and failures.",
-		},
-		[]string{"type", "index", "result"},
-	)
-	if err := opts.MetricsRegisterer.Register(indexedDocument); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	enrichErrors := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "elephant_indexer_enrich_errors_total",
-			Help: "Document enricher errors.",
-		},
-		[]string{"type", "index"},
-	)
-	if err := opts.MetricsRegisterer.Register(enrichErrors); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	logPos := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "elephant_indexer_log_position",
-			Help: "Indexer eventlog position.",
-		},
-		[]string{"name"},
-	)
-	if err := opts.MetricsRegisterer.Register(logPos); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
-	}
-
-	idx := &Indexer{
+	idx := Indexer{
 		logger:          opts.Logger,
+		metrics:         opts.Metrics,
 		name:            opts.SetName,
 		database:        opts.Database,
 		client:          opts.Client,
@@ -123,12 +50,7 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 		vSource:         opts.Validator,
 		q:               postgres.New(opts.Database),
 		indexes:         make(map[string]*indexWorker),
-		indexerFailures: indexerFailures,
-		unknownEvents:   unknownEvents,
-		logPos:          logPos,
-		mappingUpdate:   mappingUpdate,
-		indexedDocument: indexedDocument,
-		enrichErrors:    enrichErrors,
+		defaultLanguage: opts.DefaultLanguage,
 	}
 
 	// We speculatively try to create the index set here, but don't treat a
@@ -142,23 +64,18 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 		return nil, fmt.Errorf("failed to create index set: %w", err)
 	}
 
-	return idx, nil
+	return &idx, nil
 }
 
 type Indexer struct {
-	logger    *slog.Logger
-	name      string
-	database  *pgxpool.Pool
-	documents repository.Documents
-	vSource   ValidatorSource
-	client    *opensearch.Client
-
-	indexerFailures *prometheus.CounterVec
-	unknownEvents   *prometheus.CounterVec
-	mappingUpdate   *prometheus.CounterVec
-	indexedDocument *prometheus.CounterVec
-	enrichErrors    *prometheus.CounterVec
-	logPos          *prometheus.GaugeVec
+	logger          *slog.Logger
+	metrics         *Metrics
+	name            string
+	defaultLanguage string
+	database        *pgxpool.Pool
+	documents       repository.Documents
+	vSource         ValidatorSource
+	client          *opensearch.Client
 
 	q *postgres.Queries
 
@@ -177,7 +94,7 @@ func (idx *Indexer) Run(ctx context.Context) error {
 	for {
 		newPos, err := idx.loopIteration(ctx, pos)
 		if err != nil {
-			idx.indexerFailures.WithLabelValues(idx.name).Inc()
+			idx.metrics.indexerFailures.WithLabelValues(idx.name).Inc()
 
 			idx.logger.ErrorContext(ctx, "indexer failure",
 				elephantine.LogKeyError, err,
@@ -203,7 +120,7 @@ func (idx *Indexer) Run(ctx context.Context) error {
 
 			pos = newPos
 
-			idx.logPos.WithLabelValues(idx.name).Set(float64(pos))
+			idx.metrics.logPos.WithLabelValues(idx.name).Set(float64(pos))
 		}
 
 		select {
@@ -257,24 +174,35 @@ func (idx *Indexer) loopIteration(
 			continue
 		}
 
-		docRes, err := idx.documents.Get(ctx, &repository.GetDocumentRequest{
-			Uuid:    item.Uuid,
-			Version: item.Version,
-		})
-		if err != nil {
-			return 0, fmt.Errorf("get document: %w", err)
-		}
-
-		doc := docRes.Document
-
 		byType, ok := changes[item.Type]
 		if !ok {
 			byType = make(map[string]map[string]*enrichJob)
 			changes[item.Type] = byType
 		}
 
-		// Normalize to lowercase
-		language := strings.ToLower(doc.Language)
+		language := idx.defaultLanguage
+
+		docRes, err := idx.documents.Get(ctx,
+			&repository.GetDocumentRequest{
+				Uuid:    item.Uuid,
+				Version: item.Version,
+			})
+		if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
+			// TODO: we need to blanket delete the ID in all indexes
+			// here. Resorting to doing a delete for default
+			// language at the moment.
+			item.Event = "delete_document"
+		} else if err != nil {
+			return 0, fmt.Errorf("get document: %w", err)
+		}
+
+		var doc *newsdoc.Document
+
+		if docRes != nil {
+			doc = docRes.Document
+			// Normalize to lowercase
+			language = strings.ToLower(doc.Language)
+		}
 
 		byLang, ok := byType[language]
 		if !ok {
@@ -296,7 +224,7 @@ func (idx *Indexer) loopIteration(
 				doc:       doc,
 			}
 		default:
-			idx.unknownEvents.WithLabelValues(item.Event).Inc()
+			idx.metrics.unknownEvents.WithLabelValues(item.Event).Inc()
 		}
 
 		pos = item.Id
@@ -364,7 +292,7 @@ func (idx *Indexer) ensureIndex(
 ) (string, error) {
 	safeDocType := nonAlphaNum.ReplaceAllString(docType, "_")
 
-	config, err := GetLanguageConfig(lang)
+	config, err := GetLanguageConfig(lang, idx.defaultLanguage)
 	if err != nil {
 		return "", fmt.Errorf("could not get language config: %w", err)
 	}
@@ -512,6 +440,10 @@ func (iw *indexWorker) enrich(
 		Heads: make(map[string]Status),
 	}
 
+	if job.Operation == opDelete {
+		return &state, nil
+	}
+
 	ctx, cancel := context.WithTimeout(job.ctx, 5*time.Second)
 	defer cancel()
 
@@ -613,7 +545,7 @@ func (iw *indexWorker) Process(
 			job.Operation = opDelete
 			job.err = nil
 		} else if job.err != nil {
-			iw.idx.enrichErrors.WithLabelValues(
+			iw.idx.metrics.enrichErrors.WithLabelValues(
 				iw.contentType, iw.indexName,
 			).Inc()
 
@@ -710,7 +642,7 @@ func (iw *indexWorker) Process(
 	}
 
 	for res, count := range counters {
-		iw.idx.indexedDocument.WithLabelValues(
+		iw.idx.metrics.indexedDocument.WithLabelValues(
 			iw.contentType, iw.indexName, res,
 		).Add(float64(count))
 	}
