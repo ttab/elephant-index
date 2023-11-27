@@ -14,7 +14,7 @@ require (
 	github.com/prometheus/client_golang v1.17.0
 	github.com/rakutentech/jwk-go v1.1.3
 	github.com/ttab/elephant-api v0.7.0
-	github.com/ttab/elephantine v0.9.2
+	github.com/ttab/elephantine v0.9.4
 	github.com/ttab/newsdoc v0.4.2
 	github.com/ttab/revisor v0.4.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
