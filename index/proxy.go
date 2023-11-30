@@ -88,7 +88,7 @@ func (ep *ElasticProxy) searchHandler(
 			"no authorization header")
 	}
 
-	indexBase := "documents-v1-"
+	indexBase := "documents-v2-"
 	parts := splitPath(r.URL.Path)
 
 	indicesParam := "_all"

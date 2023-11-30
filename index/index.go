@@ -121,6 +121,8 @@ func (idx *Indexer) Run(ctx context.Context) error {
 			pos = newPos
 
 			idx.metrics.logPos.WithLabelValues(idx.name).Set(float64(pos))
+		} else {
+			time.Sleep(1 * time.Second)
 		}
 
 		select {
@@ -157,11 +159,9 @@ func (ij *enrichJob) Finish(state *DocumentState, err error) {
 func (idx *Indexer) loopIteration(
 	ctx context.Context, pos int64,
 ) (int64, error) {
-	log, err := idx.documents.Eventlog(ctx, &repository.GetEventlogRequest{
-		After:       pos,
-		WaitMs:      10000,
-		BatchWaitMs: 200,
-		BatchSize:   100,
+	log, err := idx.documents.CompactedEventlog(ctx, &repository.GetCompactedEventlogRequest{
+		After: pos,
+		Limit: 500,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("get eventlog entries: %w", err)

@@ -274,7 +274,7 @@ func runIndexer(c *cli.Context) error {
 		Logger: logger.With(
 			elephantine.LogKeyComponent, "indexer"),
 		Metrics:         metrics,
-		SetName:         "v1",
+		SetName:         "v2",
 		DefaultLanguage: defaultLanguage,
 		Client:          searchClient,
 		Database:        dbpool,
