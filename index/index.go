@@ -172,6 +172,7 @@ func (idx *Indexer) loopIteration(
 	for _, item := range log.Items {
 		if item.Type == "" {
 			pos = item.Id
+
 			continue
 		}
 
