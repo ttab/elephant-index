@@ -16,7 +16,7 @@ require (
 	github.com/ttab/newsdoc v0.4.2
 	github.com/ttab/revisor v0.4.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	github.com/urfave/cli/v2 v2.25.7
+	github.com/urfave/cli/v2 v2.26.0
 	golang.org/x/exp v0.0.0-20231127185646-65229373498e
 	golang.org/x/oauth2 v0.15.0
 	golang.org/x/sync v0.5.0
