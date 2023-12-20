@@ -28,6 +28,7 @@ func GetLanguageConfig(code string, defaultLanguage string) (LanguageConfig, err
 		code = defaultLanguage
 	}
 
+	// TODO: use langos here
 	code = strings.ToLower(code)
 	parts := strings.Split(code, "-")
 

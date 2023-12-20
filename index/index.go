@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -220,6 +221,53 @@ func (idx *Indexer) loopIteration(
 				doc:       doc,
 			}
 		case "document", "acl", "status":
+			query, err := json.Marshal(createLanguageQuery(item.Uuid, language))
+			if err != nil {
+				return 0, fmt.Errorf("marshal json: %w", err)
+			}
+
+			rootAlias := idx.getIndexTypeRoot(item.Type, "documents")
+
+			// Find all existing documents with the same Id but a different
+			// language
+			oldDocsResponse, err := idx.client.Search(
+				idx.client.Search.WithIndex(rootAlias),
+				idx.client.Search.WithBody(bytes.NewReader(query)),
+				idx.client.Search.WithContext(ctx),
+			)
+			if err != nil {
+				return 0, fmt.Errorf("lookup document: %w", err)
+			}
+
+			oldDocsBody, err := io.ReadAll(oldDocsResponse.Body)
+			if err != nil {
+				return 0, fmt.Errorf("read response body: %w", err)
+			}
+
+			var oldDocs SearchResponseBody
+
+			err = json.Unmarshal(oldDocsBody, &oldDocs)
+			if err != nil {
+				return 0, fmt.Errorf("unmarshal existing document result: %w", err)
+			}
+
+			for id := range oldDocs.Hits.Hits {
+				hit := oldDocs.Hits.Hits[id]
+
+				for _, oldLang := range hit.Source.DocumentLanguage {
+					byOldLang, ok := byType[oldLang]
+					if !ok {
+						byOldLang = make(map[string]*enrichJob)
+						byType[oldLang] = byOldLang
+					}
+
+					byOldLang[item.Uuid] = &enrichJob{
+						UUID:      item.Uuid,
+						Operation: opDelete,
+					}
+				}
+			}
+
 			byLang[item.Uuid] = &enrichJob{
 				UUID:      item.Uuid,
 				Operation: opUpdate,
@@ -289,17 +337,71 @@ func (idx *Indexer) loopIteration(
 	return pos, nil
 }
 
+func createLanguageQuery(uuid string, language string) map[string]interface{} {
+	return map[string]interface{}{
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"filter": []map[string]interface{}{
+					{
+						"ids": map[string][]string{
+							"values": {uuid},
+						},
+					},
+				},
+				"must_not": []map[string]interface{}{
+					{
+						"term": map[string]interface{}{
+							"document.language": map[string]string{
+								"value": language,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+type LanguageQuery struct {
+	Query struct {
+		Bool struct {
+			Filter []struct {
+				Ids struct {
+					Values []string `json:"values"`
+				} `json:"ids"`
+			} `json:"filter"`
+			MustNot []struct {
+				Term struct {
+					DocumentLanguage struct {
+						Value string `json:"value"`
+					} `json:"document.language"`
+				} `json:"term"`
+			} `json:"mus_not"`
+		} `json:"bool"`
+	} `json:"query"`
+}
+
+type SearchResponseBody struct {
+	Hits struct {
+		Hits []struct {
+			ID     string `json:"_id"`
+			Index  string `json:"_index"`
+			Source struct {
+				DocumentLanguage []string `json:"document.language"`
+			} `json:"_source"`
+		} `json:"hits"`
+	} `json:"hits"`
+}
+
 func (idx *Indexer) ensureIndex(
 	ctx context.Context, indexType string, docType string, lang string,
 ) (string, error) {
-	safeDocType := nonAlphaNum.ReplaceAllString(docType, "_")
-
 	config, err := GetLanguageConfig(lang, idx.defaultLanguage)
 	if err != nil {
 		return "", fmt.Errorf("could not get language config: %w", err)
 	}
 
-	indexTypeRoot := fmt.Sprintf("%s-%s-%s", indexType, idx.name, safeDocType)
+	indexTypeRoot := idx.getIndexTypeRoot(docType, indexType)
 
 	index := fmt.Sprintf("%s-%s", indexTypeRoot, config.NameSuffix)
 	aliases := []string{
@@ -343,6 +445,12 @@ func (idx *Indexer) ensureIndex(
 	}
 
 	return index, nil
+}
+
+func (idx *Indexer) getIndexTypeRoot(docType string, indexType string) string {
+	safeDocType := nonAlphaNum.ReplaceAllString(docType, "_")
+
+	return fmt.Sprintf("%s-%s-%s", indexType, idx.name, safeDocType)
 }
 
 func (idx *Indexer) ensureAlias(index string, alias string) error {
