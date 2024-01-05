@@ -225,6 +225,7 @@ func (idx *Indexer) loopIteration(
 			if err != nil {
 				return 0, fmt.Errorf("marshal json: %w", err)
 			}
+			fmt.Println(string(query))
 
 			rootAlias := idx.getIndexTypeRoot(item.Type, "documents")
 
@@ -337,48 +338,25 @@ func (idx *Indexer) loopIteration(
 	return pos, nil
 }
 
-func createLanguageQuery(uuid string, language string) map[string]interface{} {
-	return map[string]interface{}{
-		"query": map[string]interface{}{
-			"bool": map[string]interface{}{
-				"filter": []map[string]interface{}{
-					{
-						"ids": map[string][]string{
-							"values": {uuid},
-						},
-					},
+func createLanguageQuery(uuid string, language string) ElasticSearchRequest {
+	return ElasticSearchRequest{
+		Query: ElasticQuery{
+			Bool: &BooleanQuery{
+				Filter: []ElasticQuery{
+					{Ids: &IdsQuery{
+						Values: []string{uuid},
+					}},
 				},
-				"must_not": []map[string]interface{}{
+				MustNot: []ElasticQuery{
 					{
-						"term": map[string]interface{}{
-							"document.language": map[string]string{
-								"value": language,
-							},
+						Term: map[string]string{
+							"document.language": language,
 						},
 					},
 				},
 			},
 		},
 	}
-}
-
-type LanguageQuery struct {
-	Query struct {
-		Bool struct {
-			Filter []struct {
-				Ids struct {
-					Values []string `json:"values"`
-				} `json:"ids"`
-			} `json:"filter"`
-			MustNot []struct {
-				Term struct {
-					DocumentLanguage struct {
-						Value string `json:"value"`
-					} `json:"document.language"`
-				} `json:"term"`
-			} `json:"mus_not"`
-		} `json:"bool"`
-	} `json:"query"`
 }
 
 type SearchResponseBody struct {

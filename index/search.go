@@ -31,12 +31,18 @@ type ElasticSearchRequest struct {
 type ElasticQuery struct {
 	Bool *BooleanQuery     `json:"bool,omitempty"`
 	Term map[string]string `json:"term,omitempty"`
+	Ids  *IdsQuery         `json:"ids,omitempty"`
 }
 
 type BooleanQuery struct {
-	Must   []json.RawMessage `json:"must,omitempty"`
-	Should []ElasticQuery    `json:"should,omitempty"`
-	Filter []ElasticQuery    `json:"filter,omitempty"`
+	Must    []json.RawMessage `json:"must,omitempty"`
+	MustNot []ElasticQuery    `json:"must_not,omitempty"`
+	Should  []ElasticQuery    `json:"should,omitempty"`
+	Filter  []ElasticQuery    `json:"filter,omitempty"`
+}
+
+type IdsQuery struct {
+	Values []string `json:"values,omitempty"`
 }
 
 // {
