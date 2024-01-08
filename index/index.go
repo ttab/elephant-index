@@ -225,7 +225,6 @@ func (idx *Indexer) loopIteration(
 			if err != nil {
 				return 0, fmt.Errorf("marshal json: %w", err)
 			}
-			fmt.Println(string(query))
 
 			rootAlias := idx.getIndexTypeRoot(item.Type, "documents")
 
