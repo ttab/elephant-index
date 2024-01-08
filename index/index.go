@@ -312,7 +312,11 @@ func (idx *Indexer) loopIteration(
 	return pos, nil
 }
 
-func (idx *Indexer) findObsoleteDocuments(ctx context.Context, item *repository.EventlogItem, language string) ([]DocumentSource, error) {
+func (idx *Indexer) findObsoleteDocuments(
+	ctx context.Context,
+	item *repository.EventlogItem,
+	language string,
+) ([]DocumentSource, error) {
 	query, err := json.Marshal(createLanguageQuery(item.Uuid, language))
 	if err != nil {
 		return nil, fmt.Errorf("marshal json: %w", err)

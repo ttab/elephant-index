@@ -55,7 +55,7 @@ type SearchResponseBody struct {
 	} `json:"hits"`
 }
 
-// some well-known field names used by the indexer
+// Some well-known field names used by the indexer.
 type DocumentSource struct {
 	DocumentLanguage []string `json:"document.language"`
 }
