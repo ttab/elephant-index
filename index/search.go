@@ -48,11 +48,16 @@ type IdsQuery struct {
 type SearchResponseBody struct {
 	Hits struct {
 		Hits []struct {
-			ID     string              `json:"_id"`
-			Index  string              `json:"_index"`
-			Source map[string][]string `json:"_source"`
+			ID     string         `json:"_id"`
+			Index  string         `json:"_index"`
+			Source DocumentSource `json:"_source"`
 		} `json:"hits"`
 	} `json:"hits"`
+}
+
+// some well-known field names used by the indexer
+type DocumentSource struct {
+	DocumentLanguage []string `json:"document.language"`
 }
 
 // {

@@ -221,47 +221,22 @@ func (idx *Indexer) loopIteration(
 				doc:       doc,
 			}
 		case "document", "acl", "status":
-			query, err := json.Marshal(createLanguageQuery(item.Uuid, language))
-			if err != nil {
-				return 0, fmt.Errorf("marshal json: %w", err)
-			}
-
-			rootAlias := idx.getIndexTypeRoot(item.Type, "documents")
-
 			// Find all existing documents with the same Id but a different
 			// language
-			oldDocsResponse, err := idx.client.Search(
-				idx.client.Search.WithIndex(rootAlias),
-				idx.client.Search.WithBody(bytes.NewReader(query)),
-				idx.client.Search.WithContext(ctx),
-			)
+			obDocs, err := idx.findObsoleteDocuments(ctx, item, language)
 			if err != nil {
-				return 0, fmt.Errorf("lookup document: %w", err)
+				return 0, fmt.Errorf("find obsolete docs: %w", err)
 			}
 
-			oldDocsBody, err := io.ReadAll(oldDocsResponse.Body)
-			if err != nil {
-				return 0, fmt.Errorf("read response body: %w", err)
-			}
-
-			var oldDocs SearchResponseBody
-
-			err = json.Unmarshal(oldDocsBody, &oldDocs)
-			if err != nil {
-				return 0, fmt.Errorf("unmarshal existing document result: %w", err)
-			}
-
-			for id := range oldDocs.Hits.Hits {
-				hit := oldDocs.Hits.Hits[id]
-
-				for _, oldLang := range hit.Source["document.language"] {
-					byOldLang, ok := byType[oldLang]
+			for _, obDoc := range obDocs {
+				for _, obLang := range obDoc.DocumentLanguage {
+					byObLang, ok := byType[obLang]
 					if !ok {
-						byOldLang = make(map[string]*enrichJob)
-						byType[oldLang] = byOldLang
+						byObLang = make(map[string]*enrichJob)
+						byType[obLang] = byObLang
 					}
 
-					byOldLang[item.Uuid] = &enrichJob{
+					byObLang[item.Uuid] = &enrichJob{
 						UUID:      item.Uuid,
 						Operation: opDelete,
 					}
@@ -335,6 +310,45 @@ func (idx *Indexer) loopIteration(
 	}
 
 	return pos, nil
+}
+
+func (idx *Indexer) findObsoleteDocuments(ctx context.Context, item *repository.EventlogItem, language string) ([]DocumentSource, error) {
+	query, err := json.Marshal(createLanguageQuery(item.Uuid, language))
+	if err != nil {
+		return nil, fmt.Errorf("marshal json: %w", err)
+	}
+
+	rootAlias := idx.getIndexTypeRoot(item.Type, "documents")
+
+	obDocsRes, err := idx.client.Search(
+		idx.client.Search.WithIndex(rootAlias),
+		idx.client.Search.WithBody(bytes.NewReader(query)),
+		idx.client.Search.WithContext(ctx),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("lookup document: %w", err)
+	}
+
+	defer elephantine.SafeClose(idx.logger, "index exists", obDocsRes.Body)
+
+	obDocsBody, err := io.ReadAll(obDocsRes.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response body: %w", err)
+	}
+
+	var obDocs SearchResponseBody
+
+	err = json.Unmarshal(obDocsBody, &obDocs)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal existing document result: %w", err)
+	}
+
+	obsolete := make([]DocumentSource, len(obDocs.Hits.Hits))
+	for i, doc := range obDocs.Hits.Hits {
+		obsolete[i] = doc.Source
+	}
+
+	return obsolete, nil
 }
 
 func createLanguageQuery(uuid string, language string) ElasticSearchRequest {
