@@ -255,7 +255,7 @@ func (idx *Indexer) loopIteration(
 			for id := range oldDocs.Hits.Hits {
 				hit := oldDocs.Hits.Hits[id]
 
-				for _, oldLang := range hit.Source.DocumentLanguage {
+				for _, oldLang := range hit.Source["document.language"] {
 					byOldLang, ok := byType[oldLang]
 					if !ok {
 						byOldLang = make(map[string]*enrichJob)
@@ -357,18 +357,6 @@ func createLanguageQuery(uuid string, language string) ElasticSearchRequest {
 			},
 		},
 	}
-}
-
-type SearchResponseBody struct {
-	Hits struct {
-		Hits []struct {
-			ID     string `json:"_id"`
-			Index  string `json:"_index"`
-			Source struct {
-				DocumentLanguage []string `json:"document.language"`
-			} `json:"_source"`
-		} `json:"hits"`
-	} `json:"hits"`
 }
 
 func (idx *Indexer) ensureIndex(
