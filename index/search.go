@@ -31,12 +31,33 @@ type ElasticSearchRequest struct {
 type ElasticQuery struct {
 	Bool *BooleanQuery     `json:"bool,omitempty"`
 	Term map[string]string `json:"term,omitempty"`
+	Ids  *IdsQuery         `json:"ids,omitempty"`
 }
 
 type BooleanQuery struct {
-	Must   []json.RawMessage `json:"must,omitempty"`
-	Should []ElasticQuery    `json:"should,omitempty"`
-	Filter []ElasticQuery    `json:"filter,omitempty"`
+	Must    []json.RawMessage `json:"must,omitempty"`
+	MustNot []ElasticQuery    `json:"must_not,omitempty"`
+	Should  []ElasticQuery    `json:"should,omitempty"`
+	Filter  []ElasticQuery    `json:"filter,omitempty"`
+}
+
+type IdsQuery struct {
+	Values []string `json:"values,omitempty"`
+}
+
+type SearchResponseBody struct {
+	Hits struct {
+		Hits []struct {
+			ID     string         `json:"_id"`
+			Index  string         `json:"_index"`
+			Source DocumentSource `json:"_source"`
+		} `json:"hits"`
+	} `json:"hits"`
+}
+
+// Some well-known field names used by the indexer.
+type DocumentSource struct {
+	DocumentLanguage []string `json:"document.language"`
 }
 
 // {

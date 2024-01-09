@@ -3,6 +3,8 @@ package index
 import (
 	"fmt"
 	"strings"
+
+	"github.com/ttab/langos"
 )
 
 type LanguageConfig struct {
@@ -28,18 +30,17 @@ func GetLanguageConfig(code string, defaultLanguage string) (LanguageConfig, err
 		code = defaultLanguage
 	}
 
-	code = strings.ToLower(code)
-	parts := strings.Split(code, "-")
-
-	if len(parts) < 1 || len(parts) > 2 {
-		return LanguageConfig{}, fmt.Errorf("malformed language code: %s", code)
+	info, err := langos.GetLanguage(code)
+	if err != nil {
+		return LanguageConfig{}, fmt.Errorf("get language: %w", err)
 	}
 
-	lang := parts[0]
+	code = strings.ToLower(info.Code)
+	lang := strings.ToLower(info.Language)
 
 	region := "unspecified"
-	if len(parts) > 1 {
-		region = parts[1]
+	if info.HasRegion {
+		region = strings.ToLower(info.Region)
 	}
 
 	analyzer := "standard"
