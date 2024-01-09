@@ -11,10 +11,11 @@ require (
 	github.com/jackc/pgx/v5 v5.5.0
 	github.com/microcosm-cc/bluemonday v1.0.26
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
-	github.com/prometheus/client_golang v1.17.0
+	github.com/prometheus/client_golang v1.18.0
 	github.com/rakutentech/jwk-go v1.1.3
 	github.com/ttab/elephant-api v0.7.0
 	github.com/ttab/elephantine v0.9.4
+	github.com/ttab/langos v0.1.1
 	github.com/ttab/newsdoc v0.4.2
 	github.com/ttab/revisor v0.4.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
@@ -66,16 +67,15 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.1.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
-	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
+	github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
-	github.com/prometheus/client_model v0.4.1-0.20230718164431-9a2bf3000d16 // indirect
-	github.com/prometheus/common v0.44.0 // indirect
-	github.com/prometheus/procfs v0.11.1 // indirect
+	github.com/prometheus/client_model v0.5.0 // indirect
+	github.com/prometheus/common v0.45.0 // indirect
+	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
-	github.com/ttab/langos v0.1.1 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	golang.org/x/crypto v0.16.0 // indirect
 	golang.org/x/net v0.19.0 // indirect
