@@ -15,10 +15,11 @@ require (
 	github.com/rakutentech/jwk-go v1.1.3
 	github.com/ttab/elephant-api v0.7.0
 	github.com/ttab/elephantine v0.9.4
+	github.com/ttab/langos v0.1.1
 	github.com/ttab/newsdoc v0.4.2
 	github.com/ttab/revisor v0.4.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
-	github.com/urfave/cli/v2 v2.25.7
+	github.com/urfave/cli/v2 v2.27.1
 	golang.org/x/exp v0.0.0-20231127185646-65229373498e
 	golang.org/x/oauth2 v0.15.0
 	golang.org/x/sync v0.5.0
@@ -75,7 +76,6 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
-	github.com/ttab/langos v0.1.1 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	golang.org/x/crypto v0.16.0 // indirect
 	golang.org/x/net v0.19.0 // indirect
