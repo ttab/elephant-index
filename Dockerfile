@@ -11,7 +11,7 @@ ARG TARGETOS TARGETARCH
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -o /build/index ./cmd/index
 
-FROM alpine:3.18
+FROM alpine:3.19
 
 COPY --from=build /build/index /usr/local/bin/index
 
