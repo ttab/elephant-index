@@ -50,14 +50,22 @@ func RunIndex(ctx context.Context, p IndexParameters) error {
 		return fmt.Errorf("create indexer: %w", err)
 	}
 
-	healthServer := elephantine.NewHealthServer(p.ProfileAddr)
+	healthServer := elephantine.NewHealthServer(logger, p.ProfileAddr)
 	router := http.NewServeMux()
 	serverGroup, gCtx := errgroup.WithContext(ctx)
 
 	// TODO: make the proxy aware of clusters and index set names.
 	proxy := NewElasticProxy(logger, p.Client, p.PublicJWTKey)
 
-	router.Handle("/", proxy)
+	proxyHandler := elephantine.CORSMiddleware(elephantine.CORSOptions{
+		AllowInsecure:          false,
+		AllowInsecureLocalhost: true,
+		Hosts:                  []string{"localhost", "tt.se"},
+		AllowedMethods:         []string{"GET"},
+		AllowedHeaders:         []string{"Authorization", "Content-Type"},
+	}, proxy)
+
+	router.Handle("/", proxyHandler)
 
 	router.Handle("/health/alive", http.HandlerFunc(func(
 		w http.ResponseWriter, req *http.Request,
