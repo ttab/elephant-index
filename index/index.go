@@ -500,7 +500,9 @@ func (idx *Indexer) ensureIndex(
 	for _, alias := range aliases {
 		err = idx.ensureAlias(index, alias)
 		if err != nil {
-			return "", fmt.Errorf("could not ensure alias: %w", err)
+			return "", fmt.Errorf(
+				"could not ensure alias %q for index %q: %w",
+				alias, index, err)
 		}
 	}
 
