@@ -79,7 +79,7 @@ const (
 	ErrorTypeInternal           ElasticErrorType = "elephant.InternalError"
 	ErrorTypeBadRequest         ElasticErrorType = "elephant.BadRequest"
 	ErrorTypeNotFound           ElasticErrorType = "elephant.NotFound"
-	ErrorTypeClusterUnavailable ElasticErrorType = "elephant.BadGatewayClusterUnavailable"
+	ErrorTypeClusterUnavailable ElasticErrorType = "elephant.ClusterUnavailable"
 )
 
 func (et ElasticErrorType) StatusCode() int {
