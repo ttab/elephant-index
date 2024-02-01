@@ -116,31 +116,6 @@ func (q *Queries) DeleteIndexSet(ctx context.Context, name string) error {
 	return err
 }
 
-const deleteOldIndexSets = `-- name: DeleteOldIndexSets :exec
-DELETE FROM index_set
-WHERE modified < $1
-AND deleted
-`
-
-func (q *Queries) DeleteOldIndexSets(ctx context.Context, cutoff pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, deleteOldIndexSets, cutoff)
-	return err
-}
-
-const deleteUnusedClusters = `-- name: DeleteUnusedClusters :exec
-DELETE FROM cluster AS c
-WHERE c.created < $1
-AND NOT EXISTS (
-    SELECT FROM index_set AS s
-    WHERE s.cluster = c.name
-)
-`
-
-func (q *Queries) DeleteUnusedClusters(ctx context.Context, cutoff pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, deleteUnusedClusters, cutoff)
-	return err
-}
-
 const getActiveIndexSet = `-- name: GetActiveIndexSet :one
 SELECT name, position, cluster, active, enabled, deleted, modified
 FROM index_set WHERE active = true
@@ -435,7 +410,7 @@ func (q *Queries) IndexSetQuery(ctx context.Context, arg IndexSetQueryParams) ([
 }
 
 const listClustersWithCounts = `-- name: ListClustersWithCounts :many
-SELECT c.name, c.url, coalesce(i.c, 0) AS index_set_count
+SELECT c.name, c.url, c.auth, coalesce(i.c, 0) AS index_set_count
 FROM cluster AS c
      LEFT JOIN (
           SELECT cluster, COUNT(*) AS c
@@ -448,6 +423,7 @@ FROM cluster AS c
 type ListClustersWithCountsRow struct {
 	Name          string
 	Url           string
+	Auth          []byte
 	IndexSetCount int64
 }
 
@@ -460,7 +436,12 @@ func (q *Queries) ListClustersWithCounts(ctx context.Context) ([]ListClustersWit
 	var items []ListClustersWithCountsRow
 	for rows.Next() {
 		var i ListClustersWithCountsRow
-		if err := rows.Scan(&i.Name, &i.Url, &i.IndexSetCount); err != nil {
+		if err := rows.Scan(
+			&i.Name,
+			&i.Url,
+			&i.Auth,
+			&i.IndexSetCount,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -475,6 +456,7 @@ const listDeletedIndexSets = `-- name: ListDeletedIndexSets :many
 SELECT name
 FROM index_set
 WHERE deleted = true
+FOR UPDATE NOWAIT
 `
 
 func (q *Queries) ListDeletedIndexSets(ctx context.Context) ([]string, error) {

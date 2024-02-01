@@ -769,7 +769,6 @@ func (iw *indexWorker) Process(
 			iw.idx.metrics.ignoredMapping.WithLabelValues(
 				iw.indexName, p,
 			).Add(1)
-
 		}
 
 		err := errors.Join(

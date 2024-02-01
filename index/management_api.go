@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -180,7 +181,7 @@ func (s *ManagementService) deleteCluster(
 
 // ListClusters implements index.Management.
 func (s *ManagementService) ListClusters(
-	ctx context.Context, req *index.ListClustersRequest,
+	ctx context.Context, _ *index.ListClustersRequest,
 ) (*index.ListClustersResponse, error) {
 	_, err := RequireAnyScope(ctx, ScopeIndexAdmin)
 	if err != nil {
@@ -198,10 +199,22 @@ func (s *ManagementService) ListClusters(
 	res := make([]*index.Cluster, len(rows))
 
 	for i, row := range rows {
+		var auth ClusterAuth
+
+		err := json.Unmarshal(row.Auth, &auth)
+		if err != nil {
+			return nil, twirp.InternalErrorf(
+				"decode auth information for %q: %w",
+				row.Name, err)
+		}
+
 		res[i] = &index.Cluster{
 			Name:          row.Name,
 			Endpoint:      row.Url,
 			IndexSetCount: row.IndexSetCount,
+			Auth: &index.ClusterAuth{
+				Iam: auth.IAM,
+			},
 		}
 	}
 
@@ -270,7 +283,7 @@ func boolP(v bool) *bool {
 
 // PartialReindex implements index.Management.
 func (s *ManagementService) PartialReindex(
-	ctx context.Context, req *index.PartialReindexRequest,
+	ctx context.Context, _ *index.PartialReindexRequest,
 ) (*index.PartialReindexResponse, error) {
 	_, err := RequireAnyScope(ctx, ScopeIndexAdmin)
 	if err != nil {
@@ -293,6 +306,10 @@ func (s *ManagementService) RegisterCluster(
 		return nil, twirp.RequiredArgumentError("endpoint")
 	}
 
+	if req.Auth == nil {
+		return nil, twirp.RequiredArgumentError("auth")
+	}
+
 	endpointURL, err := url.Parse(req.Endpoint)
 	if err != nil {
 		return nil, twirp.InvalidArgumentError("endpoint", err.Error())
@@ -304,6 +321,16 @@ func (s *ManagementService) RegisterCluster(
 			"endpoint", "invalid URL, must be http or https and refer to a host")
 	}
 
+	auth := ClusterAuth{
+		IAM: req.Auth.Iam,
+	}
+
+	authData, err := json.Marshal(&auth)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"failed to marshal cluster auth data: %v", err)
+	}
+
 	var twErr twirp.Error
 
 	err = pg.WithTX(ctx, s.logger, s.db, "register cluster",
@@ -313,6 +340,7 @@ func (s *ManagementService) RegisterCluster(
 			err := q.AddCluster(ctx, postgres.AddClusterParams{
 				Name: req.Name,
 				Url:  req.Endpoint,
+				Auth: authData,
 			})
 			if err != nil {
 				return fmt.Errorf("add cluster: %w", err)
@@ -494,33 +522,9 @@ func (s *ManagementService) setIndexSetStatus(
 	}
 
 	if req.Active {
-		currentActive, err := q.GetCurrentActiveForUpdate(ctx)
+		err := s.checkActiveReplaced(ctx, q, idx, req.ForceActive)
 		if err != nil {
-			return fmt.Errorf(
-				"get currently active set: %w", err)
-		}
-
-		if currentActive.Name != "" && currentActive.Name != idx.Name {
-			lag := currentActive.Position - idx.Position
-			if lag > maxActivationLag && !req.ForceActive {
-				return twirp.FailedPrecondition.Errorf(
-					"the index set lags behind with more than %d events (%d), use force_active to activate anyway",
-					maxActivationLag,
-					lag,
-				)
-			}
-
-			err := s.updateIndexSetStatus(ctx, q,
-				postgres.SetIndexSetStatusParams{
-					Name:    currentActive.Name,
-					Enabled: currentActive.Enabled,
-					Active:  false,
-					Deleted: currentActive.Deleted,
-				})
-			if err != nil {
-				return fmt.Errorf(
-					"deactivate currently active set: %w", err)
-			}
+			return err
 		}
 	}
 
@@ -533,6 +537,44 @@ func (s *ManagementService) setIndexSetStatus(
 		})
 	if err != nil {
 		return fmt.Errorf("activate the set: %w", err)
+	}
+
+	return nil
+}
+
+func (s *ManagementService) checkActiveReplaced(
+	ctx context.Context,
+	q *postgres.Queries,
+	idx postgres.IndexSet,
+	forceActive bool,
+) error {
+	currentActive, err := q.GetCurrentActiveForUpdate(ctx)
+	if err != nil {
+		return fmt.Errorf(
+			"get currently active set: %w", err)
+	}
+
+	if currentActive.Name != "" && currentActive.Name != idx.Name {
+		lag := currentActive.Position - idx.Position
+		if lag > maxActivationLag && !forceActive {
+			return twirp.FailedPrecondition.Errorf(
+				"the index set lags behind with more than %d events (%d), use force_active to activate anyway",
+				maxActivationLag,
+				lag,
+			)
+		}
+
+		err := s.updateIndexSetStatus(ctx, q,
+			postgres.SetIndexSetStatusParams{
+				Name:    currentActive.Name,
+				Enabled: currentActive.Enabled,
+				Active:  false,
+				Deleted: currentActive.Deleted,
+			})
+		if err != nil {
+			return fmt.Errorf(
+				"deactivate currently active set: %w", err)
+		}
 	}
 
 	return nil

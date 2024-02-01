@@ -61,7 +61,6 @@ type Coordinator struct {
 }
 
 func NewCoordinator(
-	ctx context.Context,
 	db *pgxpool.Pool, opt CoordinatorOptions,
 ) (*Coordinator, error) {
 	rng, err := codename.DefaultRNG()
@@ -131,11 +130,7 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 
-	finCtx, cancel := context.WithTimeout(
-		context.WithoutCancel(ctx), 30*time.Second)
-	defer cancel()
-
-	err = c.finalise(finCtx)
+	err = c.finalise()
 	if err != nil {
 		errs = append(errs,
 			fmt.Errorf("post-stop cleanup: %w", err))
@@ -169,13 +164,14 @@ func (c *Coordinator) run(ctx context.Context) error {
 	return nil
 }
 
-func (c *Coordinator) finalise(ctx context.Context) error {
+func (c *Coordinator) finalise() error {
 	// Give an extra 30% on top of the index stop timeout.
 	indexerDeadline := IndexerStopTimeout / 100 * 130
 	indexersStopped := make(chan struct{})
 
 	go func() {
 		_ = c.indexerGroup.Wait()
+
 		close(indexersStopped)
 	}()
 
@@ -225,7 +221,7 @@ func (c *Coordinator) runEventloop(
 	select {
 	case <-subscribed:
 	case <-ctx.Done():
-		return ctx.Err()
+		return ctx.Err() //nolint:wrapcheck
 	}
 
 	q := postgres.New(c.db)
@@ -248,7 +244,7 @@ func (c *Coordinator) runEventloop(
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return ctx.Err() //nolint:wrapcheck
 		case change := <-c.changes:
 			err := c.handleChange(ctx, change)
 			if err != nil {
@@ -261,6 +257,9 @@ func (c *Coordinator) runEventloop(
 func (c *Coordinator) handleChange(
 	ctx context.Context, change Notification,
 ) error {
+	// Keeping this as a switch to keep exhaustive linting of NotifyChannel.
+	//
+	//nolint:gocritic
 	switch change.Type {
 	case NotifyIndexStatusChange:
 		set, err := c.q.GetIndexSet(ctx, change.Name)
@@ -485,7 +484,7 @@ func (c *Coordinator) startIndexer(
 	go func() {
 		select {
 		case <-c.stop:
-			i.Stop(IndexerStopTimeout)
+			_ = i.Stop(IndexerStopTimeout)
 		case <-i.Stopping():
 			return
 		}
@@ -623,6 +622,7 @@ func (c *Coordinator) cleanupLoop(ctx context.Context) {
 		}
 
 		// Wait between 12 and 24 hours.
+		//nolint: gosec
 		randomMinutes := time.Duration(rand.Intn(12*60)) * time.Minute
 		delay := 12*time.Hour + randomMinutes
 
@@ -636,6 +636,7 @@ func (c *Coordinator) cleanupLoop(ctx context.Context) {
 
 // Delete old index sets that have been marked as deleted.
 func (c *Coordinator) cleanup(ctx context.Context) error {
+	//nolint:wrapcheck
 	return pg.WithTX(ctx, c.logger, c.db, "cleanup", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
@@ -669,6 +670,7 @@ func (c *Coordinator) EnsureDefaultIndexSet(
 	defaultClusterURL string,
 	clusterAuth ClusterAuth,
 ) error {
+	//nolint:wrapcheck
 	return pg.WithTX(ctx, c.logger, c.db, "ensure-default-indexer", func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 

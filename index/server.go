@@ -19,7 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type IndexParameters struct {
+type Parameters struct {
 	Addr            string
 	ProfileAddr     string
 	Logger          *slog.Logger
@@ -35,10 +35,10 @@ type IndexParameters struct {
 	PublicJWTKey    *ecdsa.PublicKey
 }
 
-func RunIndex(ctx context.Context, p IndexParameters) error {
+func RunIndex(ctx context.Context, p Parameters) error {
 	logger := p.Logger
 
-	coord, err := NewCoordinator(ctx, p.Database, CoordinatorOptions{
+	coord, err := NewCoordinator(p.Database, CoordinatorOptions{
 		Logger:          logger,
 		Metrics:         p.Metrics,
 		DefaultLanguage: p.DefaultLanguage,
@@ -46,6 +46,9 @@ func RunIndex(ctx context.Context, p IndexParameters) error {
 		Documents:       p.Documents,
 		Validator:       p.Validator,
 	})
+	if err != nil {
+		return fmt.Errorf("create coordinator: %w", err)
+	}
 
 	err = coord.EnsureDefaultIndexSet(ctx, p.DefaultCluster, p.ClusterAuth)
 	if err != nil {

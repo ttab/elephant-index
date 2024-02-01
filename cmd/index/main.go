@@ -234,7 +234,7 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("set up metrics: %w", err)
 	}
 
-	err = index.RunIndex(c.Context, index.IndexParameters{
+	err = index.RunIndex(c.Context, index.Parameters{
 		Addr:           addr,
 		ProfileAddr:    profileAddr,
 		Logger:         logger,

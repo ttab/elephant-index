@@ -26,7 +26,7 @@ FROM index_set
 WHERE cluster = sqlc.arg(cluster)::text;
 
 -- name: ListClustersWithCounts :many
-SELECT c.name, c.url, coalesce(i.c, 0) AS index_set_count
+SELECT c.name, c.url, c.auth, coalesce(i.c, 0) AS index_set_count
 FROM cluster AS c
      LEFT JOIN (
           SELECT cluster, COUNT(*) AS c
