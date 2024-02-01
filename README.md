@@ -12,9 +12,9 @@ Elephant index proxies search requests to OpenSearch with some extra processing.
 
 ### Index names
 
-The elephant index creates indexes in the pattern "documents-[version]-[type]-[language]". So if the version of the index is "v2", the type of the document is "core/article", and the language is "sv", the following index will be used: "documents-v2-core_article-sv".
+The elephant index creates indexes in the pattern `documents-[random name]-[type]-[language]`. So if the name of the index set is "factual-tiger", the type of the document is "core/article", and the language is "sv", the following index will be used: "documents-factual-tiger-core_article-sv".
 
-Incoming searches will only be able to specify the part of the index name that comes after "documents-v2-" as the first part depends on internal indexer state. The reason for having a version part of the index name is that that will be used when re-indexing. When re-indexing `vN+1` indexes will be created, and the event-log will be replayed to populate those indexes. When the new indexes have caught up we can switch over to using the new indexes. 
+Incoming searches will only be able to specify the part of the index name that comes after "documents-factual-tiger-" as the first part depends on internal indexer state. The reason for having a index set part of the index name is that that will be used when re-indexing. When re-indexing a new index set will be created, and the event-log will be replayed to populate those indexes. When the new indexes have caught up we can switch over to using the new indexes. 
 
 ## Local setup
 

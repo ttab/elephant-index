@@ -37,7 +37,6 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
-          # Specify the build_platforms variable in the GitHub repo
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}

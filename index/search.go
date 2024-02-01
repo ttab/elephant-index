@@ -60,23 +60,26 @@ type DocumentSource struct {
 	DocumentLanguage []string `json:"document.language"`
 }
 
-// {
-//   "error": {
-//     "reason": "Invalid SQL query",
-//     "details": "Field [unknown] cannot be found or used here.",
-//     "type": "SemanticAnalysisException"
-//   },
-//   "status": 400
-// }
+// ElasticErrors are used to emulate the error response structure of OpenSearch.
+//
+//      {
+//        "error": {
+//          "reason": "Invalid SQL query",
+//          "details": "Field [unknown] cannot be found or used here.",
+//          "type": "SemanticAnalysisException"
+//        },
+//        "status": 400
+//      }
 
 type ElasticErrorType string
 
 const (
-	ErrorTypeUnauthorized ElasticErrorType = "elephant.Unauthorized"
-	ErrorTypeAccessDenied ElasticErrorType = "elephant.AccessDenied"
-	ErrorTypeInternal     ElasticErrorType = "elephant.InternalError"
-	ErrorTypeBadRequest   ElasticErrorType = "elephant.BadRequest"
-	ErrorTypeNotFound     ElasticErrorType = "elephant.NotFound"
+	ErrorTypeUnauthorized       ElasticErrorType = "elephant.Unauthorized"
+	ErrorTypeAccessDenied       ElasticErrorType = "elephant.AccessDenied"
+	ErrorTypeInternal           ElasticErrorType = "elephant.InternalError"
+	ErrorTypeBadRequest         ElasticErrorType = "elephant.BadRequest"
+	ErrorTypeNotFound           ElasticErrorType = "elephant.NotFound"
+	ErrorTypeClusterUnavailable ElasticErrorType = "elephant.ClusterUnavailable"
 )
 
 func (et ElasticErrorType) StatusCode() int {
@@ -91,6 +94,8 @@ func (et ElasticErrorType) StatusCode() int {
 		return http.StatusBadRequest
 	case ErrorTypeNotFound:
 		return http.StatusNotFound
+	case ErrorTypeClusterUnavailable:
+		return http.StatusBadGateway
 	}
 
 	return http.StatusInternalServerError
@@ -108,6 +113,8 @@ func (et ElasticErrorType) Reason() string {
 		return "Bad request"
 	case ErrorTypeNotFound:
 		return "Not found"
+	case ErrorTypeClusterUnavailable:
+		return "Cluster unavailable"
 	}
 
 	return ErrorTypeInternal.Reason()

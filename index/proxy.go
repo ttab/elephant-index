@@ -13,49 +13,29 @@ import (
 	"github.com/ttab/elephantine"
 )
 
+type ActiveIndexGetter interface {
+	GetActiveIndex() (*opensearch.Client, string)
+}
+
 type ElasticProxy struct {
 	logger       *slog.Logger
-	client       *opensearch.Client
 	publicJWTKey *ecdsa.PublicKey
+	active       ActiveIndexGetter
 }
 
 func NewElasticProxy(
 	logger *slog.Logger,
-	client *opensearch.Client,
+	active ActiveIndexGetter,
 	publicJWTKey *ecdsa.PublicKey,
 ) *ElasticProxy {
 	return &ElasticProxy{
 		logger:       logger,
-		client:       client,
+		active:       active,
 		publicJWTKey: publicJWTKey,
 	}
 }
 
 func (ep *ElasticProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	corsRequestMethod := r.Header.Get("Access-Control-Request-Method")
-
-	// Very simple CORS implementation that allows anything.
-	// TODO: whitelist origins through config.
-	if r.Method == http.MethodOptions && corsRequestMethod != "" {
-		header := w.Header()
-
-		header.Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-		header.Set("Access-Control-Allow-Headers",
-			r.Header.Get("Access-Control-Request-Headers"))
-		header.Set("Access-Control-Allow-Origin",
-			r.Header.Get("Origin"))
-		header.Set("Access-Control-Max-Age", "3600")
-
-		w.WriteHeader(http.StatusOK)
-
-		return
-	}
-
-	w.Header().Set(
-		"Access-Control-Allow-Origin",
-		r.Header.Get("Origin"),
-	)
-
 	logger := ep.logger.With(elephantine.LogKeyRoute, r.URL.Path)
 
 	parts := splitPath(r.URL.Path)
@@ -88,7 +68,14 @@ func (ep *ElasticProxy) searchHandler(
 			"no authorization header")
 	}
 
-	indexBase := "documents-v2-"
+	client, indexSet := ep.active.GetActiveIndex()
+	if client == nil {
+		return ElasticErrorf(
+			ErrorTypeClusterUnavailable,
+			"the active index is not set")
+	}
+
+	indexBase := "documents-" + indexSet + "-"
 	parts := splitPath(r.URL.Path)
 
 	indicesParam := "_all"
@@ -182,15 +169,17 @@ func (ep *ElasticProxy) searchHandler(
 			"failed to marshal upstream search request: %v", err)
 	}
 
-	res, err := ep.client.Search(
-		ep.client.Search.WithIndex(indices...),
-		ep.client.Search.WithContext(ctx),
-		ep.client.Search.WithBody(&searchBody))
+	res, err := client.Search(
+		client.Search.WithIndex(indices...),
+		client.Search.WithContext(ctx),
+		client.Search.WithBody(&searchBody))
 	if err != nil {
 		return ElasticErrorf(
 			ErrorTypeInternal,
 			"failed to perform request: %v", err)
 	}
+
+	defer elephantine.SafeClose(ep.logger, "search response", res.Body)
 
 	header := w.Header()
 

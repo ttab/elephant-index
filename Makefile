@@ -4,7 +4,7 @@ rollback_to?=0
 UID := $(shell id -u)
 GID := $(shell id -g)
 
-SQL_TOOLS := ghcr.io/ttab/elephant-sqltools:v0.1.0
+SQL_TOOLS := ghcr.io/ttab/elephant-sqltools:v0.1.3
 
 SQLC := docker run --rm \
 	-v "${PWD}:/usr/src" -u $(UID):$(GID) \

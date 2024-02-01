@@ -10,6 +10,7 @@ type Metrics struct {
 	indexerFailures *prometheus.CounterVec
 	unknownEvents   *prometheus.CounterVec
 	mappingUpdate   *prometheus.CounterVec
+	ignoredMapping  *prometheus.CounterVec
 	indexedDocument *prometheus.CounterVec
 	enrichErrors    *prometheus.CounterVec
 	logPos          *prometheus.GaugeVec
@@ -46,6 +47,17 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		[]string{"index"},
 	)
 	if err := reg.Register(mappingUpdate); err != nil {
+		return nil, fmt.Errorf("failed to register metric: %w", err)
+	}
+
+	ignoredMapping := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "elephant_indexer_ignored_mapping_total",
+			Help: "Number of times we have ignored a mapping change.",
+		},
+		[]string{"index", "property"},
+	)
+	if err := reg.Register(ignoredMapping); err != nil {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
 
@@ -87,6 +99,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		unknownEvents:   unknownEvents,
 		logPos:          logPos,
 		mappingUpdate:   mappingUpdate,
+		ignoredMapping:  ignoredMapping,
 		indexedDocument: indexedDocument,
 		enrichErrors:    enrichErrors,
 	}
