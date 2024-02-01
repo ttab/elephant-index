@@ -3,7 +3,7 @@
 --
 
 -- Dumped from database version 15.3 (Debian 15.3-1.pgdg120+1)
--- Dumped by pg_dump version 16.0 (Debian 16.0-1.pgdg120+1)
+-- Dumped by pg_dump version 16.1 (Debian 16.1-1.pgdg120+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -27,6 +27,7 @@ SET default_table_access_method = heap;
 CREATE TABLE public.cluster (
     name text NOT NULL,
     url text NOT NULL,
+    auth jsonb NOT NULL,
     created timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -55,9 +56,9 @@ CREATE TABLE public.index_set (
     name text NOT NULL,
     "position" bigint NOT NULL,
     cluster text,
-    streaming boolean DEFAULT true NOT NULL,
-    active boolean DEFAULT true NOT NULL,
+    active boolean DEFAULT false NOT NULL,
     enabled boolean DEFAULT true NOT NULL,
+    deleted boolean DEFAULT false NOT NULL,
     modified timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -147,6 +148,13 @@ ALTER TABLE ONLY public.job_lock
 --
 
 CREATE INDEX document_index_content_type_idx ON public.document_index USING btree (content_type);
+
+
+--
+-- Name: unique_single_active; Type: INDEX; Schema: public; Owner: indexer
+--
+
+CREATE UNIQUE INDEX unique_single_active ON public.index_set USING btree (active) WHERE (active = true);
 
 
 --

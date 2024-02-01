@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -52,6 +53,8 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 		q:               postgres.New(opts.Database),
 		indexes:         make(map[string]*indexWorker),
 		defaultLanguage: opts.DefaultLanguage,
+		stop:            make(chan struct{}),
+		stopped:         make(chan struct{}),
 	}
 
 	// We speculatively try to create the index set here, but don't treat a
@@ -82,9 +85,100 @@ type Indexer struct {
 	q *postgres.Queries
 
 	indexes map[string]*indexWorker
+
+	stopOnce sync.Once
+	stop     chan struct{}
+	stopped  chan struct{}
+}
+
+func (idx *Indexer) Stopping() <-chan struct{} {
+	return idx.stop
 }
 
 func (idx *Indexer) Run(ctx context.Context) error {
+	if idx.askedToStop() {
+		return errors.New("indexer has been stopped")
+	}
+
+	defer func() {
+		close(idx.stopped)
+		idx.logger.Info("indexer has stopped")
+	}()
+
+	lock, err := pg.NewJobLock(idx.database, idx.logger,
+		"indexer-"+idx.name,
+		pg.JobLockOptions{})
+	if err != nil {
+		return fmt.Errorf("create job lock: %w", err)
+	}
+
+	// Set up a context that will be cancelled if we're asked to stop.
+	lockContext, cancel := context.WithCancel(ctx)
+
+	go func() {
+		<-idx.stop
+		cancel()
+	}()
+
+	err = lock.RunWithContext(lockContext, idx.indexerLoop)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		return fmt.Errorf("run indexer loop: %w", err)
+	}
+
+	return nil
+}
+
+// Stop the indexer. Blocks until it has stopped or the timeout has been
+// reached.
+func (idx *Indexer) Stop(timeout time.Duration) error {
+	idx.stopOnce.Do(func() {
+		idx.logger.Info("stopping indexer")
+		close(idx.stop)
+	})
+
+	select {
+	case <-time.After(timeout):
+		return errors.New("timed out")
+	case <-idx.stopped:
+		return nil
+	}
+}
+
+// Convenience function for cases where it's easier than doing a channel select
+// on c.stop.
+func (idx *Indexer) askedToStop() bool {
+	select {
+	case <-idx.stop:
+		return true
+	default:
+		return false
+	}
+}
+
+const (
+	opUpdate = iota
+	opDelete
+)
+
+type enrichJob struct {
+	ctx   context.Context
+	start time.Time
+	done  chan struct{}
+	err   error
+
+	UUID      string
+	Operation int
+	State     *DocumentState
+	doc       *newsdoc.Document
+}
+
+func (ij *enrichJob) Finish(state *DocumentState, err error) {
+	ij.State = state
+	ij.err = err
+	close(ij.done)
+}
+
+func (idx *Indexer) indexerLoop(ctx context.Context) error {
 	pos, err := idx.q.GetIndexSetPosition(ctx, idx.name)
 	if err != nil {
 		return fmt.Errorf("fetching current index set position: %w", err)
@@ -94,6 +188,10 @@ func (idx *Indexer) Run(ctx context.Context) error {
 		elephantine.LogKeyEventID, pos)
 
 	for {
+		if idx.askedToStop() {
+			return nil
+		}
+
 		newPos, err := idx.loopIteration(ctx, pos)
 		if err != nil {
 			idx.metrics.indexerFailures.WithLabelValues(idx.name).Inc()
@@ -135,36 +233,14 @@ func (idx *Indexer) Run(ctx context.Context) error {
 	}
 }
 
-const (
-	opUpdate = iota
-	opDelete
-)
-
-type enrichJob struct {
-	ctx   context.Context
-	start time.Time
-	done  chan struct{}
-	err   error
-
-	UUID      string
-	Operation int
-	State     *DocumentState
-	doc       *newsdoc.Document
-}
-
-func (ij *enrichJob) Finish(state *DocumentState, err error) {
-	ij.State = state
-	ij.err = err
-	close(ij.done)
-}
-
 func (idx *Indexer) loopIteration(
 	ctx context.Context, pos int64,
 ) (int64, error) {
-	log, err := idx.documents.CompactedEventlog(ctx, &repository.GetCompactedEventlogRequest{
-		After: pos,
-		Limit: 500,
-	})
+	log, err := idx.documents.CompactedEventlog(ctx,
+		&repository.GetCompactedEventlogRequest{
+			After: pos,
+			Limit: 500,
+		})
 	if err != nil {
 		return 0, fmt.Errorf("get eventlog entries: %w", err)
 	}
@@ -222,8 +298,8 @@ func (idx *Indexer) loopIteration(
 				doc:       doc,
 			}
 		case "document", "acl", "status":
-			// Find all existing documents with the same Id but a different
-			// language
+			// Find all existing documents with the same Id but a
+			// different language
 			obDocs, err := idx.findObsoleteDocuments(ctx, item, language)
 			if err != nil {
 				return 0, fmt.Errorf("find obsolete docs: %w", err)
@@ -473,7 +549,7 @@ func newIndexWorker(
 	if errors.Is(err, pgx.ErrNoRows) {
 		mappingData = []byte("{}")
 
-		err := idx.q.CreateIndex(ctx, postgres.CreateIndexParams{
+		err := idx.q.CreateDocumentIndex(ctx, postgres.CreateDocumentIndexParams{
 			Name:        name,
 			SetName:     idx.name,
 			ContentType: contentType,
@@ -632,7 +708,8 @@ func (iw *indexWorker) Process(
 
 		var twErr twirp.Error
 		if errors.As(job.err, &twErr) && twErr.Code() == twirp.NotFound {
-			iw.logger.DebugContext(ctx, "the document has been deleted, removing from index",
+			iw.logger.DebugContext(ctx,
+				"the document has been deleted, removing from index",
 				elephantine.LogKeyDocumentUUID, job.UUID,
 				elephantine.LogKeyError, job.err)
 
@@ -643,7 +720,8 @@ func (iw *indexWorker) Process(
 				iw.contentType, iw.indexName,
 			).Inc()
 
-			iw.logger.ErrorContext(ctx, "failed to enrich document for indexing",
+			iw.logger.ErrorContext(ctx,
+				"failed to enrich document for indexing",
 				elephantine.LogKeyDocumentUUID, job.UUID,
 				elephantine.LogKeyError, job.err)
 
@@ -688,7 +766,7 @@ func (iw *indexWorker) Process(
 				continue
 			}
 
-			iw.idx.m.ignoredMapping.WithLabelValues(
+			iw.idx.metrics.ignoredMapping.WithLabelValues(
 				iw.indexName, p,
 			).Add(1)
 

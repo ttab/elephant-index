@@ -8,15 +8,13 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/opensearch-project/opensearch-go/v2"
-	"github.com/opensearch-project/opensearch-go/v2/signer/awsv2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/index"
+	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/oauth2"
@@ -92,7 +90,7 @@ func main() {
 			},
 			&cli.BoolFlag{
 				Name:    "managed-opensearch",
-				EnvVars: []string{"MANAGED_OPEN_SEARCH"},
+				EnvVars: []string{"MANAGED_OPENSEARCH"},
 			},
 			&cli.BoolFlag{
 				Name:    "no-indexer",
@@ -229,32 +227,7 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("create schema loader: %w", err)
 	}
 
-	osConfig := opensearch.Config{
-		Addresses: []string{opensearchEndpoint},
-	}
-
-	if managedOS {
-		logger.DebugContext(c.Context, "using AWS request signing for opensearch")
-
-		awsCfg, err := config.LoadDefaultConfig(c.Context)
-		if err != nil {
-			return fmt.Errorf("load default AWS config: %w", err)
-		}
-
-		// Create an AWS request Signer and load AWS configuration using default config folder or env vars.
-		signer, err := awsv2.NewSignerWithService(awsCfg, "es")
-		if err != nil {
-			return fmt.Errorf("create request signer for opensearch: %w", err)
-		}
-
-		osConfig.Signer = signer
-	}
-
-	searchClient, err := opensearch.NewClient(osConfig)
-	if err != nil {
-		return fmt.Errorf(
-			"failed to create opensearch client: %w", err)
-	}
+	clients := index.NewOSClientProvider(postgres.New(dbpool))
 
 	metrics, err := index.NewMetrics(prometheus.DefaultRegisterer)
 	if err != nil {
@@ -262,12 +235,15 @@ func runIndexer(c *cli.Context) error {
 	}
 
 	err = index.RunIndex(c.Context, index.IndexParameters{
-		Addr:            addr,
-		ProfileAddr:     profileAddr,
-		Logger:          logger,
-		DefaultSetName:  "v2",
-		Database:        dbpool,
-		Client:          searchClient,
+		Addr:           addr,
+		ProfileAddr:    profileAddr,
+		Logger:         logger,
+		Database:       dbpool,
+		Client:         clients.GetClientForCluster,
+		DefaultCluster: opensearchEndpoint,
+		ClusterAuth: index.ClusterAuth{
+			IAM: managedOS,
+		},
 		Documents:       documents,
 		Validator:       loader,
 		Metrics:         metrics,

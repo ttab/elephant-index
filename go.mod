@@ -12,7 +12,7 @@ require (
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rakutentech/jwk-go v1.1.3
 	github.com/ttab/elephant-api v0.8.0-index-b-1
-	github.com/ttab/elephantine v0.11.1
+	github.com/ttab/elephantine v0.11.2
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/newsdoc v0.4.2
 	github.com/ttab/revisor v0.4.0
@@ -22,6 +22,9 @@ require (
 	golang.org/x/oauth2 v0.16.0
 	golang.org/x/sync v0.6.0
 )
+
+replace github.com/ttab/elephant-api v0.8.0-index-b-1 => ../elephant-api
+replace github.com/ttab/elephantine v0.11.2 => ../elephantine
 
 require (
 	github.com/IvanZagoskin/wkt v0.0.1 // indirect
@@ -65,6 +68,7 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.1.1 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
+	github.com/lucasepe/codename v0.2.0 // indirect
 	github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect

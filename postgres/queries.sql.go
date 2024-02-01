@@ -12,17 +12,38 @@ import (
 )
 
 const addCluster = `-- name: AddCluster :exec
-INSERT INTO cluster(name, url) VALUES($1, $2)
+INSERT INTO cluster(name, url, auth) VALUES($1, $2, $3)
 `
 
 type AddClusterParams struct {
 	Name string
 	Url  string
+	Auth []byte
 }
 
 func (q *Queries) AddCluster(ctx context.Context, arg AddClusterParams) error {
-	_, err := q.db.Exec(ctx, addCluster, arg.Name, arg.Url)
+	_, err := q.db.Exec(ctx, addCluster, arg.Name, arg.Url, arg.Auth)
 	return err
+}
+
+const clusterIndexCount = `-- name: ClusterIndexCount :one
+SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE deleted = true) AS pending_delete
+FROM index_set
+WHERE cluster = $1::text
+`
+
+type ClusterIndexCountRow struct {
+	Total         int64
+	PendingDelete int64
+}
+
+func (q *Queries) ClusterIndexCount(ctx context.Context, cluster string) (ClusterIndexCountRow, error) {
+	row := q.db.QueryRow(ctx, clusterIndexCount, cluster)
+	var i ClusterIndexCountRow
+	err := row.Scan(&i.Total, &i.PendingDelete)
+	return i, err
 }
 
 const createDocumentIndex = `-- name: CreateDocumentIndex :exec
@@ -48,17 +69,21 @@ func (q *Queries) CreateDocumentIndex(ctx context.Context, arg CreateDocumentInd
 }
 
 const createIndexSet = `-- name: CreateIndexSet :exec
-INSERT INTO index_set(name, position, cluster, streaming, active, enabled, modified)
-VALUES ($1, $2, $3::text, $4, $5, $6, NOW())
+INSERT INTO index_set(
+       name, position, cluster, active,
+       enabled, modified
+) VALUES (
+       $1, $2, $3::text, $4,
+       $5, NOW()
+)
 `
 
 type CreateIndexSetParams struct {
-	Name      string
-	Position  int64
-	Cluster   string
-	Streaming bool
-	Active    bool
-	Enabled   bool
+	Name     string
+	Position int64
+	Cluster  string
+	Active   bool
+	Enabled  bool
 }
 
 func (q *Queries) CreateIndexSet(ctx context.Context, arg CreateIndexSetParams) error {
@@ -66,17 +91,35 @@ func (q *Queries) CreateIndexSet(ctx context.Context, arg CreateIndexSetParams) 
 		arg.Name,
 		arg.Position,
 		arg.Cluster,
-		arg.Streaming,
 		arg.Active,
 		arg.Enabled,
 	)
 	return err
 }
 
+const deleteCluster = `-- name: DeleteCluster :exec
+DELETE FROM cluster WHERE name = $1
+`
+
+func (q *Queries) DeleteCluster(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, deleteCluster, name)
+	return err
+}
+
+const deleteIndexSet = `-- name: DeleteIndexSet :exec
+DELETE FROM index_set
+WHERE name = $1 AND deleted = true
+`
+
+func (q *Queries) DeleteIndexSet(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, deleteIndexSet, name)
+	return err
+}
+
 const deleteOldIndexSets = `-- name: DeleteOldIndexSets :exec
 DELETE FROM index_set
 WHERE modified < $1
-AND NOT active AND NOT enabled
+AND deleted
 `
 
 func (q *Queries) DeleteOldIndexSets(ctx context.Context, cutoff pgtype.Timestamptz) error {
@@ -98,59 +141,81 @@ func (q *Queries) DeleteUnusedClusters(ctx context.Context, cutoff pgtype.Timest
 	return err
 }
 
-const getClusters = `-- name: GetClusters :many
-SELECT name, url FROM cluster
+const getActiveIndexSet = `-- name: GetActiveIndexSet :one
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set WHERE active = true
 `
 
-type GetClustersRow struct {
-	Name string
-	Url  string
+func (q *Queries) GetActiveIndexSet(ctx context.Context) (IndexSet, error) {
+	row := q.db.QueryRow(ctx, getActiveIndexSet)
+	var i IndexSet
+	err := row.Scan(
+		&i.Name,
+		&i.Position,
+		&i.Cluster,
+		&i.Active,
+		&i.Enabled,
+		&i.Deleted,
+		&i.Modified,
+	)
+	return i, err
 }
 
-func (q *Queries) GetClusters(ctx context.Context) ([]GetClustersRow, error) {
+const getCluster = `-- name: GetCluster :one
+SELECT name, url, auth, created
+FROM cluster
+WHERE name = $1
+`
+
+func (q *Queries) GetCluster(ctx context.Context, name string) (Cluster, error) {
+	row := q.db.QueryRow(ctx, getCluster, name)
+	var i Cluster
+	err := row.Scan(
+		&i.Name,
+		&i.Url,
+		&i.Auth,
+		&i.Created,
+	)
+	return i, err
+}
+
+const getClusterForUpdate = `-- name: GetClusterForUpdate :one
+SELECT name, url, auth, created
+FROM cluster
+WHERE name = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetClusterForUpdate(ctx context.Context, name string) (Cluster, error) {
+	row := q.db.QueryRow(ctx, getClusterForUpdate, name)
+	var i Cluster
+	err := row.Scan(
+		&i.Name,
+		&i.Url,
+		&i.Auth,
+		&i.Created,
+	)
+	return i, err
+}
+
+const getClusters = `-- name: GetClusters :many
+SELECT name, url, auth, created FROM cluster
+`
+
+func (q *Queries) GetClusters(ctx context.Context) ([]Cluster, error) {
 	rows, err := q.db.Query(ctx, getClusters)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetClustersRow
+	var items []Cluster
 	for rows.Next() {
-		var i GetClustersRow
-		if err := rows.Scan(&i.Name, &i.Url); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getForActivation = `-- name: GetForActivation :many
-SELECT name, position, cluster, streaming, active, enabled, modified
-FROM index_set
-WHERE active OR name = $1
-FOR UPDATE
-`
-
-func (q *Queries) GetForActivation(ctx context.Context, name string) ([]IndexSet, error) {
-	rows, err := q.db.Query(ctx, getForActivation, name)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []IndexSet
-	for rows.Next() {
-		var i IndexSet
+		var i Cluster
 		if err := rows.Scan(
 			&i.Name,
-			&i.Position,
-			&i.Cluster,
-			&i.Streaming,
-			&i.Active,
-			&i.Enabled,
-			&i.Modified,
+			&i.Url,
+			&i.Auth,
+			&i.Created,
 		); err != nil {
 			return nil, err
 		}
@@ -160,6 +225,27 @@ func (q *Queries) GetForActivation(ctx context.Context, name string) ([]IndexSet
 		return nil, err
 	}
 	return items, nil
+}
+
+const getCurrentActiveForUpdate = `-- name: GetCurrentActiveForUpdate :one
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set WHERE active = true
+FOR UPDATE
+`
+
+func (q *Queries) GetCurrentActiveForUpdate(ctx context.Context) (IndexSet, error) {
+	row := q.db.QueryRow(ctx, getCurrentActiveForUpdate)
+	var i IndexSet
+	err := row.Scan(
+		&i.Name,
+		&i.Position,
+		&i.Cluster,
+		&i.Active,
+		&i.Enabled,
+		&i.Deleted,
+		&i.Modified,
+	)
+	return i, err
 }
 
 const getIndexMappings = `-- name: GetIndexMappings :one
@@ -176,6 +262,70 @@ func (q *Queries) GetIndexMappings(ctx context.Context, name string) ([]byte, er
 	return mappings, err
 }
 
+const getIndexSet = `-- name: GetIndexSet :one
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set WHERE name = $1
+`
+
+func (q *Queries) GetIndexSet(ctx context.Context, name string) (IndexSet, error) {
+	row := q.db.QueryRow(ctx, getIndexSet, name)
+	var i IndexSet
+	err := row.Scan(
+		&i.Name,
+		&i.Position,
+		&i.Cluster,
+		&i.Active,
+		&i.Enabled,
+		&i.Deleted,
+		&i.Modified,
+	)
+	return i, err
+}
+
+const getIndexSetForDelete = `-- name: GetIndexSetForDelete :one
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set
+WHERE name = $1 AND deleted = true
+FOR UPDATE NOWAIT
+`
+
+func (q *Queries) GetIndexSetForDelete(ctx context.Context, name string) (IndexSet, error) {
+	row := q.db.QueryRow(ctx, getIndexSetForDelete, name)
+	var i IndexSet
+	err := row.Scan(
+		&i.Name,
+		&i.Position,
+		&i.Cluster,
+		&i.Active,
+		&i.Enabled,
+		&i.Deleted,
+		&i.Modified,
+	)
+	return i, err
+}
+
+const getIndexSetForUpdate = `-- name: GetIndexSetForUpdate :one
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set
+WHERE name = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetIndexSetForUpdate(ctx context.Context, name string) (IndexSet, error) {
+	row := q.db.QueryRow(ctx, getIndexSetForUpdate, name)
+	var i IndexSet
+	err := row.Scan(
+		&i.Name,
+		&i.Position,
+		&i.Cluster,
+		&i.Active,
+		&i.Enabled,
+		&i.Deleted,
+		&i.Modified,
+	)
+	return i, err
+}
+
 const getIndexSetPosition = `-- name: GetIndexSetPosition :one
 SELECT position
 FROM index_set
@@ -190,8 +340,8 @@ func (q *Queries) GetIndexSetPosition(ctx context.Context, name string) (int64, 
 }
 
 const getIndexSets = `-- name: GetIndexSets :many
-SELECT name, position, cluster, streaming, active, enabled, modified
-FROM index_set
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set WHERE deleted = false
 `
 
 func (q *Queries) GetIndexSets(ctx context.Context) ([]IndexSet, error) {
@@ -207,9 +357,9 @@ func (q *Queries) GetIndexSets(ctx context.Context) ([]IndexSet, error) {
 			&i.Name,
 			&i.Position,
 			&i.Cluster,
-			&i.Streaming,
 			&i.Active,
 			&i.Enabled,
+			&i.Deleted,
 			&i.Modified,
 		); err != nil {
 			return nil, err
@@ -222,8 +372,133 @@ func (q *Queries) GetIndexSets(ctx context.Context) ([]IndexSet, error) {
 	return items, nil
 }
 
+const indexSetExists = `-- name: IndexSetExists :one
+SELECT COUNT(*) = 1
+FROM index_set
+WHERE name = $1
+`
+
+func (q *Queries) IndexSetExists(ctx context.Context, name string) (bool, error) {
+	row := q.db.QueryRow(ctx, indexSetExists, name)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const indexSetQuery = `-- name: IndexSetQuery :many
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set WHERE deleted = false
+AND ($1::text IS NULL OR cluster = $1)
+AND ($2::bool IS NULL OR active = $2)
+AND ($3::bool IS NULL OR enabled = $3)
+LIMIT 10 OFFSET $4
+`
+
+type IndexSetQueryParams struct {
+	Cluster   pgtype.Text
+	Active    pgtype.Bool
+	Enabled   pgtype.Bool
+	RowOffset int32
+}
+
+func (q *Queries) IndexSetQuery(ctx context.Context, arg IndexSetQueryParams) ([]IndexSet, error) {
+	rows, err := q.db.Query(ctx, indexSetQuery,
+		arg.Cluster,
+		arg.Active,
+		arg.Enabled,
+		arg.RowOffset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IndexSet
+	for rows.Next() {
+		var i IndexSet
+		if err := rows.Scan(
+			&i.Name,
+			&i.Position,
+			&i.Cluster,
+			&i.Active,
+			&i.Enabled,
+			&i.Deleted,
+			&i.Modified,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listClustersWithCounts = `-- name: ListClustersWithCounts :many
+SELECT c.name, c.url, coalesce(i.c, 0) AS index_set_count
+FROM cluster AS c
+     LEFT JOIN (
+          SELECT cluster, COUNT(*) AS c
+          FROM index_set
+          WHERE deleted = false
+          GROUP BY cluster
+     ) AS i ON i.cluster = c.name
+`
+
+type ListClustersWithCountsRow struct {
+	Name          string
+	Url           string
+	IndexSetCount int64
+}
+
+func (q *Queries) ListClustersWithCounts(ctx context.Context) ([]ListClustersWithCountsRow, error) {
+	rows, err := q.db.Query(ctx, listClustersWithCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListClustersWithCountsRow
+	for rows.Next() {
+		var i ListClustersWithCountsRow
+		if err := rows.Scan(&i.Name, &i.Url, &i.IndexSetCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeletedIndexSets = `-- name: ListDeletedIndexSets :many
+SELECT name
+FROM index_set
+WHERE deleted = true
+`
+
+func (q *Queries) ListDeletedIndexSets(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, listDeletedIndexSets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIndexSets = `-- name: ListIndexSets :many
-SELECT name FROM index_set
+SELECT name FROM index_set WHERE deleted = false
 `
 
 func (q *Queries) ListIndexSets(ctx context.Context) ([]string, error) {
@@ -246,6 +521,15 @@ func (q *Queries) ListIndexSets(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const lockClusters = `-- name: LockClusters :exec
+LOCK TABLE cluster IN ACCESS EXCLUSIVE MODE
+`
+
+func (q *Queries) LockClusters(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockClusters)
+	return err
+}
+
 const notify = `-- name: Notify :exec
 SELECT pg_notify($1::text, $2::text)
 `
@@ -260,22 +544,6 @@ func (q *Queries) Notify(ctx context.Context, arg NotifyParams) error {
 	return err
 }
 
-const setActive = `-- name: SetActive :exec
-UPDATE index_set
-SET active = $1, modified = NOW()
-WHERE name = $2
-`
-
-type SetActiveParams struct {
-	Active bool
-	Name   string
-}
-
-func (q *Queries) SetActive(ctx context.Context, arg SetActiveParams) error {
-	_, err := q.db.Exec(ctx, setActive, arg.Active, arg.Name)
-	return err
-}
-
 const setClusterWhereMissing = `-- name: SetClusterWhereMissing :exec
 UPDATE index_set
 SET cluster = $1::text
@@ -284,6 +552,29 @@ WHERE cluster IS NULL
 
 func (q *Queries) SetClusterWhereMissing(ctx context.Context, cluster string) error {
 	_, err := q.db.Exec(ctx, setClusterWhereMissing, cluster)
+	return err
+}
+
+const setIndexSetStatus = `-- name: SetIndexSetStatus :exec
+UPDATE index_set
+SET active = $1, enabled = $2, deleted = $3, modified = NOW()
+WHERE name = $4
+`
+
+type SetIndexSetStatusParams struct {
+	Active  bool
+	Enabled bool
+	Deleted bool
+	Name    string
+}
+
+func (q *Queries) SetIndexSetStatus(ctx context.Context, arg SetIndexSetStatusParams) error {
+	_, err := q.db.Exec(ctx, setIndexSetStatus,
+		arg.Active,
+		arg.Enabled,
+		arg.Deleted,
+		arg.Name,
+	)
 	return err
 }
 

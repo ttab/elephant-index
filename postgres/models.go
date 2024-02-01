@@ -11,6 +11,7 @@ import (
 type Cluster struct {
 	Name    string
 	Url     string
+	Auth    []byte
 	Created pgtype.Timestamptz
 }
 
@@ -22,13 +23,13 @@ type DocumentIndex struct {
 }
 
 type IndexSet struct {
-	Name      string
-	Position  int64
-	Cluster   pgtype.Text
-	Streaming bool
-	Active    bool
-	Enabled   bool
-	Modified  pgtype.Timestamptz
+	Name     string
+	Position int64
+	Cluster  pgtype.Text
+	Active   bool
+	Enabled  bool
+	Deleted  bool
+	Modified pgtype.Timestamptz
 }
 
 type IndexingOverride struct {

@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/opensearch-project/opensearch-go/v2"
+	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
+	"github.com/twitchtv/twirp"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -21,9 +23,10 @@ type IndexParameters struct {
 	Addr            string
 	ProfileAddr     string
 	Logger          *slog.Logger
-	DefaultSetName  string
 	Database        *pgxpool.Pool
-	Client          *opensearch.Client
+	DefaultCluster  string
+	ClusterAuth     ClusterAuth
+	Client          OpenSearchClientFunc
 	Documents       repository.Documents
 	Validator       ValidatorSource
 	Metrics         *Metrics
@@ -35,27 +38,45 @@ type IndexParameters struct {
 func RunIndex(ctx context.Context, p IndexParameters) error {
 	logger := p.Logger
 
-	indexer, err := NewIndexer(ctx, IndexerOptions{
-		Logger: logger.With(
-			elephantine.LogKeyComponent, "indexer"),
+	coord, err := NewCoordinator(ctx, p.Database, CoordinatorOptions{
+		Logger:          logger,
 		Metrics:         p.Metrics,
-		SetName:         p.DefaultSetName,
 		DefaultLanguage: p.DefaultLanguage,
-		Client:          p.Client,
-		Database:        p.Database,
+		ClientGetter:    p.Client,
 		Documents:       p.Documents,
 		Validator:       p.Validator,
 	})
+
+	err = coord.EnsureDefaultIndexSet(ctx, p.DefaultCluster, p.ClusterAuth)
 	if err != nil {
-		return fmt.Errorf("create indexer: %w", err)
+		return fmt.Errorf("ensure default index set: %w", err)
 	}
+
+	grace := elephantine.NewGracefulShutdown(logger, 10*time.Second)
+	ctx = grace.CancelOnStop(ctx)
 
 	healthServer := elephantine.NewHealthServer(logger, p.ProfileAddr)
 	router := http.NewServeMux()
 	serverGroup, gCtx := errgroup.WithContext(ctx)
 
-	// TODO: make the proxy aware of clusters and index set names.
-	proxy := NewElasticProxy(logger, p.Client, p.PublicJWTKey)
+	var opts ServerOptions
+
+	opts.SetJWTValidation(p.PublicJWTKey)
+
+	service, err := NewManagementService(logger, p.Database)
+	if err != nil {
+		return fmt.Errorf("create management service: %w", err)
+	}
+
+	api := index.NewManagementServer(
+		service,
+		twirp.WithServerJSONSkipDefaults(true),
+		twirp.WithServerHooks(opts.Hooks),
+	)
+
+	registerAPI(router, opts, api)
+
+	proxy := NewElasticProxy(logger, coord, p.PublicJWTKey)
 
 	proxyHandler := elephantine.CORSMiddleware(elephantine.CORSOptions{
 		AllowInsecure:          false,
@@ -96,7 +117,19 @@ func RunIndex(ctx context.Context, p IndexParameters) error {
 	})
 
 	healthServer.AddReadyFunction("opensearch", func(ctx context.Context) error {
-		get := p.Client.Indices.Get
+		q := postgres.New(p.Database)
+
+		active, err := q.GetActiveIndexSet(ctx)
+		if err != nil {
+			return fmt.Errorf("get active index set: %w", err)
+		}
+
+		client, err := p.Client(ctx, active.Cluster.String)
+		if err != nil {
+			return fmt.Errorf("gect cluster client: %w", err)
+		}
+
+		get := client.Indices.Get
 
 		res, err := get([]string{"documents-*"}, get.WithContext(ctx))
 		if err != nil {
@@ -118,12 +151,12 @@ func RunIndex(ctx context.Context, p IndexParameters) error {
 			return nil
 		}
 
-		err := indexer.Run(gCtx)
+		err := coord.Run(gCtx)
 		if err != nil {
-			return fmt.Errorf("indexer error: %w", err)
+			return fmt.Errorf("coordinator error: %w", err)
 		}
 
-		return nil
+		return errors.New("coordinator stopped")
 	})
 
 	serverGroup.Go(func() error {
@@ -144,7 +177,9 @@ func RunIndex(ctx context.Context, p IndexParameters) error {
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 
-		err := elephantine.ListenAndServeContext(gCtx, &server)
+		err := elephantine.ListenAndServeContext(
+			gCtx, &server, 10*time.Second,
+		)
 		if err != nil {
 			return fmt.Errorf("API server error: %w", err)
 		}
@@ -160,4 +195,87 @@ func RunIndex(ctx context.Context, p IndexParameters) error {
 	}
 
 	return nil
+}
+
+func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
+	var handler http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+		ctx := elephantine.WithLogMetadata(r.Context())
+
+		h.ServeHTTP(w, r.WithContext(ctx))
+	}
+
+	server := http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	//nolint:wrapcheck
+	return elephantine.ListenAndServeContext(ctx, &server, 10*time.Second)
+}
+
+type ServerOptions struct {
+	Hooks          *twirp.ServerHooks
+	AuthMiddleware func(
+		w http.ResponseWriter, r *http.Request, next http.Handler,
+	) error
+}
+
+func (so *ServerOptions) SetJWTValidation(jwtKey *ecdsa.PublicKey) {
+	// TODO: This feels like an initial sketch that should be further
+	// developed to address the JWT cacheing.
+	so.AuthMiddleware = func(
+		w http.ResponseWriter, r *http.Request, next http.Handler,
+	) error {
+		auth, err := elephantine.AuthInfoFromHeader(jwtKey,
+			r.Header.Get("Authorization"))
+		if err != nil && !errors.Is(err, elephantine.ErrNoAuthorization) {
+			// TODO: Move the response part to a hook instead?
+			return elephantine.HTTPErrorf(http.StatusUnauthorized,
+				"invalid authorization method: %v", err)
+		}
+
+		if auth != nil {
+			ctx := elephantine.SetAuthInfo(r.Context(), auth)
+
+			elephantine.SetLogMetadata(ctx,
+				elephantine.LogKeySubject, auth.Claims.Subject,
+			)
+
+			r = r.WithContext(ctx)
+		}
+
+		next.ServeHTTP(w, r)
+
+		return nil
+	}
+}
+
+type apiServerForRouter interface {
+	http.Handler
+
+	PathPrefix() string
+}
+
+func registerAPI(
+	router *http.ServeMux, opt ServerOptions,
+	api apiServerForRouter,
+) {
+	router.Handle(api.PathPrefix(), internal.RHandleFunc(func(
+		w http.ResponseWriter, r *http.Request,
+	) error {
+		if r.Method != http.MethodPost {
+			return elephantine.HTTPErrorf(
+				http.StatusMethodNotAllowed,
+				"the API only accepts POST requests")
+		}
+
+		if opt.AuthMiddleware != nil {
+			return opt.AuthMiddleware(w, r, api)
+		}
+
+		api.ServeHTTP(w, r)
+
+		return nil
+	}))
 }

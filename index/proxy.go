@@ -13,20 +13,24 @@ import (
 	"github.com/ttab/elephantine"
 )
 
+type ActiveIndexGetter interface {
+	GetActiveIndex() (*opensearch.Client, string)
+}
+
 type ElasticProxy struct {
 	logger       *slog.Logger
-	client       *opensearch.Client
 	publicJWTKey *ecdsa.PublicKey
+	active       ActiveIndexGetter
 }
 
 func NewElasticProxy(
 	logger *slog.Logger,
-	client *opensearch.Client,
+	active ActiveIndexGetter,
 	publicJWTKey *ecdsa.PublicKey,
 ) *ElasticProxy {
 	return &ElasticProxy{
 		logger:       logger,
-		client:       client,
+		active:       active,
 		publicJWTKey: publicJWTKey,
 	}
 }
@@ -64,7 +68,14 @@ func (ep *ElasticProxy) searchHandler(
 			"no authorization header")
 	}
 
-	indexBase := "documents-v2-"
+	client, indexSet := ep.active.GetActiveIndex()
+	if client == nil {
+		return ElasticErrorf(
+			ErrorTypeClusterUnavailable,
+			"the active index is not set")
+	}
+
+	indexBase := "documents-" + indexSet + "-"
 	parts := splitPath(r.URL.Path)
 
 	indicesParam := "_all"
@@ -158,15 +169,17 @@ func (ep *ElasticProxy) searchHandler(
 			"failed to marshal upstream search request: %v", err)
 	}
 
-	res, err := ep.client.Search(
-		ep.client.Search.WithIndex(indices...),
-		ep.client.Search.WithContext(ctx),
-		ep.client.Search.WithBody(&searchBody))
+	res, err := client.Search(
+		client.Search.WithIndex(indices...),
+		client.Search.WithContext(ctx),
+		client.Search.WithBody(&searchBody))
 	if err != nil {
 		return ElasticErrorf(
 			ErrorTypeInternal,
 			"failed to perform request: %v", err)
 	}
+
+	defer elephantine.SafeClose(ep.logger, "search response", res.Body)
 
 	header := w.Header()
 

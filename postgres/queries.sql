@@ -2,33 +2,80 @@
 SELECT pg_notify(@channel::text, @message::text);
 
 -- name: GetClusters :many
-SELECT name, url FROM cluster;
+SELECT name, url, auth, created FROM cluster;
+
+-- name: GetCluster :one
+SELECT name, url, auth, created
+FROM cluster
+WHERE name = @name;
+
+-- name: LockClusters :exec
+LOCK TABLE cluster IN ACCESS EXCLUSIVE MODE;
+
+-- name: GetClusterForUpdate :one
+SELECT name, url, auth, created
+FROM cluster
+WHERE name = @name
+FOR UPDATE;
+
+-- name: ClusterIndexCount :one
+SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE deleted = true) AS pending_delete
+FROM index_set
+WHERE cluster = sqlc.arg(cluster)::text;
+
+-- name: ListClustersWithCounts :many
+SELECT c.name, c.url, coalesce(i.c, 0) AS index_set_count
+FROM cluster AS c
+     LEFT JOIN (
+          SELECT cluster, COUNT(*) AS c
+          FROM index_set
+          WHERE deleted = false
+          GROUP BY cluster
+     ) AS i ON i.cluster = c.name;
+
+-- name: DeleteCluster :exec
+DELETE FROM cluster WHERE name = @name;
 
 -- name: AddCluster :exec
-INSERT INTO cluster(name, url) VALUES(@name, @url);
+INSERT INTO cluster(name, url, auth) VALUES(@name, @url, @auth);
 
 -- name: ListIndexSets :many
-SELECT name FROM index_set;
+SELECT name FROM index_set WHERE deleted = false;
+
+-- name: GetActiveIndexSet :one
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set WHERE active = true;
 
 -- name: GetIndexSets :many
-SELECT name, position, cluster, streaming, active, enabled, modified
-FROM index_set;
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set WHERE deleted = false;
+
+-- name: IndexSetQuery :many
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set WHERE deleted = false
+AND (sqlc.narg(cluster)::text IS NULL OR cluster = @cluster)
+AND (sqlc.narg(active)::bool IS NULL OR active = @active)
+AND (sqlc.narg(enabled)::bool IS NULL OR enabled = @enabled)
+LIMIT 10 OFFSET @row_offset;
+
+-- name: GetIndexSet :one
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set WHERE name = @name;
+
+-- name: IndexSetExists :one
+SELECT COUNT(*) = 1
+FROM index_set
+WHERE name = @name;
 
 -- name: CreateIndexSet :exec
-INSERT INTO index_set(name, position, cluster, streaming, active, enabled, modified)
-VALUES (@name, @position, sqlc.arg(cluster)::text, @streaming, @active, @enabled, NOW());
-
--- name: DeleteOldIndexSets :exec
-DELETE FROM index_set
-WHERE modified < @cutoff
-AND NOT active AND NOT enabled;
-
--- name: DeleteUnusedClusters :exec
-DELETE FROM cluster AS c
-WHERE c.created < @cutoff
-AND NOT EXISTS (
-    SELECT FROM index_set AS s
-    WHERE s.cluster = c.name
+INSERT INTO index_set(
+       name, position, cluster, active,
+       enabled, modified
+) VALUES (
+       @name, @position, sqlc.arg(cluster)::text, @active,
+       @enabled, NOW()
 );
 
 -- name: SetClusterWhereMissing :exec
@@ -61,14 +108,34 @@ WHERE name = @name;
 INSERT INTO document_index(name, set_name, content_type, mappings)
 VALUES (@name, @set_name, @content_type, @mappings);
 
--- name: GetForActivation :many
-SELECT name, position, cluster, streaming, active, enabled, modified
+-- name: GetIndexSetForUpdate :one
+SELECT name, position, cluster, active, enabled, deleted, modified
 FROM index_set
-WHERE active OR name = @name
+WHERE name = @name
 FOR UPDATE;
 
--- name: SetActive :exec
+-- name: GetCurrentActiveForUpdate :one
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set WHERE active = true
+FOR UPDATE;
+
+-- name: SetIndexSetStatus :exec
 UPDATE index_set
-SET active = @active, modified = NOW()
+SET active = @active, enabled = @enabled, deleted = @deleted, modified = NOW()
 WHERE name = @name;
 
+-- name: ListDeletedIndexSets :many
+SELECT name
+FROM index_set
+WHERE deleted = true
+FOR UPDATE NOWAIT;
+
+-- name: GetIndexSetForDelete :one
+SELECT name, position, cluster, active, enabled, deleted, modified
+FROM index_set
+WHERE name = @name AND deleted = true
+FOR UPDATE NOWAIT;
+
+-- name: DeleteIndexSet :exec
+DELETE FROM index_set
+WHERE name = @name AND deleted = true;

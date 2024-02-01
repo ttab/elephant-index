@@ -57,7 +57,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		},
 		[]string{"index", "property"},
 	)
-	if err := reg.Register(mappingUpdate); err != nil {
+	if err := reg.Register(ignoredMapping); err != nil {
 		return nil, fmt.Errorf("failed to register metric: %w", err)
 	}
 

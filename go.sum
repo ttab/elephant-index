@@ -132,6 +132,8 @@ github.com/jmespath/go-jmespath/internal/testify v1.5.1 h1:shLQSRRSCCPj3f2gpwzGw
 github.com/jmespath/go-jmespath/internal/testify v1.5.1/go.mod h1:L3OGu8Wl2/fWfCI6z80xFu9LTZmf1ZRjMHUOPmWr69U=
 github.com/julienschmidt/httprouter v1.3.0 h1:U0609e9tgbseu3rBINet9P48AI/D3oJs4dN7jwJOQ1U=
 github.com/julienschmidt/httprouter v1.3.0/go.mod h1:JR6WtHb+2LUe8TCKY3cZOxFyyO8IZAc4RVcycCCAKdM=
+github.com/lucasepe/codename v0.2.0 h1:zkW9mKWSO8jjVIYFyZWE9FPvBtFVJxgMpQcMkf4Vv20=
+github.com/lucasepe/codename v0.2.0/go.mod h1:RDcExRuZPWp5Uz+BosvpROFTrxpt5r1vSzBObHdBdDM=
 github.com/mattn/go-colorable v0.0.9/go.mod h1:9vuHe8Xs5qXnSaW/c/ABM9alt+Vo+STaOChaDxuIBZU=
 github.com/mattn/go-colorable v0.1.4/go.mod h1:U0ppj6V5qS13XJ6of8GYAs25YV2eR4EVcfRqFIhoBtE=
 github.com/mattn/go-colorable v0.1.6 h1:6Su7aK7lXmJ/U79bYtBjLNaha4Fs1Rg9plHpcH+vvnE=
@@ -192,10 +194,10 @@ github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO
 github.com/stretchr/testify v1.8.2/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
 github.com/stretchr/testify v1.8.4 h1:CcVxjf3Q8PM0mHUKJCdn+eZZtm5yQwehR5yeSVQQcUk=
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
-github.com/ttab/elephant-api v0.8.0-index-b-1 h1:Qgg0BNz2rhe/U8Rs/uONTEZyzombKaeCMO4Xz0xPAm0=
-github.com/ttab/elephant-api v0.8.0-index-b-1/go.mod h1:eOdRVagciYB3DOhcagFameQHITOxRYBNbf2+fn7I3Ac=
 github.com/ttab/elephantine v0.11.1 h1:qT+VSf6/gmkG7m0TF3gzhlhUED6K7Y1/B08/jX5yAyM=
 github.com/ttab/elephantine v0.11.1/go.mod h1:Q8vQj9YDOo7TJdS8x1mO2Hy3flEfUF41w5fNFmvpLOU=
+github.com/ttab/elephantine v0.11.2 h1:QemOolThv3ZsIEEu7P72Dql9oYOUp1HawQCONJvM0lc=
+github.com/ttab/elephantine v0.11.2/go.mod h1:Q8vQj9YDOo7TJdS8x1mO2Hy3flEfUF41w5fNFmvpLOU=
 github.com/ttab/langos v0.1.1 h1:87AksvnO5AWdXEKnb5Ga5H+dXvigDX8I1y46pTc8vDE=
 github.com/ttab/langos v0.1.1/go.mod h1:+E1sOSvBJIbE5VM0m2rfr83aqw0kZbfe/clqNtwSP8w=
 github.com/ttab/newsdoc v0.4.2 h1:q8L22nzwWbxiNVkJ5V3yjZ8zMmGr6dHsLj469lpqa08=
