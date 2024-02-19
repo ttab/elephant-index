@@ -12,7 +12,7 @@ require (
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rakutentech/jwk-go v1.1.3
-	github.com/ttab/elephant-api v0.8.0
+	github.com/ttab/elephant-api v0.10.0
 	github.com/ttab/elephantine v0.11.4
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/newsdoc v0.4.2
