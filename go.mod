@@ -6,7 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.26.6
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/go-cmp v0.6.0
-	github.com/jackc/pgx/v5 v5.5.2
+	github.com/jackc/pgx/v5 v5.5.4
 	github.com/lucasepe/codename v0.2.0
 	github.com/microcosm-cc/bluemonday v1.0.26
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
