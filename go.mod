@@ -1,6 +1,7 @@
 module github.com/ttab/elephant-index
 
 go 1.21.6
+toolchain go1.22.1
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.26.6
@@ -15,8 +16,8 @@ require (
 	github.com/ttab/elephant-api v0.8.0
 	github.com/ttab/elephantine v0.11.4
 	github.com/ttab/langos v0.1.1
-	github.com/ttab/newsdoc v0.4.2
-	github.com/ttab/revisor v0.4.0
+	github.com/ttab/newsdoc v0.5.0
+	github.com/ttab/revisor v0.7.2
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.1
 	golang.org/x/exp v0.0.0-20240119083558-1b970713d09a
@@ -47,7 +48,7 @@ require (
 	github.com/go-jose/go-jose/v3 v3.0.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
-	github.com/google/uuid v1.5.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
@@ -76,9 +77,9 @@ require (
 	github.com/ryanuber/go-glob v1.0.0 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
-	golang.org/x/crypto v0.18.0 // indirect
-	golang.org/x/net v0.20.0 // indirect
-	golang.org/x/sys v0.16.0 // indirect
+	golang.org/x/crypto v0.19.0 // indirect
+	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/sys v0.17.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.0.0-20220922220347-f3bd1da661af // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
