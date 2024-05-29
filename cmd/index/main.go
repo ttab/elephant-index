@@ -1,23 +1,20 @@
 package main
 
 import (
-	"crypto/ecdsa"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"runtime/debug"
 
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rakutentech/jwk-go/jwk"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 func main() {
@@ -81,12 +78,35 @@ func main() {
 				EnvVars: []string{"CONN_STRING_PARAMETER"},
 			},
 			&cli.StringFlag{
+				Name:     "auth-strategy",
+				EnvVars:  []string{"AUTH_STRATEGY"},
+				Usage:    fmt.Sprintf("Authentication strategy (%s, %s, %s)", Password, ClientCredentials, MockJWT),
+				Required: true,
+			},
+			&cli.StringFlag{
 				Name:    "shared-secret",
 				EnvVars: []string{"SHARED_SECRET"},
+				Usage:   fmt.Sprintf("optional shared secret for the %s auth strategy", MockJWT),
 			},
 			&cli.StringFlag{
 				Name:    "shared-secret-parameter",
 				EnvVars: []string{"SHARED_SECRET_PARAMETER"},
+			},
+			&cli.StringFlag{
+				Name:    "client-id",
+				EnvVars: []string{"CLIENT_ID"},
+			},
+			&cli.StringFlag{
+				Name:    "client-secret",
+				EnvVars: []string{"CLIENT_SECRET"},
+			},
+			&cli.StringFlag{
+				Name:    "username",
+				EnvVars: []string{"username"},
+			},
+			&cli.StringFlag{
+				Name:    "password",
+				EnvVars: []string{"password"},
 			},
 			&cli.BoolFlag{
 				Name:    "managed-opensearch",
@@ -112,6 +132,25 @@ func main() {
 			elephantine.LogKeyError, err)
 		os.Exit(1)
 	}
+}
+
+var Scopes = []string{"eventlog_read", "doc_read_all", "schema_read"}
+
+type AuthStrategy string
+
+const (
+	Password          AuthStrategy = "password"
+	ClientCredentials AuthStrategy = "client_credentials"
+	MockJWT           AuthStrategy = "mock_jwt"
+)
+
+func parseAuthStrategy(str string) (AuthStrategy, error) {
+	for _, s := range []AuthStrategy{Password, ClientCredentials, MockJWT} {
+		if str == string(s) {
+			return s, nil
+		}
+	}
+	return "", fmt.Errorf("unknown auth strategy: %s", str)
 }
 
 func runIndexer(c *cli.Context) error {
@@ -158,10 +197,113 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("resolve db parameter: %w", err)
 	}
 
-	sharedSecret, err := elephantine.ResolveParameter(
-		c.Context, c, paramSource, "shared-secret")
+	authStrategyStr, err := elephantine.ResolveParameter(
+		c.Context, c, paramSource, "auth-strategy",
+	)
 	if err != nil {
-		return fmt.Errorf("resolve shared secret parameter: %w", err)
+		return fmt.Errorf("resolve auth strategy parameter: %w", err)
+	}
+
+	authStrategy, err := parseAuthStrategy(authStrategyStr)
+	if err != nil {
+		return fmt.Errorf("resolve auth strategy parameter: %w", err)
+	}
+
+	var tokenSource oauth2.TokenSource
+
+	switch authStrategy {
+	case Password:
+
+		clientId, err := elephantine.ResolveParameter(
+			c.Context, c, paramSource, "client-id",
+		)
+		if err != nil {
+			return fmt.Errorf("resolve client id parameter: %w", err)
+		}
+
+		clientSecret, err := elephantine.ResolveParameter(
+			c.Context, c, paramSource, "client-secret",
+		)
+		if err != nil {
+			return fmt.Errorf("resolve client secret parameter: %w", err)
+		}
+
+		username, err := elephantine.ResolveParameter(
+			c.Context, c, paramSource, "username",
+		)
+		if err != nil {
+			return fmt.Errorf("resolve username parameter: %w", err)
+		}
+
+		password, err := elephantine.ResolveParameter(
+			c.Context, c, paramSource, "password",
+		)
+		if err != nil {
+			return fmt.Errorf("resolve password parameter: %w", err)
+		}
+
+		authConf := oauth2.Config{
+			Endpoint: oauth2.Endpoint{
+				TokenURL: tokenEndpoint,
+			},
+			Scopes:       Scopes,
+			ClientID:     clientId,
+			ClientSecret: clientSecret,
+		}
+
+		token, err := authConf.PasswordCredentialsToken(c.Context, username, password)
+		if err != nil {
+			return fmt.Errorf("could not create password grant token: %w", err)
+		}
+
+		tokenSource = authConf.TokenSource(c.Context, token)
+
+	case ClientCredentials:
+		clientId, err := elephantine.ResolveParameter(
+			c.Context, c, paramSource, "client-id",
+		)
+		if err != nil {
+			return fmt.Errorf("resolve client id parameter: %w", err)
+		}
+
+		clientSecret, err := elephantine.ResolveParameter(
+			c.Context, c, paramSource, "client-secret",
+		)
+		if err != nil {
+			return fmt.Errorf("resolve client secret parameter: %w", err)
+		}
+
+		clientCredentialsConf := clientcredentials.Config{
+			ClientID:     clientId,
+			ClientSecret: clientSecret,
+			TokenURL:     tokenEndpoint,
+			Scopes:       Scopes,
+		}
+
+		tokenSource = clientCredentialsConf.TokenSource(c.Context)
+
+	case MockJWT:
+
+		sharedSecret, err := elephantine.ResolveParameter(
+			c.Context, c, paramSource, "shared-secret")
+		if err != nil {
+			return fmt.Errorf("resolve shared secret parameter: %w", err)
+		}
+
+		authConf := oauth2.Config{
+			Endpoint: oauth2.Endpoint{
+				TokenURL: tokenEndpoint,
+			},
+			Scopes: Scopes,
+		}
+
+		pwToken, err := authConf.PasswordCredentialsToken(c.Context,
+			"Indexer <system://indexer>", sharedSecret)
+		if err != nil {
+			return fmt.Errorf("get Elephant access token: %w", err)
+		}
+
+		tokenSource = authConf.TokenSource(c.Context, pwToken)
 	}
 
 	dbpool, err := pgxpool.New(c.Context, connString)
@@ -179,41 +321,12 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("connect to database: %w", err)
 	}
 
-	var keySet jwk.KeySpecSet
-
-	err = elephantine.UnmarshalHTTPResource(jwksEndpoint, &keySet)
+	authInfoParser, err := elephantine.NewJWKSAuthInfoParser(c.Context, jwksEndpoint, elephantine.AuthInfoParserOptions{})
 	if err != nil {
-		return fmt.Errorf("retrieve JWT keys: %w", err)
+		return fmt.Errorf("retrieve JWKS: %w", err)
 	}
 
-	jwtKey := keySet.Filter(func(key *jwk.KeySpec) bool {
-		return key.Use == "sig" && key.Algorithm == jwt.SigningMethodES384.Alg()
-	}).PrimaryKey("EC")
-
-	if jwtKey == nil {
-		return errors.New("no usable JWT key")
-	}
-
-	publicJWTKey, ok := jwtKey.Key.(*ecdsa.PublicKey)
-	if !ok {
-		return errors.New("the returned signing key wasn't a public ECDSA key")
-	}
-
-	authConf := oauth2.Config{
-		Endpoint: oauth2.Endpoint{
-			TokenURL: tokenEndpoint,
-		},
-		Scopes: []string{"eventlog_read", "doc_read_all", "schema_read"},
-	}
-
-	pwToken, err := authConf.PasswordCredentialsToken(c.Context,
-		"Indexer <system://indexer>", sharedSecret)
-	if err != nil {
-		return fmt.Errorf("get Elephant access token: %w", err)
-	}
-
-	authClient := oauth2.NewClient(c.Context,
-		authConf.TokenSource(c.Context, pwToken))
+	authClient := oauth2.NewClient(c.Context, tokenSource)
 
 	documents := repository.NewDocumentsProtobufClient(
 		repositoryEndpoint, authClient)
@@ -249,7 +362,7 @@ func runIndexer(c *cli.Context) error {
 		Metrics:         metrics,
 		DefaultLanguage: defaultLanguage,
 		NoIndexer:       noIndexer,
-		PublicJWTKey:    publicJWTKey,
+		AuthInfoParser:  authInfoParser,
 	})
 	if err != nil {
 		return fmt.Errorf("run application: %w", err)
