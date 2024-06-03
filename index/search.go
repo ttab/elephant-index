@@ -31,7 +31,7 @@ type ElasticSearchRequest struct {
 type ElasticQuery struct {
 	Bool *BooleanQuery     `json:"bool,omitempty"`
 	Term map[string]string `json:"term,omitempty"`
-	Ids  *IdsQuery         `json:"ids,omitempty"`
+	IDs  *IDsQuery         `json:"ids,omitempty"`
 }
 
 type BooleanQuery struct {
@@ -41,7 +41,7 @@ type BooleanQuery struct {
 	Filter  []ElasticQuery    `json:"filter,omitempty"`
 }
 
-type IdsQuery struct {
+type IDsQuery struct {
 	Values []string `json:"values,omitempty"`
 }
 

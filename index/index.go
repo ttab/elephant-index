@@ -437,7 +437,7 @@ func createLanguageQuery(uuid string, language string) ElasticSearchRequest {
 		Query: ElasticQuery{
 			Bool: &BooleanQuery{
 				Filter: []ElasticQuery{
-					{Ids: &IdsQuery{
+					{IDs: &IDsQuery{
 						Values: []string{uuid},
 					}},
 				},

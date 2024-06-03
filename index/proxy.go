@@ -2,7 +2,6 @@ package index
 
 import (
 	"bytes"
-	"crypto/ecdsa"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -18,20 +17,20 @@ type ActiveIndexGetter interface {
 }
 
 type ElasticProxy struct {
-	logger       *slog.Logger
-	publicJWTKey *ecdsa.PublicKey
-	active       ActiveIndexGetter
+	logger         *slog.Logger
+	authInfoParser *elephantine.AuthInfoParser
+	active         ActiveIndexGetter
 }
 
 func NewElasticProxy(
 	logger *slog.Logger,
 	active ActiveIndexGetter,
-	publicJWTKey *ecdsa.PublicKey,
+	authInfoParser *elephantine.AuthInfoParser,
 ) *ElasticProxy {
 	return &ElasticProxy{
-		logger:       logger,
-		active:       active,
-		publicJWTKey: publicJWTKey,
+		logger:         logger,
+		active:         active,
+		authInfoParser: authInfoParser,
 	}
 }
 
@@ -46,7 +45,7 @@ func (ep *ElasticProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ep.searchHandler)
 	default:
 		ElasticHandler(logger, w, r,
-			func(w http.ResponseWriter, r *http.Request) error {
+			func(_ http.ResponseWriter, _ *http.Request) error {
 				return ElasticErrorf(ErrorTypeNotFound, "no such route")
 			})
 	}
@@ -97,8 +96,7 @@ func (ep *ElasticProxy) searchHandler(
 		}
 	}
 
-	auth, err := elephantine.AuthInfoFromHeader(
-		ep.publicJWTKey, authorization)
+	auth, err := ep.authInfoParser.AuthInfoFromHeader(authorization)
 	if err != nil {
 		return ElasticErrorf(
 			ErrorTypeUnauthorized,

@@ -2,7 +2,6 @@ package index
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -32,7 +31,7 @@ type Parameters struct {
 	Metrics         *Metrics
 	DefaultLanguage string
 	NoIndexer       bool
-	PublicJWTKey    *ecdsa.PublicKey
+	AuthInfoParser  *elephantine.AuthInfoParser
 }
 
 func RunIndex(ctx context.Context, p Parameters) error {
@@ -64,7 +63,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 
 	var opts ServerOptions
 
-	opts.SetJWTValidation(p.PublicJWTKey)
+	opts.SetJWTValidation(p.AuthInfoParser)
 
 	service, err := NewManagementService(logger, p.Database)
 	if err != nil {
@@ -79,7 +78,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 
 	registerAPI(router, opts, api)
 
-	proxy := NewElasticProxy(logger, coord, p.PublicJWTKey)
+	proxy := NewElasticProxy(logger, coord, p.AuthInfoParser)
 
 	proxyHandler := elephantine.CORSMiddleware(elephantine.CORSOptions{
 		AllowInsecure:          false,
@@ -92,7 +91,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	router.Handle("/", proxyHandler)
 
 	router.Handle("/health/alive", http.HandlerFunc(func(
-		w http.ResponseWriter, req *http.Request,
+		w http.ResponseWriter, _ *http.Request,
 	) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
@@ -224,14 +223,13 @@ type ServerOptions struct {
 	) error
 }
 
-func (so *ServerOptions) SetJWTValidation(jwtKey *ecdsa.PublicKey) {
+func (so *ServerOptions) SetJWTValidation(parser *elephantine.AuthInfoParser) {
 	// TODO: This feels like an initial sketch that should be further
 	// developed to address the JWT cacheing.
 	so.AuthMiddleware = func(
 		w http.ResponseWriter, r *http.Request, next http.Handler,
 	) error {
-		auth, err := elephantine.AuthInfoFromHeader(jwtKey,
-			r.Header.Get("Authorization"))
+		auth, err := parser.AuthInfoFromHeader(r.Header.Get("Authorization"))
 		if err != nil && !errors.Is(err, elephantine.ErrNoAuthorization) {
 			// TODO: Move the response part to a hook instead?
 			return elephantine.HTTPErrorf(http.StatusUnauthorized,
