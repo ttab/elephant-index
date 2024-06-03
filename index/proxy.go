@@ -45,7 +45,7 @@ func (ep *ElasticProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ep.searchHandler)
 	default:
 		ElasticHandler(logger, w, r,
-			func(w http.ResponseWriter, r *http.Request) error {
+			func(_ http.ResponseWriter, _ *http.Request) error {
 				return ElasticErrorf(ErrorTypeNotFound, "no such route")
 			})
 	}

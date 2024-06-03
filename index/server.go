@@ -91,7 +91,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	router.Handle("/", proxyHandler)
 
 	router.Handle("/health/alive", http.HandlerFunc(func(
-		w http.ResponseWriter, req *http.Request,
+		w http.ResponseWriter, _ *http.Request,
 	) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
