@@ -150,6 +150,7 @@ func parseAuthStrategy(str string) (AuthStrategy, error) {
 			return s, nil
 		}
 	}
+
 	return "", fmt.Errorf("unknown auth strategy: %s", str)
 }
 
@@ -213,8 +214,7 @@ func runIndexer(c *cli.Context) error {
 
 	switch authStrategy {
 	case Password:
-
-		clientId, err := elephantine.ResolveParameter(
+		clientID, err := elephantine.ResolveParameter(
 			c.Context, c, paramSource, "client-id",
 		)
 		if err != nil {
@@ -247,7 +247,7 @@ func runIndexer(c *cli.Context) error {
 				TokenURL: tokenEndpoint,
 			},
 			Scopes:       Scopes,
-			ClientID:     clientId,
+			ClientID:     clientID,
 			ClientSecret: clientSecret,
 		}
 
@@ -259,7 +259,7 @@ func runIndexer(c *cli.Context) error {
 		tokenSource = authConf.TokenSource(c.Context, token)
 
 	case ClientCredentials:
-		clientId, err := elephantine.ResolveParameter(
+		clientID, err := elephantine.ResolveParameter(
 			c.Context, c, paramSource, "client-id",
 		)
 		if err != nil {
@@ -274,7 +274,7 @@ func runIndexer(c *cli.Context) error {
 		}
 
 		clientCredentialsConf := clientcredentials.Config{
-			ClientID:     clientId,
+			ClientID:     clientID,
 			ClientSecret: clientSecret,
 			TokenURL:     tokenEndpoint,
 			Scopes:       Scopes,
@@ -283,7 +283,6 @@ func runIndexer(c *cli.Context) error {
 		tokenSource = clientCredentialsConf.TokenSource(c.Context)
 
 	case MockJWT:
-
 		sharedSecret, err := elephantine.ResolveParameter(
 			c.Context, c, paramSource, "shared-secret")
 		if err != nil {
