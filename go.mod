@@ -1,19 +1,15 @@
 module github.com/ttab/elephant-index
 
-go 1.22.2
-
-toolchain go1.22.3
+go 1.22.3
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.27.11
-	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/go-cmp v0.6.0
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/lucasepe/codename v0.2.0
 	github.com/microcosm-cc/bluemonday v1.0.26
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/prometheus/client_golang v1.19.0
-	github.com/rakutentech/jwk-go v1.1.3
 	github.com/ttab/elephant-api v0.8.0
 	github.com/ttab/elephantine v0.12.0
 	github.com/ttab/langos v0.1.1
@@ -84,7 +80,6 @@ require (
 	golang.org/x/sys v0.17.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 )
