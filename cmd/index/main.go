@@ -97,8 +97,16 @@ func main() {
 				EnvVars: []string{"CLIENT_ID"},
 			},
 			&cli.StringFlag{
+				Name:    "client-id-parameter",
+				EnvVars: []string{"CLIENT_ID_PARAMETER"},
+			},
+			&cli.StringFlag{
 				Name:    "client-secret",
 				EnvVars: []string{"CLIENT_SECRET"},
+			},
+			&cli.StringFlag{
+				Name:    "client-secret-parameter",
+				EnvVars: []string{"CLIENT_SECRET_PARAMETER"},
 			},
 			&cli.StringFlag{
 				Name:    "username",
