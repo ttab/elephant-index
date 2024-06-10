@@ -42,6 +42,11 @@ func main() {
 				Required: true,
 			},
 			&cli.StringFlag{
+				Name:     "jwks-endpoint-parameter",
+				EnvVars:  []string{"JWKS_ENDPOINT_PARAMETER"},
+				Required: true,
+			},
+			&cli.StringFlag{
 				Name:    "default-language",
 				EnvVars: []string{"DEFAULT_LANGUAGE"},
 				// Required for now, but shouldn't be as we want
@@ -52,6 +57,11 @@ func main() {
 			&cli.StringFlag{
 				Name:     "token-endpoint",
 				EnvVars:  []string{"TOKEN_ENDPOINT"},
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "token-endpoint-parameter",
+				EnvVars:  []string{"TOKEN_ENDPOINT_PARAMETER"},
 				Required: true,
 			},
 			&cli.StringFlag{
@@ -110,11 +120,19 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "username",
-				EnvVars: []string{"username"},
+				EnvVars: []string{"USERNAME"},
+			},
+			&cli.StringFlag{
+				Name:    "username-parameter",
+				EnvVars: []string{"USERNAME_PARAMETER"},
 			},
 			&cli.StringFlag{
 				Name:    "password",
 				EnvVars: []string{"password"},
+			},
+			&cli.StringFlag{
+				Name:    "password-parameter",
+				EnvVars: []string{"PASSWORD_PARAMETER"},
 			},
 			&cli.BoolFlag{
 				Name:    "managed-opensearch",
@@ -168,9 +186,8 @@ func runIndexer(c *cli.Context) error {
 		paramSourceName    = c.String("parameter-source")
 		profileAddr        = c.String("profile-addr")
 		logLevel           = c.String("log-level")
-		tokenEndpoint      = c.String("token-endpoint")
+		authStrategyStr    = c.String("auth-strategy")
 		defaultLanguage    = c.String("default-language")
-		jwksEndpoint       = c.String("jwks-endpoint")
 		opensearchEndpoint = c.String("opensearch-endpoint")
 		repositoryEndpoint = c.String("repository-endpoint")
 		managedOS          = c.Bool("managed-opensearch")
@@ -206,11 +223,16 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("resolve db parameter: %w", err)
 	}
 
-	authStrategyStr, err := elephantine.ResolveParameter(
-		c.Context, c, paramSource, "auth-strategy",
-	)
+	jwksEndpoint, err := elephantine.ResolveParameter(
+		c.Context, c, paramSource, "jwks-endpoint")
 	if err != nil {
-		return fmt.Errorf("resolve auth strategy parameter: %w", err)
+		return fmt.Errorf("resolve jwks endpoint parameter: %w", err)
+	}
+
+	tokenEndpoint, err := elephantine.ResolveParameter(
+		c.Context, c, paramSource, "token-endpoint")
+	if err != nil {
+		return fmt.Errorf("resolve token endpoint parameter: %w", err)
 	}
 
 	authStrategy, err := parseAuthStrategy(authStrategyStr)
@@ -328,7 +350,8 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("connect to database: %w", err)
 	}
 
-	authInfoParser, err := elephantine.NewJWKSAuthInfoParser(c.Context, jwksEndpoint, elephantine.AuthInfoParserOptions{})
+	authInfoParser, err := elephantine.NewJWKSAuthInfoParser(
+		c.Context, jwksEndpoint, elephantine.AuthInfoParserOptions{})
 	if err != nil {
 		return fmt.Errorf("retrieve JWKS: %w", err)
 	}
