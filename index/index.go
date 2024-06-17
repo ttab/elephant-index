@@ -744,9 +744,12 @@ func (iw *indexWorker) Process(
 			continue
 		}
 
-		idxDoc := BuildDocument(
+		idxDoc, err := BuildDocument(
 			iw.idx.vSource.GetValidator(), job.State,
 		)
+		if err != nil {
+			return fmt.Errorf("build flat document: %w", err)
+		}
 
 		mappings := idxDoc.Mappings()
 
@@ -773,7 +776,7 @@ func (iw *indexWorker) Process(
 			).Add(1)
 		}
 
-		err := errors.Join(
+		err = errors.Join(
 			enc.Encode(bulkHeader{Index: &bulkOperation{
 				Index: iw.indexName,
 				ID:    job.UUID,

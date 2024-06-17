@@ -125,6 +125,10 @@
       "usa-oväderUV2"
     ]
   },
+  "document.meta.tt_slugline.value.keyword": {
+    "type": "keyword",
+    "values": ["usa-oväderUV2"]
+  },
   "document.rel.assignment.type": {
     "type": "keyword",
     "values": [
@@ -267,6 +271,14 @@
   "readers": {
     "type": "keyword",
     "values": ["core://unit/redaktionen"]
+  },
+  "slug": {
+    "type": "alias",
+    "values": ["document.meta.tt_slugline.value"]
+  },
+  "slug.keyword": {
+    "type": "alias",
+    "values": ["document.meta.tt_slugline.value.keyword"]
   },
   "text": {
     "type": "text",

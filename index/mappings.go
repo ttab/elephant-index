@@ -10,6 +10,7 @@ const (
 	TypeDate       FieldType = "date"
 	TypeText       FieldType = "text"
 	TypeKeyword    FieldType = "keyword"
+	TypeAlias      FieldType = "alias"
 	TypePercolator FieldType = "percolator"
 )
 
@@ -32,6 +33,8 @@ func (ft FieldType) Priority() int {
 		return 11
 	case TypeLong:
 		return 12
+	case TypeAlias:
+		return 13
 	case TypePercolator:
 		return 20
 	}
@@ -46,6 +49,11 @@ type Field struct {
 
 type Mapping struct {
 	Type FieldType `json:"type"`
+	Path string    `json:"path,omitempty"`
+}
+
+func (m Mapping) EqualTo(other Mapping) bool {
+	return other.Type == m.Type && other.Path == m.Path
 }
 
 type Mappings struct {
@@ -110,7 +118,7 @@ func (m *Mappings) ChangesFrom(mappings Mappings) MappingChanges {
 			continue
 		}
 
-		if def.Type != original.Type {
+		if !def.EqualTo(original) {
 			changes[k] = MappingChange{
 				Mapping: def,
 			}
