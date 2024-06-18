@@ -67,7 +67,7 @@ func (d *Document) Mappings() Mappings {
 	}
 
 	for name, def := range d.Fields {
-		switch def.Type {
+		switch def.Type { //nolint: exhaustive
 		case TypeAlias:
 			m.Properties[name] = Mapping{
 				Type: def.Type,
