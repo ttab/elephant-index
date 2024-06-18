@@ -153,12 +153,12 @@ func BuildDocument(
 		}
 
 		if slices.Contains(a.Constraint.Labels, "keyword") {
-			kwPath := path + ".keyword"
+			kwPath := path + "_keyword"
 
 			d.AddField(kwPath, TypeKeyword, val)
 
 			for _, alias := range aliases {
-				d.AddField(alias+".keyword", TypeAlias, kwPath)
+				d.AddField(alias+"_keyword", TypeAlias, kwPath)
 			}
 		}
 
