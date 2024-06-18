@@ -14,7 +14,7 @@ require (
 	github.com/ttab/elephantine v0.12.2
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/newsdoc v0.5.0
-	github.com/ttab/revisor v0.8.0
+	github.com/ttab/revisor v0.8.1
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.2
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8
