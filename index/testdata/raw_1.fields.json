@@ -125,7 +125,7 @@
       "usa-oväderUV2"
     ]
   },
-  "document.meta.tt_slugline.value.keyword": {
+  "document.meta.tt_slugline.value_keyword": {
     "type": "keyword",
     "values": ["usa-oväderUV2"]
   },
@@ -276,9 +276,9 @@
     "type": "alias",
     "values": ["document.meta.tt_slugline.value"]
   },
-  "slug.keyword": {
+  "slug_keyword": {
     "type": "alias",
-    "values": ["document.meta.tt_slugline.value.keyword"]
+    "values": ["document.meta.tt_slugline.value_keyword"]
   },
   "text": {
     "type": "text",

@@ -15,7 +15,7 @@
     "type": "long",
     "new": false
   },
-  "document.meta.tt_slugline.value.keyword": {
+  "document.meta.tt_slugline.value_keyword": {
     "type": "keyword",
     "new": true
   },
@@ -28,9 +28,9 @@
     "path": "document.meta.tt_slugline.value",
     "new": true
   },
-  "slug.keyword": {
+  "slug_keyword": {
     "type": "alias",
-    "path": "document.meta.tt_slugline.value.keyword",
+    "path": "document.meta.tt_slugline.value_keyword",
     "new": true
   }
 }

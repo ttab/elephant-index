@@ -60,7 +60,7 @@
     "document.meta.tt_slugline.value": {
       "type": "text"
     },
-    "document.meta.tt_slugline.value.keyword": {
+    "document.meta.tt_slugline.value_keyword": {
       "type": "keyword"
     },
     "document.rel.assignment.type": {
@@ -139,9 +139,9 @@
       "type": "alias",
       "path": "document.meta.tt_slugline.value"
     },
-    "slug.keyword": {
+    "slug_keyword": {
       "type": "alias",
-      "path": "document.meta.tt_slugline.value.keyword"
+      "path": "document.meta.tt_slugline.value_keyword"
     },
     "text": {
       "type": "text"
