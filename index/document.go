@@ -85,6 +85,10 @@ func (d *Document) Values() map[string][]string {
 	v := make(map[string][]string)
 
 	for k := range d.Fields {
+		if d.Fields[k].Type == TypeAlias {
+			continue
+		}
+
 		v[k] = d.Fields[k].Values
 	}
 

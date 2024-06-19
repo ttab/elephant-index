@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,10 @@ import (
 	"github.com/ttab/revisor"
 	"github.com/twitchtv/twirp"
 	"golang.org/x/sync/errgroup"
+)
+
+const (
+	LogKeyIndexOperation = "index_operation"
 )
 
 type ValidatorSource interface {
@@ -694,8 +699,6 @@ func (iw *indexWorker) Process(
 		}
 	}()
 
-	counters := make(map[string]int)
-
 	var buf bytes.Buffer
 
 	enc := json.NewEncoder(&buf)
@@ -706,6 +709,10 @@ func (iw *indexWorker) Process(
 		case <-ctx.Done():
 			return ctx.Err() //nolint:wrapcheck
 		case <-job.done:
+		}
+
+		if job.doc.Type == "core/article" {
+			println(job.UUID, job.doc.Language)
 		}
 
 		var twErr twirp.Error
@@ -738,8 +745,6 @@ func (iw *indexWorker) Process(
 			if err != nil {
 				return fmt.Errorf("marshal delete header: %w", err)
 			}
-
-			counters["deleted"]++
 
 			continue
 		}
@@ -786,8 +791,6 @@ func (iw *indexWorker) Process(
 		if err != nil {
 			return fmt.Errorf("marshal document index instruction: %w", err)
 		}
-
-		counters["indexed"]++
 	}
 
 	res, err := iw.idx.client.Bulk(&buf,
@@ -798,36 +801,9 @@ func (iw *indexWorker) Process(
 
 	defer res.Body.Close()
 
-	dec := json.NewDecoder(res.Body)
-
-	var result bulkResponse
-
-	err = dec.Decode(&result)
+	counters, err := InterpretBulkResponse(ctx, iw.logger, res.Body)
 	if err != nil {
-		return fmt.Errorf("invalid response body from server: %w", err)
-	}
-
-	for _, item := range result.Items {
-		switch {
-		case item.Index != nil:
-			counters["index_err"]++
-
-			iw.logger.ErrorContext(ctx, "failed to index document",
-				elephantine.LogKeyDocumentUUID, item.Index.ID,
-				elephantine.LogKeyError, item.Index.Error.String(),
-			)
-		case item.Delete != nil:
-			if item.Delete.Error == nil {
-				break
-			}
-
-			counters["delete_err"]++
-
-			iw.logger.ErrorContext(ctx, "failed to delete document from index",
-				elephantine.LogKeyDocumentUUID, item.Index.ID,
-				elephantine.LogKeyError, item.Index.Error.String(),
-			)
-		}
+		return fmt.Errorf("interpret bulk response: %w", err)
 	}
 
 	for res, count := range counters {
@@ -837,6 +813,43 @@ func (iw *indexWorker) Process(
 	}
 
 	return nil
+}
+
+func InterpretBulkResponse(
+	ctx context.Context, log *slog.Logger, r io.Reader,
+) (map[string]int, error) {
+	var result bulkResponse
+
+	dec := json.NewDecoder(r)
+
+	err := dec.Decode(&result)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"invalid response body from server: %w", err)
+	}
+
+	counters := make(map[string]int)
+
+	for _, item := range result.Items {
+		for operation, result := range item {
+			println(operation)
+			if result.Status == http.StatusOK {
+				counters[operation]++
+
+				continue
+			}
+
+			counters[operation+"_err"]++
+
+			log.ErrorContext(ctx, "failed update document in index",
+				LogKeyIndexOperation, operation,
+				elephantine.LogKeyDocumentUUID, result.ID,
+				elephantine.LogKeyError, result.Error.String(),
+			)
+		}
+	}
+
+	return counters, nil
 }
 
 func (iw *indexWorker) attemptMappingUpdate(
@@ -946,6 +959,10 @@ func (iw *indexWorker) updateIndexMapping(
 		return fmt.Errorf("mapping update request: %w", err)
 	}
 
+	if res.StatusCode != http.StatusOK {
+		io.Copy(os.Stderr, res.Body)
+	}
+
 	err = res.Body.Close()
 	if err != nil {
 		return fmt.Errorf("close mapping response body: %w", err)
@@ -970,26 +987,30 @@ type bulkOperation struct {
 
 type bulkResponse struct {
 	Errors bool       `json:"errors"`
-	Items  []bulkItem `json:"bulkItem"`
+	Items  []bulkItem `json:"items"`
 }
 
-type bulkItem struct {
-	Delete *bulkResult `json:"delete"`
-	Index  *bulkResult `json:"index"`
-}
+type bulkItem map[string]bulkResult
 
 type bulkResult struct {
-	ID     string     `json:"_id"`
-	Result string     `json:"result"`
-	Status int        `json:"status"`
-	Error  *bulkError `json:"error"`
+	ID     string    `json:"_id"`
+	Result string    `json:"result"`
+	Status int       `json:"status"`
+	Error  bulkError `json:"error"`
 }
 
 type bulkError struct {
-	Type   string `json:"type"`
-	Reason string `json:"reason"`
+	Type     string     `json:"type"`
+	Reason   string     `json:"reason"`
+	CausedBy *bulkError `json:"caused_by"`
 }
 
 func (be bulkError) String() string {
-	return be.Type + ": " + be.Reason
+	msg := be.Type + " " + be.Reason
+
+	if be.CausedBy != nil {
+		msg = msg + ": " + be.CausedBy.String()
+	}
+
+	return msg
 }
