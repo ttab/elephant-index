@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 15.3 (Debian 15.3-1.pgdg120+1)
+-- Dumped from database version 16.1 (Debian 16.1-1.pgdg120+1)
 -- Dumped by pg_dump version 16.1 (Debian 16.1-1.pgdg120+1)
 
 SET statement_timeout = 0;
@@ -21,7 +21,7 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- Name: cluster; Type: TABLE; Schema: public; Owner: indexer
+-- Name: cluster; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.cluster (
@@ -32,10 +32,8 @@ CREATE TABLE public.cluster (
 );
 
 
-ALTER TABLE public.cluster OWNER TO indexer;
-
 --
--- Name: document_index; Type: TABLE; Schema: public; Owner: indexer
+-- Name: document_index; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.document_index (
@@ -46,10 +44,8 @@ CREATE TABLE public.document_index (
 );
 
 
-ALTER TABLE public.document_index OWNER TO indexer;
-
 --
--- Name: index_set; Type: TABLE; Schema: public; Owner: indexer
+-- Name: index_set; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.index_set (
@@ -63,10 +59,8 @@ CREATE TABLE public.index_set (
 );
 
 
-ALTER TABLE public.index_set OWNER TO indexer;
-
 --
--- Name: indexing_override; Type: TABLE; Schema: public; Owner: indexer
+-- Name: indexing_override; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.indexing_override (
@@ -76,10 +70,8 @@ CREATE TABLE public.indexing_override (
 );
 
 
-ALTER TABLE public.indexing_override OWNER TO indexer;
-
 --
--- Name: job_lock; Type: TABLE; Schema: public; Owner: indexer
+-- Name: job_lock; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.job_lock (
@@ -90,10 +82,8 @@ CREATE TABLE public.job_lock (
 );
 
 
-ALTER TABLE public.job_lock OWNER TO indexer;
-
 --
--- Name: schema_version; Type: TABLE; Schema: public; Owner: indexer
+-- Name: schema_version; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.schema_version (
@@ -101,10 +91,8 @@ CREATE TABLE public.schema_version (
 );
 
 
-ALTER TABLE public.schema_version OWNER TO indexer;
-
 --
--- Name: cluster cluster_pkey; Type: CONSTRAINT; Schema: public; Owner: indexer
+-- Name: cluster cluster_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.cluster
@@ -112,7 +100,7 @@ ALTER TABLE ONLY public.cluster
 
 
 --
--- Name: document_index document_index_pkey; Type: CONSTRAINT; Schema: public; Owner: indexer
+-- Name: document_index document_index_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_index
@@ -120,7 +108,7 @@ ALTER TABLE ONLY public.document_index
 
 
 --
--- Name: index_set index_set_pkey; Type: CONSTRAINT; Schema: public; Owner: indexer
+-- Name: index_set index_set_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.index_set
@@ -128,7 +116,7 @@ ALTER TABLE ONLY public.index_set
 
 
 --
--- Name: indexing_override indexing_override_pkey; Type: CONSTRAINT; Schema: public; Owner: indexer
+-- Name: indexing_override indexing_override_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.indexing_override
@@ -136,7 +124,7 @@ ALTER TABLE ONLY public.indexing_override
 
 
 --
--- Name: job_lock job_lock_pkey; Type: CONSTRAINT; Schema: public; Owner: indexer
+-- Name: job_lock job_lock_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.job_lock
@@ -144,21 +132,21 @@ ALTER TABLE ONLY public.job_lock
 
 
 --
--- Name: document_index_content_type_idx; Type: INDEX; Schema: public; Owner: indexer
+-- Name: document_index_content_type_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX document_index_content_type_idx ON public.document_index USING btree (content_type);
 
 
 --
--- Name: unique_single_active; Type: INDEX; Schema: public; Owner: indexer
+-- Name: unique_single_active; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX unique_single_active ON public.index_set USING btree (active) WHERE (active = true);
 
 
 --
--- Name: document_index document_index_set_name_fkey; Type: FK CONSTRAINT; Schema: public; Owner: indexer
+-- Name: document_index document_index_set_name_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_index
@@ -166,7 +154,7 @@ ALTER TABLE ONLY public.document_index
 
 
 --
--- Name: index_set fk_set_cluster; Type: FK CONSTRAINT; Schema: public; Owner: indexer
+-- Name: index_set fk_set_cluster; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.index_set

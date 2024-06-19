@@ -120,33 +120,36 @@ func (ep *ElasticProxy) searchHandler(
 			"failed to parse request body: %v", err)
 	}
 
-	var filter []ElasticQuery
-
-	filter = append(filter,
-		ElasticQuery{
-			Term: map[string]string{
-				"readers": auth.Claims.Subject,
-			},
-		},
-	)
-
-	for _, unit := range auth.Claims.Units {
-		filter = append(filter, ElasticQuery{
-			Term: map[string]string{
-				"readers": unit,
-			},
-		})
-	}
-
 	rootQuery := ElasticQuery{
 		Bool: &BooleanQuery{
-			Filter: []ElasticQuery{
-				{Bool: &BooleanQuery{
-					Should: filter,
-				}},
-			},
 			Must: []json.RawMessage{rawQuery.Query},
 		},
+	}
+
+	if !auth.Claims.HasScope("doc_admin") {
+		var filter []ElasticQuery
+
+		filter = append(filter,
+			ElasticQuery{
+				Term: map[string]string{
+					"readers": auth.Claims.Subject,
+				},
+			},
+		)
+
+		for _, unit := range auth.Claims.Units {
+			filter = append(filter, ElasticQuery{
+				Term: map[string]string{
+					"readers": unit,
+				},
+			})
+		}
+
+		rootQuery.Bool.Filter = []ElasticQuery{
+			{Bool: &BooleanQuery{
+				Should: filter,
+			}},
+		}
 	}
 
 	var searchBody bytes.Buffer

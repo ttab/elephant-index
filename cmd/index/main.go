@@ -1,12 +1,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"runtime/debug"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/index"
@@ -18,6 +21,13 @@ import (
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		slog.Error("exiting: ",
+			elephantine.LogKeyError, err)
+		os.Exit(1)
+	}
+
 	runCmd := cli.Command{
 		Name:        "run",
 		Description: "Runs the index server",
@@ -37,14 +47,12 @@ func main() {
 				Value:   "debug",
 			},
 			&cli.StringFlag{
-				Name:     "jwks-endpoint",
-				EnvVars:  []string{"JWKS_ENDPOINT"},
-				Required: true,
+				Name:    "jwks-endpoint",
+				EnvVars: []string{"JWKS_ENDPOINT"},
 			},
 			&cli.StringFlag{
-				Name:     "jwks-endpoint-parameter",
-				EnvVars:  []string{"JWKS_ENDPOINT_PARAMETER"},
-				Required: true,
+				Name:    "jwks-endpoint-parameter",
+				EnvVars: []string{"JWKS_ENDPOINT_PARAMETER"},
 			},
 			&cli.StringFlag{
 				Name:    "default-language",
@@ -55,14 +63,12 @@ func main() {
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:     "token-endpoint",
-				EnvVars:  []string{"TOKEN_ENDPOINT"},
-				Required: true,
+				Name:    "token-endpoint",
+				EnvVars: []string{"TOKEN_ENDPOINT"},
 			},
 			&cli.StringFlag{
-				Name:     "token-endpoint-parameter",
-				EnvVars:  []string{"TOKEN_ENDPOINT_PARAMETER"},
-				Required: true,
+				Name:    "token-endpoint-parameter",
+				EnvVars: []string{"TOKEN_ENDPOINT_PARAMETER"},
 			},
 			&cli.StringFlag{
 				Name:     "repository-endpoint",
@@ -80,7 +86,7 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "db",
-				Value:   "postgres://indexer:pass@localhost/indexer",
+				Value:   "postgres://elephant-index:pass@localhost/elephant-index",
 				EnvVars: []string{"CONN_STRING"},
 			},
 			&cli.StringFlag{
