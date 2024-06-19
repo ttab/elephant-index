@@ -28,6 +28,7 @@ import (
 
 const (
 	LogKeyIndexOperation = "index_operation"
+	LogKeyResponseStatus = "response_status"
 )
 
 type ValidatorSource interface {
@@ -827,7 +828,7 @@ func InterpretBulkResponse(
 
 	for _, item := range result.Items {
 		for operation, result := range item {
-			if result.Status == http.StatusOK {
+			if result.Status == http.StatusOK || result.Status == http.StatusCreated {
 				counters[operation]++
 
 				continue
@@ -837,6 +838,7 @@ func InterpretBulkResponse(
 
 			log.ErrorContext(ctx, "failed update document in index",
 				LogKeyIndexOperation, operation,
+				LogKeyResponseStatus, result.Status,
 				elephantine.LogKeyDocumentUUID, result.ID,
 				elephantine.LogKeyError, result.Error.String(),
 			)
