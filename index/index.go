@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -711,10 +710,6 @@ func (iw *indexWorker) Process(
 		case <-job.done:
 		}
 
-		if job.doc.Type == "core/article" {
-			println(job.UUID, job.doc.Language)
-		}
-
 		var twErr twirp.Error
 		if errors.As(job.err, &twErr) && twErr.Code() == twirp.NotFound {
 			iw.logger.DebugContext(ctx,
@@ -832,7 +827,6 @@ func InterpretBulkResponse(
 
 	for _, item := range result.Items {
 		for operation, result := range item {
-			println(operation)
 			if result.Status == http.StatusOK {
 				counters[operation]++
 
@@ -957,10 +951,6 @@ func (iw *indexWorker) updateIndexMapping(
 	)
 	if err != nil {
 		return fmt.Errorf("mapping update request: %w", err)
-	}
-
-	if res.StatusCode != http.StatusOK {
-		io.Copy(os.Stderr, res.Body)
 	}
 
 	err = res.Body.Close()
