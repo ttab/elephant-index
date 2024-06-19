@@ -1,0 +1,36 @@
+{
+  "document.content.tt_visual.rel.self.data.height": {
+    "type": "long",
+    "new": true
+  },
+  "document.content.tt_visual.rel.self.data.hiresScale": {
+    "type": "double",
+    "new": true
+  },
+  "document.content.tt_visual.rel.self.data.width": {
+    "type": "long",
+    "new": true
+  },
+  "document.meta.core_newsvalue.data.score": {
+    "type": "long",
+    "new": false
+  },
+  "document.meta.tt_slugline.value_keyword": {
+    "type": "keyword",
+    "new": true
+  },
+  "readers": {
+    "type": "keyword",
+    "new": true
+  },
+  "slug": {
+    "type": "alias",
+    "path": "document.meta.tt_slugline.value",
+    "new": true
+  },
+  "slug_keyword": {
+    "type": "alias",
+    "path": "document.meta.tt_slugline.value_keyword",
+    "new": true
+  }
+}

@@ -1,6 +1,8 @@
 package index
 
 import (
+	"context"
+	"fmt"
 	"html"
 	"regexp"
 	"strings"
@@ -12,11 +14,13 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-func BuildDocument(validator *revisor.Validator, state *DocumentState) *Document {
+func BuildDocument(
+	validator *revisor.Validator, state *DocumentState,
+) (*Document, error) {
 	d := NewDocument()
 
 	if state == nil {
-		return d
+		return d, nil
 	}
 
 	doc := &state.Document
@@ -63,8 +67,13 @@ func BuildDocument(validator *revisor.Validator, state *DocumentState) *Document
 
 	coll := NewValueCollector()
 
-	_ = validator.ValidateDocument(doc,
+	_, err := validator.ValidateDocument(
+		context.Background(),
+		doc,
 		revisor.WithValueCollector(coll))
+	if err != nil {
+		return nil, fmt.Errorf("could not collect values: %w", err)
+	}
 
 	for _, a := range coll.Values() {
 		var ft FieldType
@@ -135,13 +144,35 @@ func BuildDocument(validator *revisor.Validator, state *DocumentState) *Document
 			}
 		}
 
+		path := "document." + entityRefsToPath(doc, a.Ref)
+
+		var aliases []string
+
+		if a.Constraint.Hints != nil {
+			aliases = a.Constraint.Hints["alias"]
+		}
+
+		if slices.Contains(a.Constraint.Labels, "keyword") {
+			kwPath := path + "_keyword"
+
+			d.AddField(kwPath, TypeKeyword, val)
+
+			for _, alias := range aliases {
+				d.AddField(alias+"_keyword", TypeAlias, kwPath)
+			}
+		}
+
 		d.AddField(
 			"document."+entityRefsToPath(doc, a.Ref),
 			ft, val,
 		)
+
+		for _, alias := range aliases {
+			d.AddField(alias, TypeAlias, path)
+		}
 	}
 
-	return d
+	return d, nil
 }
 
 func blockText(policy *bluemonday.Policy, b newsdoc.Block, text []string) []string {
