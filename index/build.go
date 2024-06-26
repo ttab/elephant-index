@@ -25,10 +25,28 @@ func BuildDocument(
 
 	doc := &state.Document
 
-	d.AddField("document.title", TypeText, doc.Title)
-	d.AddField("document.uri", TypeKeyword, doc.URI)
-	d.AddField("document.url", TypeKeyword, doc.URL)
-	d.AddField("document.language", TypeKeyword, doc.Language)
+	d.AddField("document.title", Field{
+		Type:   TypeText,
+		Values: []string{doc.Title},
+		Fields: map[string]SubField{
+			"sort": {
+				Type:       TypeKeyword,
+				Normalizer: "lowercase_trim",
+			},
+		},
+	})
+	d.AddField("document.uri", Field{
+		Type:   TypeKeyword,
+		Values: []string{doc.URI},
+	})
+	d.AddField("document.url", Field{
+		Type:   TypeKeyword,
+		Values: []string{doc.URL},
+	})
+	d.AddField("document.language", Field{
+		Type:   TypeKeyword,
+		Values: []string{doc.Language},
+	})
 
 	d.AddInteger("current_version", state.CurrentVersion)
 	d.AddTime("created", state.Created)
@@ -39,11 +57,17 @@ func BuildDocument(
 
 		d.AddInteger(base+".id", status.ID)
 		d.AddInteger(base+".version", status.Version)
-		d.AddField(base+".creator", TypeKeyword, status.Creator)
+		d.AddField(base+".creator", Field{
+			Type:   TypeKeyword,
+			Values: []string{status.Creator},
+		})
 		d.AddTime(base+".created", status.Created)
 
 		for k, v := range status.Meta {
-			d.AddField(base+".meta."+k, TypeKeyword, v)
+			d.AddField(base+".meta."+k, Field{
+				Type:   TypeKeyword,
+				Values: []string{v},
+			})
 		}
 	}
 
@@ -52,18 +76,28 @@ func BuildDocument(
 			continue
 		}
 
-		d.AddField("readers", TypeKeyword, a.URI)
+		d.AddField("readers", Field{
+			Type:   TypeKeyword,
+			Values: []string{a.URI},
+		})
 	}
 
 	policy := bluemonday.StrictPolicy()
 
-	var text []string
+	text := []string{doc.Title}
 
 	for i := range doc.Content {
 		text = blockText(policy, doc.Content[i], text)
 	}
 
-	d.SetField("text", TypeText, text...)
+	for i := range doc.Meta {
+		text = blockText(policy, doc.Meta[i], text)
+	}
+
+	d.AddField("text", Field{
+		Type:   TypeText,
+		Values: text,
+	})
 
 	coll := NewValueCollector()
 
@@ -152,23 +186,33 @@ func BuildDocument(
 			aliases = a.Constraint.Hints["alias"]
 		}
 
-		if slices.Contains(a.Constraint.Labels, "keyword") {
-			kwPath := path + "_keyword"
-
-			d.AddField(kwPath, TypeKeyword, val)
-
-			for _, alias := range aliases {
-				d.AddField(alias+"_keyword", TypeAlias, kwPath)
-			}
+		f := Field{
+			Type:   ft,
+			Values: []string{val},
 		}
 
-		d.AddField(
-			"document."+entityRefsToPath(doc, a.Ref),
-			ft, val,
-		)
+		if slices.Contains(a.Constraint.Labels, "keyword") {
+			f.AddSubField("keyword", SubField{
+				Type: TypeKeyword,
+			})
+		}
+
+		if slices.Contains(a.Constraint.Labels, "sortable") {
+			f.AddSubField("sort", SubField{
+				Type:       TypeKeyword,
+				Normalizer: "lowercase_trim",
+			})
+		}
+
+		d.AddField("document."+entityRefsToPath(doc, a.Ref), f)
 
 		for _, alias := range aliases {
-			d.AddField(alias, TypeAlias, path)
+			// TODO: can we alias the sub-fields as well, is it
+			// needed or is an alias like a directory symlink?
+			d.AddField(alias, Field{
+				Type:   TypeAlias,
+				Values: []string{path},
+			})
 		}
 	}
 
@@ -176,6 +220,10 @@ func BuildDocument(
 }
 
 func blockText(policy *bluemonday.Policy, b newsdoc.Block, text []string) []string {
+	if b.Title != "" {
+		text = append(text, html.UnescapeString(policy.Sanitize(b.Title)))
+	}
+
 	if b.Data != nil {
 		t := b.Data["text"]
 		if t != "" {

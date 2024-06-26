@@ -45,9 +45,6 @@
     "document.meta.core_note.data.text": {
       "type": "text"
     },
-    "document.meta.core_note.role": {
-      "type": "keyword"
-    },
     "document.meta.tt_slugline.value": {
       "type": "text"
     },

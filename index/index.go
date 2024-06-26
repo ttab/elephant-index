@@ -474,6 +474,13 @@ func (idx *Indexer) ensureIndex(
 		fmt.Sprintf("%s-%s", indexTypeRoot, config.Language),
 	}
 
+	// Add a custom normaliser for sort fields.
+	config.Settings.Settings.Analysis.SetNormalizer(
+		"lowercase_trim", OpensearchNormaliser{
+			Type:   "custom",
+			Filter: []string{"lowercase", "trim"},
+		})
+
 	settings, err := json.Marshal(config.Settings)
 	if err != nil {
 		return "", fmt.Errorf("could not marshal index settings: %w", err)
@@ -768,7 +775,7 @@ func (iw *indexWorker) Process(
 		// track of to see if we need to re-index or adjust the revisor
 		// schema.
 		for p, c := range changes {
-			if c.New {
+			if c.Comparison != MappingBreaking {
 				continue
 			}
 
@@ -829,6 +836,13 @@ func InterpretBulkResponse(
 	for _, item := range result.Items {
 		for operation, result := range item {
 			if result.Status == http.StatusOK || result.Status == http.StatusCreated {
+				counters[operation]++
+
+				continue
+			}
+
+			// Treat 404s as success for deletes.
+			if operation == "delete" && result.Status == http.StatusNotFound {
 				counters[operation]++
 
 				continue
