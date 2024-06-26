@@ -16,10 +16,11 @@ type Cluster struct {
 }
 
 type DocumentIndex struct {
-	Name        string
-	SetName     string
-	ContentType string
-	Mappings    []byte
+	Name         string
+	SetName      string
+	ContentType  string
+	Mappings     []byte
+	FeatureFlags []string
 }
 
 type IndexSet struct {

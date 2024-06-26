@@ -40,7 +40,9 @@ func TestBuildDocument(t *testing.T) {
 		t.Fatalf("failed to create validator: %v", err)
 	}
 
-	doc, err := index.BuildDocument(validator, &state)
+	doc, err := index.BuildDocument(validator, &state, map[string]bool{
+		index.FeatureSortable: true,
+	})
 	if err != nil {
 		t.Fatalf("failed to build document: %v", err)
 	}

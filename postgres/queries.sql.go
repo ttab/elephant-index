@@ -47,15 +47,16 @@ func (q *Queries) ClusterIndexCount(ctx context.Context, cluster string) (Cluste
 }
 
 const createDocumentIndex = `-- name: CreateDocumentIndex :exec
-INSERT INTO document_index(name, set_name, content_type, mappings)
-VALUES ($1, $2, $3, $4)
+INSERT INTO document_index(name, set_name, content_type, mappings, feature_flags)
+VALUES ($1, $2, $3, $4, $5)
 `
 
 type CreateDocumentIndexParams struct {
-	Name        string
-	SetName     string
-	ContentType string
-	Mappings    []byte
+	Name         string
+	SetName      string
+	ContentType  string
+	Mappings     []byte
+	FeatureFlags []string
 }
 
 func (q *Queries) CreateDocumentIndex(ctx context.Context, arg CreateDocumentIndexParams) error {
@@ -64,6 +65,7 @@ func (q *Queries) CreateDocumentIndex(ctx context.Context, arg CreateDocumentInd
 		arg.SetName,
 		arg.ContentType,
 		arg.Mappings,
+		arg.FeatureFlags,
 	)
 	return err
 }
@@ -223,18 +225,23 @@ func (q *Queries) GetCurrentActiveForUpdate(ctx context.Context) (IndexSet, erro
 	return i, err
 }
 
-const getIndexMappings = `-- name: GetIndexMappings :one
-SELECT mappings
+const getIndexConfiguration = `-- name: GetIndexConfiguration :one
+SELECT mappings, feature_flags
 FROM document_index
 WHERE name = $1
 FOR UPDATE
 `
 
-func (q *Queries) GetIndexMappings(ctx context.Context, name string) ([]byte, error) {
-	row := q.db.QueryRow(ctx, getIndexMappings, name)
-	var mappings []byte
-	err := row.Scan(&mappings)
-	return mappings, err
+type GetIndexConfigurationRow struct {
+	Mappings     []byte
+	FeatureFlags []string
+}
+
+func (q *Queries) GetIndexConfiguration(ctx context.Context, name string) (GetIndexConfigurationRow, error) {
+	row := q.db.QueryRow(ctx, getIndexConfiguration, name)
+	var i GetIndexConfigurationRow
+	err := row.Scan(&i.Mappings, &i.FeatureFlags)
+	return i, err
 }
 
 const getIndexSet = `-- name: GetIndexSet :one

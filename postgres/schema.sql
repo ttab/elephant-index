@@ -40,7 +40,8 @@ CREATE TABLE public.document_index (
     name text NOT NULL,
     set_name text NOT NULL,
     content_type text NOT NULL,
-    mappings jsonb NOT NULL
+    mappings jsonb NOT NULL,
+    feature_flags text[]
 );
 
 

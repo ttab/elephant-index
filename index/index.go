@@ -557,17 +557,24 @@ func newIndexWorker(
 		percolateIndexName: percolateIndex,
 		knownMappings:      NewMappings(),
 		jobQueue:           make(chan *enrichJob, concurrency),
+		featureFlags:       make(map[string]bool),
 	}
 
-	mappingData, err := idx.q.GetIndexMappings(ctx, name)
+	conf, err := idx.q.GetIndexConfiguration(ctx, name)
 	if errors.Is(err, pgx.ErrNoRows) {
-		mappingData = []byte("{}")
+		conf.Mappings = []byte("{}")
 
 		err := idx.q.CreateDocumentIndex(ctx, postgres.CreateDocumentIndexParams{
 			Name:        name,
 			SetName:     idx.name,
 			ContentType: contentType,
-			Mappings:    mappingData,
+			Mappings:    conf.Mappings,
+			FeatureFlags: []string{
+				// Assumes that new indexes always support the
+				// current features. If that changes this will
+				// have to be parameterised.
+				FeatureSortable,
+			},
 		})
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -578,7 +585,11 @@ func newIndexWorker(
 			"get current index mappings: %w", err)
 	}
 
-	err = json.Unmarshal(mappingData, &iw.knownMappings.Properties)
+	for _, feature := range conf.FeatureFlags {
+		iw.featureFlags[feature] = true
+	}
+
+	err = json.Unmarshal(conf.Mappings, &iw.knownMappings.Properties)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"unmarshal current index mappings: %w", err)
@@ -599,6 +610,7 @@ type indexWorker struct {
 	percolateIndexName string
 	jobQueue           chan *enrichJob
 
+	featureFlags  map[string]bool
 	knownMappings Mappings
 }
 
@@ -753,7 +765,7 @@ func (iw *indexWorker) Process(
 		}
 
 		idxDoc, err := BuildDocument(
-			iw.idx.vSource.GetValidator(), job.State,
+			iw.idx.vSource.GetValidator(), job.State, iw.featureFlags,
 		)
 		if err != nil {
 			return fmt.Errorf("build flat document: %w", err)
@@ -876,7 +888,7 @@ func (iw *indexWorker) attemptMappingUpdate(
 		q := iw.idx.q.WithTx(tx)
 
 		// Get the current index mappings with a row lock.
-		mappingData, err := q.GetIndexMappings(ctx, iw.indexName)
+		conf, err := q.GetIndexConfiguration(ctx, iw.indexName)
 		if err != nil {
 			return fmt.Errorf(
 				"get current index mappings: %w", err)
@@ -884,7 +896,7 @@ func (iw *indexWorker) attemptMappingUpdate(
 
 		var current Mappings
 
-		err = json.Unmarshal(mappingData, &current.Properties)
+		err = json.Unmarshal(conf.Mappings, &current.Properties)
 		if err != nil {
 			return fmt.Errorf(
 				"unmarshal current index mappings: %w", err)
@@ -928,7 +940,7 @@ func (iw *indexWorker) attemptMappingUpdate(
 			return fmt.Errorf("update document index mappings: %w", err)
 		}
 
-		mappingData, err = json.Marshal(newMappings.Properties)
+		mappingData, err := json.Marshal(newMappings.Properties)
 		if err != nil {
 			return fmt.Errorf("marshal mappings: %w", err)
 		}

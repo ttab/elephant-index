@@ -14,8 +14,16 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// Fields can depend on index settings (like custom normalisers). These won't be
+// supported on old indexes, so instead of failing we set feature flags on the
+// indexes so that we know what's supported.
+const (
+	FeatureSortable = "sortable"
+)
+
 func BuildDocument(
 	validator *revisor.Validator, state *DocumentState,
+	featureFlags map[string]bool,
 ) (*Document, error) {
 	d := NewDocument()
 
@@ -25,16 +33,19 @@ func BuildDocument(
 
 	doc := &state.Document
 
-	d.AddField("document.title", Field{
+	titleField := Field{
 		Type:   TypeText,
 		Values: []string{doc.Title},
-		Fields: map[string]SubField{
-			"sort": {
-				Type:       TypeKeyword,
-				Normalizer: "lowercase_trim",
-			},
-		},
-	})
+	}
+
+	if featureFlags[FeatureSortable] {
+		titleField.AddSubField("sort", SubField{
+			Type:       TypeKeyword,
+			Normalizer: "lowercase_trim",
+		})
+	}
+
+	d.AddField("document.title", titleField)
 	d.AddField("document.uri", Field{
 		Type:   TypeKeyword,
 		Values: []string{doc.URI},
@@ -197,11 +208,13 @@ func BuildDocument(
 			})
 		}
 
-		if slices.Contains(a.Constraint.Labels, "sortable") {
-			f.AddSubField("sort", SubField{
-				Type:       TypeKeyword,
-				Normalizer: "lowercase_trim",
-			})
+		if featureFlags[FeatureSortable] {
+			if slices.Contains(a.Constraint.Labels, "sortable") {
+				f.AddSubField("sort", SubField{
+					Type:       TypeKeyword,
+					Normalizer: "lowercase_trim",
+				})
+			}
 		}
 
 		d.AddField("document."+entityRefsToPath(doc, a.Ref), f)
