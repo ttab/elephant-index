@@ -1,7 +1,7 @@
 version: '3'
 services:
   opensearch-node1:
-    image: opensearchproject/opensearch:latest
+    image: opensearch_icu:latest
     container_name: opensearch-node1
     environment:
       - cluster.name=opensearch-cluster # Name the cluster
@@ -27,7 +27,7 @@ services:
     networks:
       - opensearch-net # All of the containers will join the same Docker bridge network
   opensearch-node2:
-    image: opensearchproject/opensearch:latest
+    image: opensearch_icu:latest
     container_name: opensearch-node2
     environment:
       - cluster.name=opensearch-cluster # Name the cluster
