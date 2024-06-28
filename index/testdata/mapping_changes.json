@@ -1,36 +1,51 @@
 {
   "document.content.tt_visual.rel.self.data.height": {
     "type": "long",
-    "new": true
+    "comparison": "superset"
   },
   "document.content.tt_visual.rel.self.data.hiresScale": {
     "type": "double",
-    "new": true
+    "comparison": "superset"
   },
   "document.content.tt_visual.rel.self.data.width": {
     "type": "long",
-    "new": true
+    "comparison": "superset"
   },
   "document.meta.core_newsvalue.data.score": {
     "type": "long",
-    "new": false
+    "comparison": "breaking"
   },
-  "document.meta.tt_slugline.value_keyword": {
+  "document.meta.core_note.role": {
     "type": "keyword",
-    "new": true
+    "comparison": "superset"
+  },
+  "document.meta.tt_slugline.value": {
+    "type": "text",
+    "fields": {
+      "keyword": {
+        "type": "keyword"
+      }
+    },
+    "comparison": "superset"
+  },
+  "document.title": {
+    "type": "text",
+    "fields": {
+      "sort": {
+        "type": "icu_collation_keyword",
+        "language": "sv",
+        "country": "se"
+      }
+    },
+    "comparison": "superset"
   },
   "readers": {
     "type": "keyword",
-    "new": true
+    "comparison": "superset"
   },
   "slug": {
     "type": "alias",
     "path": "document.meta.tt_slugline.value",
-    "new": true
-  },
-  "slug_keyword": {
-    "type": "alias",
-    "path": "document.meta.tt_slugline.value_keyword",
-    "new": true
+    "comparison": "superset"
   }
 }

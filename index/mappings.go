@@ -12,6 +12,7 @@ const (
 	TypeKeyword    FieldType = "keyword"
 	TypeAlias      FieldType = "alias"
 	TypePercolator FieldType = "percolator"
+	TypeICUKeyword FieldType = "icu_collation_keyword"
 )
 
 // We should not have colliding types, but if something first is defined as text
@@ -35,6 +36,8 @@ func (ft FieldType) Priority() int {
 		return 12
 	case TypeAlias:
 		return 13
+	case TypeICUKeyword:
+		return 14
 	case TypePercolator:
 		return 20
 	}
@@ -43,17 +46,114 @@ func (ft FieldType) Priority() int {
 }
 
 type Field struct {
-	Type   FieldType `json:"type"`
-	Values []string  `json:"values"`
+	Type   FieldType           `json:"type"`
+	Values []string            `json:"values"`
+	Fields map[string]SubField `json:"fields,omitempty"`
+}
+
+func (f *Field) AddSubField(name string, sf SubField) {
+	if f.Fields == nil {
+		f.Fields = make(map[string]SubField)
+	}
+
+	f.Fields[name] = sf
+}
+
+type SubField struct {
+	Type       FieldType `json:"type"`
+	Normalizer string    `json:"normalizer,omitempty"`
+	Index      *bool     `json:"index,omitempty"`
+	Language   string    `json:"language,omitempty"`
+	Country    string    `json:"country,omitempty"`
+	Variant    string    `json:"variant,omitempty"`
+}
+
+func (sf SubField) Equal(other SubField) bool {
+	return other.Type == sf.Type &&
+		other.Normalizer == sf.Normalizer &&
+		other.Language == sf.Language &&
+		other.Country == sf.Country &&
+		other.Variant == sf.Variant &&
+		equalPointerValue(other.Index, sf.Index)
+}
+
+func equalPointerValue[T comparable](a *T, b *T) bool {
+	if a == nil && b == nil {
+		return true
+	}
+
+	if a == nil || b == nil {
+		return false
+	}
+
+	return *a == *b
 }
 
 type Mapping struct {
-	Type FieldType `json:"type"`
-	Path string    `json:"path,omitempty"`
+	Type   FieldType           `json:"type"`
+	Path   string              `json:"path,omitempty"`
+	Fields map[string]SubField `json:"fields,omitempty"`
 }
 
-func (m Mapping) EqualTo(other Mapping) bool {
-	return other.Type == m.Type && other.Path == m.Path
+type MappingComparison string
+
+const (
+	MappingBreaking = "breaking"
+	MappingEqual    = "equal"
+	MappingSuperset = "superset"
+)
+
+func (m Mapping) Compare(other Mapping) MappingComparison {
+	equal := other.Type == m.Type && other.Path == m.Path
+	if !equal {
+		return MappingBreaking
+	}
+
+	switch {
+	case len(other.Fields) == 0 && len(m.Fields) == 0:
+		// No subfields on either side.
+		return MappingEqual
+	case len(other.Fields) == 0:
+		// New subfields.
+		return MappingSuperset
+	case len(m.Fields) == 0:
+		// Cannot remove subfields.
+		return MappingBreaking
+	}
+
+	for k, v := range other.Fields {
+		nv, ok := m.Fields[k]
+		if !ok {
+			// Existing subfield has been removed.
+			return MappingBreaking
+		}
+
+		if nv.Normalizer != v.Normalizer || nv.Type != v.Type {
+			// Type of subfield has changed.
+			return MappingBreaking
+		}
+	}
+
+	var hasNewSubfields bool
+
+	for k, v := range m.Fields {
+		ov, ok := other.Fields[k]
+		if !ok {
+			hasNewSubfields = true
+
+			continue
+		}
+
+		if ov.Normalizer != v.Normalizer || ov.Type != v.Type {
+			return MappingBreaking
+		}
+	}
+
+	if hasNewSubfields {
+		return MappingSuperset
+	}
+
+	return MappingEqual
 }
 
 type Mappings struct {
@@ -70,7 +170,7 @@ type MappingChanges map[string]MappingChange
 
 func (mc MappingChanges) HasNew() bool {
 	for n := range mc {
-		if mc[n].New {
+		if mc[n].Comparison == MappingSuperset {
 			return true
 		}
 	}
@@ -88,7 +188,9 @@ func (mc MappingChanges) Superset(mappings Mappings) Mappings {
 	}
 
 	for k := range mc {
-		if !mc[k].New {
+		// Only add changes that are part of a superset. We can't break
+		// the current mappings.
+		if mc[k].Comparison != MappingSuperset {
 			continue
 		}
 
@@ -101,7 +203,7 @@ func (mc MappingChanges) Superset(mappings Mappings) Mappings {
 type MappingChange struct {
 	Mapping
 
-	New bool `json:"new"`
+	Comparison MappingComparison `json:"comparison"`
 }
 
 func (m *Mappings) ChangesFrom(mappings Mappings) MappingChanges {
@@ -111,19 +213,21 @@ func (m *Mappings) ChangesFrom(mappings Mappings) MappingChanges {
 		original, ok := mappings.Properties[k]
 		if !ok {
 			changes[k] = MappingChange{
-				Mapping: def,
-				New:     true,
+				Mapping:    def,
+				Comparison: MappingSuperset,
 			}
 
 			continue
 		}
 
-		if !def.EqualTo(original) {
-			changes[k] = MappingChange{
-				Mapping: def,
-			}
-
+		cmp := def.Compare(original)
+		if cmp == MappingEqual {
 			continue
+		}
+
+		changes[k] = MappingChange{
+			Mapping:    def,
+			Comparison: cmp,
 		}
 	}
 

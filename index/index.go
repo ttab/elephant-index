@@ -345,8 +345,14 @@ func (idx *Indexer) loopIteration(
 			index, ok := idx.indexes[key]
 
 			if !ok {
+				langConf, err := GetLanguageConfig(lang, idx.defaultLanguage)
+				if err != nil {
+					return 0, fmt.Errorf(
+						"could not get language config: %w", err)
+				}
+
 				name, err := idx.ensureIndex(
-					ctx, "documents", docType, lang)
+					ctx, "documents", docType, langConf)
 				if err != nil {
 					return 0, fmt.Errorf(
 						"ensure index for doc type %q: %w",
@@ -354,7 +360,7 @@ func (idx *Indexer) loopIteration(
 				}
 
 				percolateName, err := idx.ensureIndex(
-					ctx, "percolate", docType, lang)
+					ctx, "percolate", docType, langConf)
 				if err != nil {
 					return 0, fmt.Errorf(
 						"ensure index for doc type %q: %w",
@@ -362,7 +368,7 @@ func (idx *Indexer) loopIteration(
 				}
 
 				index, err = newIndexWorker(ctx, idx,
-					name, percolateName, docType, 8)
+					name, percolateName, docType, langConf, 8)
 				if err != nil {
 					return 0, fmt.Errorf(
 						"create index worker: %w", err)
@@ -459,13 +465,8 @@ func createLanguageQuery(uuid string, language string) ElasticSearchRequest {
 }
 
 func (idx *Indexer) ensureIndex(
-	ctx context.Context, indexType string, docType string, lang string,
+	ctx context.Context, indexType string, docType string, config LanguageConfig,
 ) (string, error) {
-	config, err := GetLanguageConfig(lang, idx.defaultLanguage)
-	if err != nil {
-		return "", fmt.Errorf("could not get language config: %w", err)
-	}
-
 	indexTypeRoot := idx.getIndexTypeRoot(docType, indexType)
 
 	index := fmt.Sprintf("%s-%s", indexTypeRoot, config.NameSuffix)
@@ -538,6 +539,7 @@ func (idx *Indexer) ensureAlias(index string, alias string) error {
 func newIndexWorker(
 	ctx context.Context, idx *Indexer,
 	name, percolateIndex, contentType string,
+	lang LanguageConfig,
 	concurrency int,
 ) (*indexWorker, error) {
 	iw := indexWorker{
@@ -550,28 +552,48 @@ func newIndexWorker(
 		percolateIndexName: percolateIndex,
 		knownMappings:      NewMappings(),
 		jobQueue:           make(chan *enrichJob, concurrency),
+		featureFlags:       make(map[string]bool),
+		language:           lang,
 	}
 
-	mappingData, err := idx.q.GetIndexMappings(ctx, name)
+	conf, err := idx.q.GetIndexConfiguration(ctx, name)
 	if errors.Is(err, pgx.ErrNoRows) {
-		mappingData = []byte("{}")
+		conf.Mappings = []byte("{}")
 
 		err := idx.q.CreateDocumentIndex(ctx, postgres.CreateDocumentIndexParams{
 			Name:        name,
 			SetName:     idx.name,
 			ContentType: contentType,
-			Mappings:    mappingData,
+			Mappings:    conf.Mappings,
+			FeatureFlags: []string{
+				// Assumes that new indexes always support the
+				// current features. If that changes this will
+				// have to be parameterised.
+				FeatureSortable,
+			},
 		})
 		if err != nil {
 			return nil, fmt.Errorf(
 				"create index entry in database: %w", err)
 		}
+
+		c, err := idx.q.GetIndexConfiguration(ctx, name)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"read created index entry: %w", err)
+		}
+
+		conf = c
 	} else if err != nil {
 		return nil, fmt.Errorf(
 			"get current index mappings: %w", err)
 	}
 
-	err = json.Unmarshal(mappingData, &iw.knownMappings.Properties)
+	for _, feature := range conf.FeatureFlags {
+		iw.featureFlags[feature] = true
+	}
+
+	err = json.Unmarshal(conf.Mappings, &iw.knownMappings.Properties)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"unmarshal current index mappings: %w", err)
@@ -590,8 +612,10 @@ type indexWorker struct {
 	contentType        string
 	indexName          string
 	percolateIndexName string
+	language           LanguageConfig
 	jobQueue           chan *enrichJob
 
+	featureFlags  map[string]bool
 	knownMappings Mappings
 }
 
@@ -747,6 +771,7 @@ func (iw *indexWorker) Process(
 
 		idxDoc, err := BuildDocument(
 			iw.idx.vSource.GetValidator(), job.State,
+			iw.language, iw.featureFlags,
 		)
 		if err != nil {
 			return fmt.Errorf("build flat document: %w", err)
@@ -768,7 +793,7 @@ func (iw *indexWorker) Process(
 		// track of to see if we need to re-index or adjust the revisor
 		// schema.
 		for p, c := range changes {
-			if c.New {
+			if c.Comparison != MappingBreaking {
 				continue
 			}
 
@@ -834,6 +859,13 @@ func InterpretBulkResponse(
 				continue
 			}
 
+			// Treat 404s as success for deletes.
+			if operation == "delete" && result.Status == http.StatusNotFound {
+				counters[operation]++
+
+				continue
+			}
+
 			counters[operation+"_err"]++
 
 			log.ErrorContext(ctx, "failed update document in index",
@@ -862,7 +894,7 @@ func (iw *indexWorker) attemptMappingUpdate(
 		q := iw.idx.q.WithTx(tx)
 
 		// Get the current index mappings with a row lock.
-		mappingData, err := q.GetIndexMappings(ctx, iw.indexName)
+		conf, err := q.GetIndexConfiguration(ctx, iw.indexName)
 		if err != nil {
 			return fmt.Errorf(
 				"get current index mappings: %w", err)
@@ -870,7 +902,7 @@ func (iw *indexWorker) attemptMappingUpdate(
 
 		var current Mappings
 
-		err = json.Unmarshal(mappingData, &current.Properties)
+		err = json.Unmarshal(conf.Mappings, &current.Properties)
 		if err != nil {
 			return fmt.Errorf(
 				"unmarshal current index mappings: %w", err)
@@ -914,7 +946,7 @@ func (iw *indexWorker) attemptMappingUpdate(
 			return fmt.Errorf("update document index mappings: %w", err)
 		}
 
-		mappingData, err = json.Marshal(newMappings.Properties)
+		mappingData, err := json.Marshal(newMappings.Properties)
 		if err != nil {
 			return fmt.Errorf("marshal mappings: %w", err)
 		}

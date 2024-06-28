@@ -14,8 +14,16 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// Fields can depend on index settings (like custom normalisers). These won't be
+// supported on old indexes, so instead of failing we set feature flags on the
+// indexes so that we know what's supported.
+const (
+	FeatureSortable = "sortable"
+)
+
 func BuildDocument(
 	validator *revisor.Validator, state *DocumentState,
+	language LanguageConfig, featureFlags map[string]bool,
 ) (*Document, error) {
 	d := NewDocument()
 
@@ -25,10 +33,30 @@ func BuildDocument(
 
 	doc := &state.Document
 
-	d.AddField("document.title", TypeText, doc.Title)
-	d.AddField("document.uri", TypeKeyword, doc.URI)
-	d.AddField("document.url", TypeKeyword, doc.URL)
-	d.AddField("document.language", TypeKeyword, doc.Language)
+	titleField := Field{
+		Type:   TypeText,
+		Values: []string{doc.Title},
+	}
+
+	if featureFlags[FeatureSortable] {
+		addSortSubField(&titleField, language, nil)
+	}
+
+	// TODO: I'ts a bit awkward that we pre-declare these before running
+	// collection. It should be treated like we do with
+	d.AddField("document.title", titleField)
+	d.AddField("document.uri", Field{
+		Type:   TypeKeyword,
+		Values: []string{doc.URI},
+	})
+	d.AddField("document.url", Field{
+		Type:   TypeKeyword,
+		Values: []string{doc.URL},
+	})
+	d.AddField("document.language", Field{
+		Type:   TypeKeyword,
+		Values: []string{doc.Language},
+	})
 
 	d.AddInteger("current_version", state.CurrentVersion)
 	d.AddTime("created", state.Created)
@@ -39,11 +67,17 @@ func BuildDocument(
 
 		d.AddInteger(base+".id", status.ID)
 		d.AddInteger(base+".version", status.Version)
-		d.AddField(base+".creator", TypeKeyword, status.Creator)
+		d.AddField(base+".creator", Field{
+			Type:   TypeKeyword,
+			Values: []string{status.Creator},
+		})
 		d.AddTime(base+".created", status.Created)
 
 		for k, v := range status.Meta {
-			d.AddField(base+".meta."+k, TypeKeyword, v)
+			d.AddField(base+".meta."+k, Field{
+				Type:   TypeKeyword,
+				Values: []string{v},
+			})
 		}
 	}
 
@@ -52,18 +86,28 @@ func BuildDocument(
 			continue
 		}
 
-		d.AddField("readers", TypeKeyword, a.URI)
+		d.AddField("readers", Field{
+			Type:   TypeKeyword,
+			Values: []string{a.URI},
+		})
 	}
 
 	policy := bluemonday.StrictPolicy()
 
-	var text []string
+	text := []string{doc.Title}
 
 	for i := range doc.Content {
 		text = blockText(policy, doc.Content[i], text)
 	}
 
-	d.SetField("text", TypeText, text...)
+	for i := range doc.Meta {
+		text = blockText(policy, doc.Meta[i], text)
+	}
+
+	d.AddField("text", Field{
+		Type:   TypeText,
+		Values: text,
+	})
 
 	coll := NewValueCollector()
 
@@ -152,30 +196,58 @@ func BuildDocument(
 			aliases = a.Constraint.Hints["alias"]
 		}
 
+		f := Field{
+			Type:   ft,
+			Values: []string{val},
+		}
+
 		if slices.Contains(a.Constraint.Labels, "keyword") {
-			kwPath := path + "_keyword"
+			f.AddSubField("keyword", SubField{
+				Type: TypeKeyword,
+			})
+		}
 
-			d.AddField(kwPath, TypeKeyword, val)
-
-			for _, alias := range aliases {
-				d.AddField(alias+"_keyword", TypeAlias, kwPath)
+		if featureFlags[FeatureSortable] {
+			if slices.Contains(a.Constraint.Labels, "sortable") {
+				addSortSubField(&f, language, a.Constraint.Labels)
 			}
 		}
 
-		d.AddField(
-			"document."+entityRefsToPath(doc, a.Ref),
-			ft, val,
-		)
+		d.AddField("document."+entityRefsToPath(doc, a.Ref), f)
 
 		for _, alias := range aliases {
-			d.AddField(alias, TypeAlias, path)
+			// TODO: can we alias the sub-fields as well, is it
+			// needed or is an alias like a directory symlink?
+			d.AddField(alias, Field{
+				Type:   TypeAlias,
+				Values: []string{path},
+			})
 		}
 	}
 
 	return d, nil
 }
 
+func addSortSubField(field *Field, language LanguageConfig, labels []string) {
+	var variant string
+
+	if language.Language == "de" && slices.Contains(labels, "de-phonebook") {
+		variant = "@collation=phonebook"
+	}
+
+	field.AddSubField("sort", SubField{
+		Type:     TypeICUKeyword,
+		Language: language.Language,
+		Country:  language.Region,
+		Variant:  variant,
+	})
+}
+
 func blockText(policy *bluemonday.Policy, b newsdoc.Block, text []string) []string {
+	if b.Title != "" {
+		text = append(text, html.UnescapeString(policy.Sanitize(b.Title)))
+	}
+
 	if b.Data != nil {
 		t := b.Data["text"]
 		if t != "" {

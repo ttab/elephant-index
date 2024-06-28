@@ -10,19 +10,44 @@ import (
 type LanguageConfig struct {
 	NameSuffix string
 	Language   string
+	Region     string
 	Settings   OpensearchSettings
 }
 
 type OpensearchSettings struct {
 	Settings struct {
-		Analysis struct {
-			Analyzer struct {
-				Default struct {
-					Type string `json:"type"`
-				} `json:"default"`
-			} `json:"analyzer"`
-		} `json:"analysis"`
+		Analysis OpensearchAnalysis `json:"analysis"`
 	} `json:"settings"`
+}
+
+type OpensearchAnalysis struct {
+	Analyzer   map[string]OpensearchAnalyzer   `json:"analyzer,omitempty"`
+	Normalizer map[string]OpensearchNormaliser `json:"normalizer,omitempty"`
+}
+
+func (osa *OpensearchAnalysis) SetAnalyzer(name string, v OpensearchAnalyzer) {
+	if osa.Analyzer == nil {
+		osa.Analyzer = make(map[string]OpensearchAnalyzer)
+	}
+
+	osa.Analyzer[name] = v
+}
+
+func (osa *OpensearchAnalysis) SetNormalizer(name string, v OpensearchNormaliser) {
+	if osa.Normalizer == nil {
+		osa.Normalizer = make(map[string]OpensearchNormaliser)
+	}
+
+	osa.Normalizer[name] = v
+}
+
+type OpensearchAnalyzer struct {
+	Type string `json:"type"`
+}
+
+type OpensearchNormaliser struct {
+	Type   string   `json:"type"`
+	Filter []string `json:"filter"`
 }
 
 func GetLanguageConfig(code string, defaultLanguage string) (LanguageConfig, error) {
@@ -57,12 +82,16 @@ func GetLanguageConfig(code string, defaultLanguage string) (LanguageConfig, err
 		}
 	}
 
-	s := OpensearchSettings{}
-	s.Settings.Analysis.Analyzer.Default.Type = analyzer
+	var s OpensearchSettings
+
+	s.Settings.Analysis.SetAnalyzer("default", OpensearchAnalyzer{
+		Type: analyzer,
+	})
 
 	return LanguageConfig{
 		NameSuffix: fmt.Sprintf("%s-%s", lang, region),
 		Language:   lang,
+		Region:     strings.ToLower(info.Region),
 		Settings:   s,
 	}, nil
 }

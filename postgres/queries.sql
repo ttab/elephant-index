@@ -93,8 +93,8 @@ SELECT position
 FROM index_set
 WHERE name = @name;
 
--- name: GetIndexMappings :one
-SELECT mappings
+-- name: GetIndexConfiguration :one
+SELECT mappings, feature_flags
 FROM document_index
 WHERE name = @name
 FOR UPDATE;
@@ -105,8 +105,8 @@ SET mappings = @mappings
 WHERE name = @name;
 
 -- name: CreateDocumentIndex :exec
-INSERT INTO document_index(name, set_name, content_type, mappings)
-VALUES (@name, @set_name, @content_type, @mappings);
+INSERT INTO document_index(name, set_name, content_type, mappings, feature_flags)
+VALUES (@name, @set_name, @content_type, @mappings, @feature_flags);
 
 -- name: GetIndexSetForUpdate :one
 SELECT name, position, cluster, active, enabled, deleted, modified

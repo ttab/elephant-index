@@ -58,10 +58,12 @@
       "type": "keyword"
     },
     "document.meta.tt_slugline.value": {
-      "type": "text"
-    },
-    "document.meta.tt_slugline.value_keyword": {
-      "type": "keyword"
+      "type": "text",
+      "fields": {
+        "keyword": {
+          "type": "keyword"
+        }
+      }
     },
     "document.rel.assignment.type": {
       "type": "keyword"
@@ -88,7 +90,14 @@
       "type": "keyword"
     },
     "document.title": {
-      "type": "text"
+      "type": "text",
+      "fields": {
+        "sort": {
+          "type": "icu_collation_keyword",
+          "language": "sv",
+          "country": "se"
+        }
+      }
     },
     "document.type": {
       "type": "keyword"
@@ -138,10 +147,6 @@
     "slug": {
       "type": "alias",
       "path": "document.meta.tt_slugline.value"
-    },
-    "slug_keyword": {
-      "type": "alias",
-      "path": "document.meta.tt_slugline.value_keyword"
     },
     "text": {
       "type": "text"

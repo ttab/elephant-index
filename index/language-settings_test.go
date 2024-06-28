@@ -44,10 +44,13 @@ func TestGetLanguageSetting(t *testing.T) {
 			t.Fatalf("%s: expected Language: %q, got %q", param.code, param.language, s.Language)
 		}
 
-		if s.Settings.Settings.Analysis.Analyzer.Default.Type != param.analyzer {
-			t.Fatalf("%s: expected settings default Analyzer: %q, got %q", param.code,
+		analysis := s.Settings.Settings.Analysis
+
+		if analysis.Analyzer == nil || analysis.Analyzer["default"].Type != param.analyzer {
+			t.Fatalf("%s: expected settings default Analyzer: %q, got %q",
+				param.code,
 				param.analyzer,
-				s.Settings.Settings.Analysis.Analyzer.Default.Type)
+				analysis.Analyzer["default"].Type)
 		}
 	}
 }

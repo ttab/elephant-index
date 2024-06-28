@@ -123,11 +123,12 @@
     "type": "text",
     "values": [
       "usa-oväderUV2"
-    ]
-  },
-  "document.meta.tt_slugline.value_keyword": {
-    "type": "keyword",
-    "values": ["usa-oväderUV2"]
+    ],
+    "fields": {
+      "keyword": {
+        "type": "keyword"
+      }
+    }
   },
   "document.rel.assignment.type": {
     "type": "keyword",
@@ -182,7 +183,14 @@
     "type": "text",
     "values": [
       "usa-oväderUV2"
-    ]
+    ],
+    "fields": {
+      "sort": {
+        "type": "icu_collation_keyword",
+        "language": "sv",
+        "country": "se"
+      }
+    }
   },
   "document.type": {
     "type": "keyword",
@@ -270,19 +278,20 @@
   },
   "readers": {
     "type": "keyword",
-    "values": ["core://unit/redaktionen"]
+    "values": [
+      "core://unit/redaktionen"
+    ]
   },
   "slug": {
     "type": "alias",
-    "values": ["document.meta.tt_slugline.value"]
-  },
-  "slug_keyword": {
-    "type": "alias",
-    "values": ["document.meta.tt_slugline.value_keyword"]
+    "values": [
+      "document.meta.tt_slugline.value"
+    ]
   },
   "text": {
     "type": "text",
     "values": [
+      "usa-oväderUV2",
       "Över 20 döda efter tornador i USA",
       "USA",
       "Minst 26 människor omkom när vårstormar och tornador slet sönder städer och samhällen i den amerikanska södern och mellanvästern under fredagen och lördagen.",
@@ -292,7 +301,8 @@
       "– Vår skola är borta, min kyrka är borta, sade Heidi Jenkins som driver en skönhetssalong i Wynne med omkring 8|000 invånare.",
       "Ett av de värst utsatta områdena var McNairy County i Tennessee där sju personer dödades.",
       "I Belvidere, Illinois, längre norrut i USA slog en tornado till mot teatern Apollo där en hårdrocksfestival pågick. En man omkom när delar av taket rasade in och ytterligare ett 30-tal skadades under konserten.",
-      "Det vidsträckta stormsystemets vindar fick också bränder till skogs och på slätterna att ta fart. I Oklahoma skadades minst 32 personer och mer än 40 hem förstördes, i över 100 rapporterade bränder."
+      "Det vidsträckta stormsystemets vindar fick också bränder till skogs och på slätterna att ta fart. I Oklahoma skadades minst 32 personer och mer än 40 hem förstördes, i över 100 rapporterade bränder.",
+      "Uppdaterat dödstal, samt stycke om bränder."
     ]
   }
 }
