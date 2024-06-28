@@ -23,7 +23,7 @@ const (
 
 func BuildDocument(
 	validator *revisor.Validator, state *DocumentState,
-	featureFlags map[string]bool,
+	language LanguageConfig, featureFlags map[string]bool,
 ) (*Document, error) {
 	d := NewDocument()
 
@@ -39,12 +39,11 @@ func BuildDocument(
 	}
 
 	if featureFlags[FeatureSortable] {
-		titleField.AddSubField("sort", SubField{
-			Type:       TypeKeyword,
-			Normalizer: "lowercase_trim",
-		})
+		addSortSubField(&titleField, language, nil)
 	}
 
+	// TODO: I'ts a bit awkward that we pre-declare these before running
+	// collection. It should be treated like we do with
 	d.AddField("document.title", titleField)
 	d.AddField("document.uri", Field{
 		Type:   TypeKeyword,
@@ -210,10 +209,7 @@ func BuildDocument(
 
 		if featureFlags[FeatureSortable] {
 			if slices.Contains(a.Constraint.Labels, "sortable") {
-				f.AddSubField("sort", SubField{
-					Type:       TypeKeyword,
-					Normalizer: "lowercase_trim",
-				})
+				addSortSubField(&f, language, a.Constraint.Labels)
 			}
 		}
 
@@ -230,6 +226,21 @@ func BuildDocument(
 	}
 
 	return d, nil
+}
+
+func addSortSubField(field *Field, language LanguageConfig, labels []string) {
+	var variant string
+
+	if language.Language == "de" && slices.Contains(labels, "de-phonebook") {
+		variant = "@collation=phonebook"
+	}
+
+	field.AddSubField("sort", SubField{
+		Type:     TypeICUKeyword,
+		Language: language.Language,
+		Country:  language.Region,
+		Variant:  variant,
+	})
 }
 
 func blockText(policy *bluemonday.Policy, b newsdoc.Block, text []string) []string {

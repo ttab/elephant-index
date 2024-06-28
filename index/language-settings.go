@@ -10,6 +10,7 @@ import (
 type LanguageConfig struct {
 	NameSuffix string
 	Language   string
+	Region     string
 	Settings   OpensearchSettings
 }
 
@@ -90,6 +91,7 @@ func GetLanguageConfig(code string, defaultLanguage string) (LanguageConfig, err
 	return LanguageConfig{
 		NameSuffix: fmt.Sprintf("%s-%s", lang, region),
 		Language:   lang,
+		Region:     strings.ToLower(info.Region),
 		Settings:   s,
 	}, nil
 }

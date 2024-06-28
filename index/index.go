@@ -345,8 +345,14 @@ func (idx *Indexer) loopIteration(
 			index, ok := idx.indexes[key]
 
 			if !ok {
+				langConf, err := GetLanguageConfig(lang, idx.defaultLanguage)
+				if err != nil {
+					return 0, fmt.Errorf(
+						"could not get language config: %w", err)
+				}
+
 				name, err := idx.ensureIndex(
-					ctx, "documents", docType, lang)
+					ctx, "documents", docType, langConf)
 				if err != nil {
 					return 0, fmt.Errorf(
 						"ensure index for doc type %q: %w",
@@ -354,7 +360,7 @@ func (idx *Indexer) loopIteration(
 				}
 
 				percolateName, err := idx.ensureIndex(
-					ctx, "percolate", docType, lang)
+					ctx, "percolate", docType, langConf)
 				if err != nil {
 					return 0, fmt.Errorf(
 						"ensure index for doc type %q: %w",
@@ -362,7 +368,7 @@ func (idx *Indexer) loopIteration(
 				}
 
 				index, err = newIndexWorker(ctx, idx,
-					name, percolateName, docType, 8)
+					name, percolateName, docType, langConf, 8)
 				if err != nil {
 					return 0, fmt.Errorf(
 						"create index worker: %w", err)
@@ -459,13 +465,8 @@ func createLanguageQuery(uuid string, language string) ElasticSearchRequest {
 }
 
 func (idx *Indexer) ensureIndex(
-	ctx context.Context, indexType string, docType string, lang string,
+	ctx context.Context, indexType string, docType string, config LanguageConfig,
 ) (string, error) {
-	config, err := GetLanguageConfig(lang, idx.defaultLanguage)
-	if err != nil {
-		return "", fmt.Errorf("could not get language config: %w", err)
-	}
-
 	indexTypeRoot := idx.getIndexTypeRoot(docType, indexType)
 
 	index := fmt.Sprintf("%s-%s", indexTypeRoot, config.NameSuffix)
@@ -473,13 +474,6 @@ func (idx *Indexer) ensureIndex(
 		indexTypeRoot,
 		fmt.Sprintf("%s-%s", indexTypeRoot, config.Language),
 	}
-
-	// Add a custom normaliser for sort fields.
-	config.Settings.Settings.Analysis.SetNormalizer(
-		"lowercase_trim", OpensearchNormaliser{
-			Type:   "custom",
-			Filter: []string{"lowercase", "trim"},
-		})
 
 	settings, err := json.Marshal(config.Settings)
 	if err != nil {
@@ -545,6 +539,7 @@ func (idx *Indexer) ensureAlias(index string, alias string) error {
 func newIndexWorker(
 	ctx context.Context, idx *Indexer,
 	name, percolateIndex, contentType string,
+	lang LanguageConfig,
 	concurrency int,
 ) (*indexWorker, error) {
 	iw := indexWorker{
@@ -558,6 +553,7 @@ func newIndexWorker(
 		knownMappings:      NewMappings(),
 		jobQueue:           make(chan *enrichJob, concurrency),
 		featureFlags:       make(map[string]bool),
+		language:           lang,
 	}
 
 	conf, err := idx.q.GetIndexConfiguration(ctx, name)
@@ -580,6 +576,14 @@ func newIndexWorker(
 			return nil, fmt.Errorf(
 				"create index entry in database: %w", err)
 		}
+
+		c, err := idx.q.GetIndexConfiguration(ctx, name)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"read created index entry: %w", err)
+		}
+
+		conf = c
 	} else if err != nil {
 		return nil, fmt.Errorf(
 			"get current index mappings: %w", err)
@@ -608,6 +612,7 @@ type indexWorker struct {
 	contentType        string
 	indexName          string
 	percolateIndexName string
+	language           LanguageConfig
 	jobQueue           chan *enrichJob
 
 	featureFlags  map[string]bool
@@ -765,7 +770,8 @@ func (iw *indexWorker) Process(
 		}
 
 		idxDoc, err := BuildDocument(
-			iw.idx.vSource.GetValidator(), job.State, iw.featureFlags,
+			iw.idx.vSource.GetValidator(), job.State,
+			iw.language, iw.featureFlags,
 		)
 		if err != nil {
 			return fmt.Errorf("build flat document: %w", err)

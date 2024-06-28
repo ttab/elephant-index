@@ -32,8 +32,9 @@
     "type": "text",
     "fields": {
       "sort": {
-        "type": "keyword",
-        "normalizer": "lowercase_trim"
+        "type": "icu_collation_keyword",
+        "language": "sv",
+        "country": "se"
       }
     },
     "comparison": "superset"

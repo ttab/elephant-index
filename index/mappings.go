@@ -12,6 +12,7 @@ const (
 	TypeKeyword    FieldType = "keyword"
 	TypeAlias      FieldType = "alias"
 	TypePercolator FieldType = "percolator"
+	TypeICUKeyword FieldType = "icu_collation_keyword"
 )
 
 // We should not have colliding types, but if something first is defined as text
@@ -35,6 +36,8 @@ func (ft FieldType) Priority() int {
 		return 12
 	case TypeAlias:
 		return 13
+	case TypeICUKeyword:
+		return 14
 	case TypePercolator:
 		return 20
 	}
@@ -59,6 +62,31 @@ func (f *Field) AddSubField(name string, sf SubField) {
 type SubField struct {
 	Type       FieldType `json:"type"`
 	Normalizer string    `json:"normalizer,omitempty"`
+	Index      *bool     `json:"index,omitempty"`
+	Language   string    `json:"language,omitempty"`
+	Country    string    `json:"country,omitempty"`
+	Variant    string    `json:"variant,omitempty"`
+}
+
+func (sf SubField) Equal(other SubField) bool {
+	return other.Type == sf.Type &&
+		other.Normalizer == sf.Normalizer &&
+		other.Language == sf.Language &&
+		other.Country == sf.Country &&
+		other.Variant == sf.Variant &&
+		equalPointerValue(other.Index, sf.Index)
+}
+
+func equalPointerValue[T comparable](a *T, b *T) bool {
+	if a == nil && b == nil {
+		return true
+	}
+
+	if a == nil || b == nil {
+		return false
+	}
+
+	return *a == *b
 }
 
 type Mapping struct {
