@@ -3,7 +3,7 @@ module github.com/ttab/elephant-index
 go 1.22.4
 
 require (
-	github.com/aws/aws-sdk-go-v2/config v1.27.23
+	github.com/aws/aws-sdk-go-v2/config v1.27.24
 	github.com/google/go-cmp v0.6.0
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/joho/godotenv v1.5.1
@@ -30,7 +30,7 @@ require (
 	github.com/MicahParks/jwkset v0.5.18 // indirect
 	github.com/MicahParks/keyfunc/v3 v3.3.3 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.30.1 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.23 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.24 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.9 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.13 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.13 // indirect
@@ -39,7 +39,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.52.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.22.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.30.1 // indirect
 	github.com/aws/smithy-go v1.20.3 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
