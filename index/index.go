@@ -238,6 +238,13 @@ func (idx *Indexer) indexerLoop(ctx context.Context) error {
 	}
 }
 
+const (
+	DocumentEvent = "document"
+	DeleteEvent   = "document_delete"
+	ACLEvent      = "acl"
+	StatusEvent   = "status"
+)
+
 func (idx *Indexer) loopIteration(
 	ctx context.Context, pos int64,
 ) (int64, error) {
@@ -272,7 +279,7 @@ func (idx *Indexer) loopIteration(
 		// Load document early so that we can pivot to a delete if the
 		// document has been deleted. But only try to fetch it if we
 		// don't already know that it has been deleted.
-		if item.Event != "delete_document" {
+		if item.Event != DeleteEvent {
 			docRes, err := idx.documents.Get(ctx,
 				&repository.GetDocumentRequest{
 					Uuid:    item.Uuid,
@@ -282,7 +289,7 @@ func (idx *Indexer) loopIteration(
 				// TODO: we need to blanket delete the ID in all indexes
 				// here. Resorting to doing a delete for default
 				// language at the moment.
-				item.Event = "delete_document"
+				item.Event = DeleteEvent
 			} else if err != nil {
 				return 0, fmt.Errorf("get document: %w", err)
 			}
@@ -301,13 +308,13 @@ func (idx *Indexer) loopIteration(
 		}
 
 		switch item.Event {
-		case "delete_document":
+		case DeleteEvent:
 			byLang[item.Uuid] = &enrichJob{
 				UUID:      item.Uuid,
 				Operation: opDelete,
 				doc:       doc,
 			}
-		case "document", "acl", "status":
+		case DocumentEvent, ACLEvent, StatusEvent:
 			// Find all existing documents with the same Id but a
 			// different language
 			obDocs, err := idx.findObsoleteDocuments(ctx, item, language)
