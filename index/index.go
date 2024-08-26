@@ -267,26 +267,31 @@ func (idx *Indexer) loopIteration(
 
 		language := idx.defaultLanguage
 
-		docRes, err := idx.documents.Get(ctx,
-			&repository.GetDocumentRequest{
-				Uuid:    item.Uuid,
-				Version: item.Version,
-			})
-		if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
-			// TODO: we need to blanket delete the ID in all indexes
-			// here. Resorting to doing a delete for default
-			// language at the moment.
-			item.Event = "delete_document"
-		} else if err != nil {
-			return 0, fmt.Errorf("get document: %w", err)
-		}
-
 		var doc *newsdoc.Document
 
-		if docRes != nil {
-			doc = docRes.Document
-			// Normalize to lowercase
-			language = strings.ToLower(doc.Language)
+		// Load document early so that we can pivot to a delete if the
+		// document has been deleted. But only try to fetch it if we
+		// don't already know that it has been deleted.
+		if item.Event != "delete_document" {
+			docRes, err := idx.documents.Get(ctx,
+				&repository.GetDocumentRequest{
+					Uuid:    item.Uuid,
+					Version: item.Version,
+				})
+			if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
+				// TODO: we need to blanket delete the ID in all indexes
+				// here. Resorting to doing a delete for default
+				// language at the moment.
+				item.Event = "delete_document"
+			} else if err != nil {
+				return 0, fmt.Errorf("get document: %w", err)
+			}
+
+			if docRes != nil {
+				doc = docRes.Document
+				// Normalize to lowercase
+				language = strings.ToLower(doc.Language)
+			}
 		}
 
 		byLang, ok := byType[language]
