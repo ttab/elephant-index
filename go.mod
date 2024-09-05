@@ -21,7 +21,7 @@ require (
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v2 v2.27.4
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948
-	golang.org/x/oauth2 v0.22.0
+	golang.org/x/oauth2 v0.23.0
 	golang.org/x/sync v0.8.0
 )
 
