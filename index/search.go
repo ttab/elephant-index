@@ -11,21 +11,23 @@ import (
 )
 
 type RawSearchRequest struct {
-	Query  json.RawMessage `json:"query"`
-	Fields json.RawMessage `json:"fields"`
-	Sort   json.RawMessage `json:"sort"`
-	Source *bool           `json:"_source,omitempty"`
-	From   *int            `json:"from,omitempty"`
-	Size   *int            `json:"size,omitempty"`
+	Query       json.RawMessage `json:"query"`
+	Fields      json.RawMessage `json:"fields"`
+	Sort        json.RawMessage `json:"sort"`
+	Source      *bool           `json:"_source,omitempty"`
+	From        *int            `json:"from,omitempty"`
+	Size        *int            `json:"size,omitempty"`
+	SearchAfter json.RawMessage `json:"search_after,omitemepty"`
 }
 
 type ElasticSearchRequest struct {
-	Query  ElasticQuery    `json:"query"`
-	Fields json.RawMessage `json:"fields,omitempty"`
-	Sort   json.RawMessage `json:"sort,omitempty"`
-	Source *bool           `json:"_source,omitempty"`
-	From   *int            `json:"from,omitempty"`
-	Size   *int            `json:"size,omitempty"`
+	Query       ElasticQuery    `json:"query"`
+	Fields      json.RawMessage `json:"fields,omitempty"`
+	Sort        json.RawMessage `json:"sort,omitempty"`
+	Source      *bool           `json:"_source,omitempty"`
+	From        *int            `json:"from,omitempty"`
+	Size        *int            `json:"size,omitempty"`
+	SearchAfter json.RawMessage `json:"search_after,omitemepty"`
 }
 
 type ElasticQuery struct {
