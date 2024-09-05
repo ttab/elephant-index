@@ -157,12 +157,13 @@ func (ep *ElasticProxy) searchHandler(
 	enc := json.NewEncoder(&searchBody)
 
 	err = enc.Encode(ElasticSearchRequest{
-		Query:  rootQuery,
-		Fields: rawQuery.Fields,
-		Source: rawQuery.Source,
-		Sort:   rawQuery.Sort,
-		From:   rawQuery.From,
-		Size:   rawQuery.Size,
+		Query:       rootQuery,
+		Fields:      rawQuery.Fields,
+		Source:      rawQuery.Source,
+		Sort:        rawQuery.Sort,
+		From:        rawQuery.From,
+		Size:        rawQuery.Size,
+		SearchAfter: rawQuery.SearchAfter,
 	})
 	if err != nil {
 		return ElasticErrorf(
