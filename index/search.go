@@ -17,7 +17,7 @@ type RawSearchRequest struct {
 	Source      *bool           `json:"_source,omitempty"`
 	From        *int            `json:"from,omitempty"`
 	Size        *int            `json:"size,omitempty"`
-	SearchAfter json.RawMessage `json:"search_after,omitemepty"`
+	SearchAfter json.RawMessage `json:"search_after,omitempty"`
 }
 
 type ElasticSearchRequest struct {
@@ -27,7 +27,7 @@ type ElasticSearchRequest struct {
 	Source      *bool           `json:"_source,omitempty"`
 	From        *int            `json:"from,omitempty"`
 	Size        *int            `json:"size,omitempty"`
-	SearchAfter json.RawMessage `json:"search_after,omitemepty"`
+	SearchAfter json.RawMessage `json:"search_after,omitempty"`
 }
 
 type ElasticQuery struct {
