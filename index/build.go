@@ -109,6 +109,30 @@ func BuildDocument(
 		Values: text,
 	})
 
+	err := collectDocumentFields(
+		d, "document.", doc, validator, language, featureFlags, policy)
+	if err != nil {
+		return nil, fmt.Errorf("main document: %w", err)
+	}
+
+	if state.MetaDocument != nil {
+		err := collectDocumentFields(
+			d, "meta.", state.MetaDocument, validator,
+			language, featureFlags, policy,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("meta document: %w", err)
+		}
+	}
+
+	return d, nil
+}
+
+func collectDocumentFields(
+	d *Document, prefix string, doc *newsdoc.Document,
+	validator *revisor.Validator,
+	language LanguageConfig, featureFlags map[string]bool, policy *bluemonday.Policy,
+) error {
 	coll := NewValueCollector()
 
 	_, err := validator.ValidateDocument(
@@ -116,7 +140,7 @@ func BuildDocument(
 		doc,
 		revisor.WithValueCollector(coll))
 	if err != nil {
-		return nil, fmt.Errorf("could not collect values: %w", err)
+		return fmt.Errorf("could not collect values: %w", err)
 	}
 
 	for _, a := range coll.Values() {
@@ -188,7 +212,7 @@ func BuildDocument(
 			}
 		}
 
-		path := "document." + entityRefsToPath(doc, a.Ref)
+		path := prefix + entityRefsToPath(doc, a.Ref)
 
 		var aliases []string
 
@@ -213,7 +237,7 @@ func BuildDocument(
 			}
 		}
 
-		d.AddField("document."+entityRefsToPath(doc, a.Ref), f)
+		d.AddField(path, f)
 
 		for _, alias := range aliases {
 			// TODO: can we alias the sub-fields as well, is it
@@ -225,7 +249,7 @@ func BuildDocument(
 		}
 	}
 
-	return d, nil
+	return nil
 }
 
 func addSortSubField(field *Field, language LanguageConfig, labels []string) {

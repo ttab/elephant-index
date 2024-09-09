@@ -175,6 +175,7 @@ type enrichJob struct {
 	Operation int
 	State     *DocumentState
 	doc       *newsdoc.Document
+	metadoc   *newsdoc.Document
 }
 
 func (ij *enrichJob) Finish(state *DocumentState, err error) {
@@ -266,15 +267,23 @@ func (idx *Indexer) loopIteration(
 			continue
 		}
 
-		byType, ok := changes[item.Type]
-		if !ok {
-			byType = make(map[string]map[string]*enrichJob)
-			changes[item.Type] = byType
+		var doc, metaDoc *newsdoc.Document
+
+		docUUID := item.Uuid
+		docVersion := item.Version
+		language := strings.ToLower(item.Language)
+
+		// Switch to main document on meta doc updates.
+		if item.MainDocument != "" {
+			docUUID = item.MainDocument
+			docVersion = 0
+
+			// Treat deleted meta documents as document update
+			// events.
+			if item.Event == DeleteEvent {
+				item.Event = DocumentEvent
+			}
 		}
-
-		language := idx.defaultLanguage
-
-		var doc *newsdoc.Document
 
 		// Load document early so that we can pivot to a delete if the
 		// document has been deleted. But only try to fetch it if we
@@ -282,8 +291,9 @@ func (idx *Indexer) loopIteration(
 		if item.Event != DeleteEvent {
 			docRes, err := idx.documents.Get(ctx,
 				&repository.GetDocumentRequest{
-					Uuid:    item.Uuid,
-					Version: item.Version,
+					Uuid:         docUUID,
+					Version:      docVersion,
+					MetaDocument: repository.GetMetaDoc_META_INCLUDE,
 				})
 			if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
 				// TODO: we need to blanket delete the ID in all indexes
@@ -296,9 +306,23 @@ func (idx *Indexer) loopIteration(
 
 			if docRes != nil {
 				doc = docRes.Document
+
+				if docRes.Meta != nil {
+					metaDoc = docRes.Meta.Document
+				}
+
+				// TODO: include main document type in the
+				// eventlog?
+				item.Type = doc.Type
 				// Normalize to lowercase
 				language = strings.ToLower(doc.Language)
 			}
+		}
+
+		byType, ok := changes[item.Type]
+		if !ok {
+			byType = make(map[string]map[string]*enrichJob)
+			changes[item.Type] = byType
 		}
 
 		byLang, ok := byType[language]
@@ -309,8 +333,8 @@ func (idx *Indexer) loopIteration(
 
 		switch item.Event {
 		case DeleteEvent:
-			byLang[item.Uuid] = &enrichJob{
-				UUID:      item.Uuid,
+			byLang[docUUID] = &enrichJob{
+				UUID:      docUUID,
 				Operation: opDelete,
 				doc:       doc,
 			}
@@ -330,17 +354,18 @@ func (idx *Indexer) loopIteration(
 						byType[obLang] = byObLang
 					}
 
-					byObLang[item.Uuid] = &enrichJob{
-						UUID:      item.Uuid,
+					byObLang[docUUID] = &enrichJob{
+						UUID:      docUUID,
 						Operation: opDelete,
 					}
 				}
 			}
 
-			byLang[item.Uuid] = &enrichJob{
-				UUID:      item.Uuid,
+			byLang[docUUID] = &enrichJob{
+				UUID:      docUUID,
 				Operation: opUpdate,
 				doc:       doc,
+				metadoc:   metaDoc,
 			}
 		default:
 			idx.metrics.unknownEvents.WithLabelValues(item.Event).Inc()
@@ -709,9 +734,13 @@ func (iw *indexWorker) enrich(
 		state.Heads[name] = status
 	}
 
-	d := newsdoc.DocumentFromRPC(job.doc)
+	state.Document = newsdoc.DocumentFromRPC(job.doc)
 
-	state.Document = d
+	if job.metadoc != nil {
+		md := newsdoc.DocumentFromRPC(job.metadoc)
+
+		state.MetaDocument = &md
+	}
 
 	return &state, nil
 }
