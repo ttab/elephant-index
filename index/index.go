@@ -288,7 +288,7 @@ func (idx *Indexer) loopIteration(
 		// Load document early so that we can pivot to a delete if the
 		// document has been deleted. But only try to fetch it if we
 		// don't already know that it has been deleted.
-		if item.Event != DeleteEvent {
+		if item.Event != DeleteEvent { //nolint: nestif
 			docRes, err := idx.documents.Get(ctx,
 				&repository.GetDocumentRequest{
 					Uuid:         docUUID,
