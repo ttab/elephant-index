@@ -11,7 +11,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/prometheus/client_golang v1.20.2
-	github.com/ttab/elephant-api v0.12.0
+	github.com/ttab/elephant-api v0.13.0
 	github.com/ttab/elephantine v0.12.5
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.6.2
