@@ -16,6 +16,7 @@ type DocumentState struct {
 	ACL            []ACLEntry        `json:"acl"`
 	Heads          map[string]Status `json:"heads"`
 	Document       newsdoc.Document  `json:"document"`
+	MetaDocument   *newsdoc.Document `json:"meta_document"`
 }
 
 type Document struct {
