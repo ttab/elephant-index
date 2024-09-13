@@ -46,6 +46,7 @@ type IndexerOptions struct {
 	DefaultLanguage   string
 	DefaultRegions    map[string]string
 	EnablePercolation bool
+	Sharding          ShardingPolicy
 }
 
 func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
@@ -61,6 +62,7 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 		indexes:           make(map[string]*indexWorker),
 		defaultLanguage:   opts.DefaultLanguage,
 		defaultRegions:    opts.DefaultRegions,
+		sharding:          opts.Sharding,
 		enablePercolation: opts.EnablePercolation,
 		stop:              make(chan struct{}),
 		stopped:           make(chan struct{}),
@@ -87,6 +89,7 @@ type Indexer struct {
 	name              string
 	defaultLanguage   string
 	defaultRegions    map[string]string
+	sharding          ShardingPolicy
 	database          *pgxpool.Pool
 	documents         repository.Documents
 	vSource           ValidatorSource
@@ -474,7 +477,8 @@ func (idx *Indexer) findObsoleteDocuments(
 		return nil, fmt.Errorf("marshal json: %w", err)
 	}
 
-	rootAlias := idx.getIndexTypeRoot(item.Type, "documents")
+	name := idx.getIndexName(item.Type)
+	rootAlias := idx.getQualifiedIndexName("documents", name)
 
 	obDocsRes, err := idx.client.Search(
 		idx.client.Search.WithIndex(rootAlias),
@@ -531,7 +535,9 @@ func createLanguageQuery(uuid string, language string) ElasticSearchRequest {
 func (idx *Indexer) ensureIndex(
 	ctx context.Context, indexType string, docType string, config LanguageConfig,
 ) (string, error) {
-	indexTypeRoot := idx.getIndexTypeRoot(docType, indexType)
+	indexTypeName := idx.getIndexName(docType)
+	indexTypeRoot := idx.getQualifiedIndexName(indexType, indexTypeName)
+	indexLanguageName := fmt.Sprintf("%s-%s", indexTypeName, config.NameSuffix)
 
 	index := fmt.Sprintf("%s-%s", indexTypeRoot, config.NameSuffix)
 	aliases := []string{
@@ -539,7 +545,10 @@ func (idx *Indexer) ensureIndex(
 		fmt.Sprintf("%s-%s", indexTypeRoot, config.Language),
 	}
 
-	settings, err := json.Marshal(config.Settings)
+	createReq := config.Settings
+	createReq.Settings.Index = idx.sharding.GetSettings(indexLanguageName)
+
+	settingsData, err := json.Marshal(createReq)
 	if err != nil {
 		return "", fmt.Errorf("could not marshal index settings: %w", err)
 	}
@@ -554,7 +563,7 @@ func (idx *Indexer) ensureIndex(
 
 	if existRes.StatusCode != http.StatusOK {
 		res, err := idx.client.Indices.Create(index,
-			idx.client.Indices.Create.WithBody(bytes.NewReader(settings)),
+			idx.client.Indices.Create.WithBody(bytes.NewReader(settingsData)),
 			idx.client.Indices.Create.WithContext(ctx))
 		if err != nil {
 			return "", fmt.Errorf("create index %q: %w", index, err)
@@ -579,10 +588,12 @@ func (idx *Indexer) ensureIndex(
 	return index, nil
 }
 
-func (idx *Indexer) getIndexTypeRoot(docType string, indexType string) string {
-	safeDocType := nonAlphaNum.ReplaceAllString(docType, "_")
+func (idx *Indexer) getIndexName(docType string) string {
+	return nonAlphaNum.ReplaceAllString(docType, "_")
+}
 
-	return fmt.Sprintf("%s-%s-%s", indexType, idx.name, safeDocType)
+func (idx *Indexer) getQualifiedIndexName(indexType, name string) string {
+	return fmt.Sprintf("%s-%s-%s", indexType, idx.name, name)
 }
 
 func (idx *Indexer) ensureAlias(index string, alias string) error {

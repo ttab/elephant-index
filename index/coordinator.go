@@ -36,6 +36,7 @@ type CoordinatorOptions struct {
 	ClientGetter    OpenSearchClientFunc
 	Validator       ValidatorSource
 	DefaultLanguage string
+	Sharding        ShardingPolicy
 }
 
 type Coordinator struct {
@@ -463,6 +464,7 @@ func (c *Coordinator) startIndexer(
 		Validator:       c.opt.Validator,
 		Metrics:         c.opt.Metrics,
 		DefaultLanguage: c.opt.DefaultLanguage,
+		Sharding:        c.opt.Sharding,
 		DefaultRegions: map[string]string{
 			"sv": "SE",
 			"en": "GB",

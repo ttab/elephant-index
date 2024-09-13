@@ -148,6 +148,10 @@ func main() {
 				Name:    "no-indexer",
 				EnvVars: []string{"NO_INDEXER"},
 			},
+			&cli.StringFlag{
+				Name:    "sharding-policy",
+				EnvVars: []string{"SHARDING_POLICY"},
+			},
 		},
 	}
 
@@ -198,6 +202,7 @@ func runIndexer(c *cli.Context) error {
 		repositoryEndpoint = c.String("repository-endpoint")
 		managedOS          = c.Bool("managed-opensearch")
 		noIndexer          = c.Bool("no-indexer")
+		shardingPolicy     = c.String("sharding-policy")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -213,7 +218,16 @@ func runIndexer(c *cli.Context) error {
 		}
 	}()
 
-	_, err := index.GetLanguageConfig(defaultLanguage, "", nil)
+	sharding, err := index.ParseShardingPolicy(
+		shardingPolicy, index.ShardingSettings{
+			Shards:   2,
+			Replicas: 2,
+		})
+	if err != nil {
+		return fmt.Errorf("invalid sharding policy: %w", err)
+	}
+
+	_, err = index.GetLanguageConfig(defaultLanguage, "", nil)
 	if err != nil {
 		return fmt.Errorf("invalid default language: %w", err)
 	}
@@ -399,6 +413,7 @@ func runIndexer(c *cli.Context) error {
 		DefaultLanguage: defaultLanguage,
 		NoIndexer:       noIndexer,
 		AuthInfoParser:  authInfoParser,
+		Sharding:        sharding,
 	})
 	if err != nil {
 		return fmt.Errorf("run application: %w", err)

@@ -16,6 +16,7 @@ type LanguageConfig struct {
 
 type OpensearchSettings struct {
 	Settings struct {
+		Index    ShardingSettings   `json:"index"`
 		Analysis OpensearchAnalysis `json:"analysis"`
 	} `json:"settings"`
 }

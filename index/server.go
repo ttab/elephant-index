@@ -32,6 +32,7 @@ type Parameters struct {
 	DefaultLanguage string
 	NoIndexer       bool
 	AuthInfoParser  *elephantine.AuthInfoParser
+	Sharding        ShardingPolicy
 }
 
 func RunIndex(ctx context.Context, p Parameters) error {
@@ -44,6 +45,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		ClientGetter:    p.Client,
 		Documents:       p.Documents,
 		Validator:       p.Validator,
+		Sharding:        p.Sharding,
 	})
 	if err != nil {
 		return fmt.Errorf("create coordinator: %w", err)
