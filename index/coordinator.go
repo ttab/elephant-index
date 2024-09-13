@@ -463,6 +463,10 @@ func (c *Coordinator) startIndexer(
 		Validator:       c.opt.Validator,
 		Metrics:         c.opt.Metrics,
 		DefaultLanguage: c.opt.DefaultLanguage,
+		DefaultRegions: map[string]string{
+			"sv": "SE",
+			"en": "GB",
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create indexer: %w", err)

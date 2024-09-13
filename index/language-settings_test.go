@@ -7,11 +7,12 @@ import (
 )
 
 type expectation struct {
-	code        string
-	defaultCode string
-	name        string
-	language    string
-	analyzer    string
+	code           string
+	defaultCode    string
+	name           string
+	language       string
+	analyzer       string
+	defaultRegions map[string]string
 }
 
 var params = []expectation{
@@ -20,6 +21,13 @@ var params = []expectation{
 	{code: "sv-FI", name: "sv-fi", language: "sv", analyzer: "swedish"},
 	{code: "sv-fi", name: "sv-fi", language: "sv", analyzer: "swedish"},
 	{code: "sv", name: "sv-unspecified", language: "sv", analyzer: "swedish"},
+	{
+		code: "sv",
+		name: "sv-se", language: "sv", analyzer: "swedish",
+		defaultRegions: map[string]string{
+			"sv": "SE",
+		},
+	},
 	{code: "pt-BR", name: "pt-br", language: "pt", analyzer: "brazilian"},
 	{code: "pt-br", name: "pt-br", language: "pt", analyzer: "brazilian"},
 	{code: "pt-PT", name: "pt-pt", language: "pt", analyzer: "portuguese"},
@@ -34,7 +42,7 @@ var params = []expectation{
 
 func TestGetLanguageSetting(t *testing.T) {
 	for _, param := range params {
-		s, _ := index.GetLanguageConfig(param.code, param.defaultCode)
+		s, _ := index.GetLanguageConfig(param.code, param.defaultCode, param.defaultRegions)
 
 		if s.NameSuffix != param.name {
 			t.Fatalf("%s: expected Name: %q, got %q", param.code, param.name, s.NameSuffix)

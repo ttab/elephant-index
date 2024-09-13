@@ -213,7 +213,7 @@ func runIndexer(c *cli.Context) error {
 		}
 	}()
 
-	_, err := index.GetLanguageConfig(defaultLanguage, "")
+	_, err := index.GetLanguageConfig(defaultLanguage, "", nil)
 	if err != nil {
 		return fmt.Errorf("invalid default language: %w", err)
 	}

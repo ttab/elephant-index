@@ -36,30 +36,34 @@ type ValidatorSource interface {
 }
 
 type IndexerOptions struct {
-	Logger          *slog.Logger
-	SetName         string
-	Database        *pgxpool.Pool
-	Client          *opensearch.Client
-	Documents       repository.Documents
-	Validator       ValidatorSource
-	Metrics         *Metrics
-	DefaultLanguage string
+	Logger            *slog.Logger
+	SetName           string
+	Database          *pgxpool.Pool
+	Client            *opensearch.Client
+	Documents         repository.Documents
+	Validator         ValidatorSource
+	Metrics           *Metrics
+	DefaultLanguage   string
+	DefaultRegions    map[string]string
+	EnablePercolation bool
 }
 
 func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 	idx := Indexer{
-		logger:          opts.Logger,
-		metrics:         opts.Metrics,
-		name:            opts.SetName,
-		database:        opts.Database,
-		client:          opts.Client,
-		documents:       opts.Documents,
-		vSource:         opts.Validator,
-		q:               postgres.New(opts.Database),
-		indexes:         make(map[string]*indexWorker),
-		defaultLanguage: opts.DefaultLanguage,
-		stop:            make(chan struct{}),
-		stopped:         make(chan struct{}),
+		logger:            opts.Logger,
+		metrics:           opts.Metrics,
+		name:              opts.SetName,
+		database:          opts.Database,
+		client:            opts.Client,
+		documents:         opts.Documents,
+		vSource:           opts.Validator,
+		q:                 postgres.New(opts.Database),
+		indexes:           make(map[string]*indexWorker),
+		defaultLanguage:   opts.DefaultLanguage,
+		defaultRegions:    opts.DefaultRegions,
+		enablePercolation: opts.EnablePercolation,
+		stop:              make(chan struct{}),
+		stopped:           make(chan struct{}),
 	}
 
 	// We speculatively try to create the index set here, but don't treat a
@@ -78,14 +82,16 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 
 // Indexer takes care of indexing to a named set of indexes in a cluster.
 type Indexer struct {
-	logger          *slog.Logger
-	metrics         *Metrics
-	name            string
-	defaultLanguage string
-	database        *pgxpool.Pool
-	documents       repository.Documents
-	vSource         ValidatorSource
-	client          *opensearch.Client
+	logger            *slog.Logger
+	metrics           *Metrics
+	name              string
+	defaultLanguage   string
+	defaultRegions    map[string]string
+	database          *pgxpool.Pool
+	documents         repository.Documents
+	vSource           ValidatorSource
+	client            *opensearch.Client
+	enablePercolation bool
 
 	q *postgres.Queries
 
@@ -382,7 +388,8 @@ func (idx *Indexer) loopIteration(
 			index, ok := idx.indexes[key]
 
 			if !ok {
-				langConf, err := GetLanguageConfig(lang, idx.defaultLanguage)
+				langConf, err := GetLanguageConfig(
+					lang, idx.defaultLanguage, idx.defaultRegions)
 				if err != nil {
 					return 0, fmt.Errorf(
 						"could not get language config: %w", err)
@@ -396,12 +403,18 @@ func (idx *Indexer) loopIteration(
 						docType, err)
 				}
 
-				percolateName, err := idx.ensureIndex(
-					ctx, "percolate", docType, langConf)
-				if err != nil {
-					return 0, fmt.Errorf(
-						"ensure percolate index for doc type %q: %w",
-						docType, err)
+				var percolateName string
+
+				if idx.enablePercolation {
+					n, err := idx.ensureIndex(
+						ctx, "percolate", docType, langConf)
+					if err != nil {
+						return 0, fmt.Errorf(
+							"ensure percolate index for doc type %q: %w",
+							docType, err)
+					}
+
+					percolateName = n
 				}
 
 				index, err = newIndexWorker(ctx, idx,
@@ -966,25 +979,27 @@ func (iw *indexWorker) attemptMappingUpdate(
 			return fmt.Errorf("update document index mappings: %w", err)
 		}
 
-		percolatorMappings := Mappings{
-			Properties: map[string]Mapping{
-				"query": {
-					Type: TypePercolator,
+		if iw.percolateIndexName != "" {
+			percolatorMappings := Mappings{
+				Properties: map[string]Mapping{
+					"query": {
+						Type: TypePercolator,
+					},
 				},
-			},
-		}
-
-		for k, v := range newMappings.Properties {
-			if k == "query" {
-				continue
 			}
 
-			percolatorMappings.Properties[k] = v
-		}
+			for k, v := range newMappings.Properties {
+				if k == "query" {
+					continue
+				}
 
-		err = iw.updateIndexMapping(ctx, iw.percolateIndexName, percolatorMappings)
-		if err != nil {
-			return fmt.Errorf("update document index mappings: %w", err)
+				percolatorMappings.Properties[k] = v
+			}
+
+			err = iw.updateIndexMapping(ctx, iw.percolateIndexName, percolatorMappings)
+			if err != nil {
+				return fmt.Errorf("update percolate index mappings: %w", err)
+			}
 		}
 
 		mappingData, err := json.Marshal(newMappings.Properties)

@@ -50,9 +50,18 @@ type OpensearchNormaliser struct {
 	Filter []string `json:"filter"`
 }
 
-func GetLanguageConfig(code string, defaultLanguage string) (LanguageConfig, error) {
+var noDefaultRegion = map[string]string{}
+
+func GetLanguageConfig(
+	code string, defaultLanguage string,
+	defaultRegions map[string]string,
+) (LanguageConfig, error) {
 	if code == "" {
 		code = defaultLanguage
+	}
+
+	if defaultRegions == nil {
+		defaultRegions = noDefaultRegion
 	}
 
 	info, err := langos.GetLanguage(code)
@@ -66,6 +75,8 @@ func GetLanguageConfig(code string, defaultLanguage string) (LanguageConfig, err
 	region := "unspecified"
 	if info.HasRegion {
 		region = strings.ToLower(info.Region)
+	} else if defaultRegion, ok := defaultRegions[lang]; ok {
+		region = strings.ToLower(defaultRegion)
 	}
 
 	analyzer := "standard"
