@@ -385,46 +385,16 @@ func (idx *Indexer) loopIteration(
 	for docType := range changes {
 		for lang := range changes[docType] {
 			key := fmt.Sprintf("%s-%s", docType, lang)
+
 			index, ok := idx.indexes[key]
-
 			if !ok {
-				langConf, err := GetLanguageConfig(
-					lang, idx.defaultLanguage, idx.defaultRegions)
+				worker, err := idx.createIndexWorker(ctx, docType, lang)
 				if err != nil {
-					return 0, fmt.Errorf(
-						"could not get language config: %w", err)
+					return 0, err
 				}
 
-				name, err := idx.ensureIndex(
-					ctx, "documents", docType, langConf)
-				if err != nil {
-					return 0, fmt.Errorf(
-						"ensure index for doc type %q: %w",
-						docType, err)
-				}
-
-				var percolateName string
-
-				if idx.enablePercolation {
-					n, err := idx.ensureIndex(
-						ctx, "percolate", docType, langConf)
-					if err != nil {
-						return 0, fmt.Errorf(
-							"ensure percolate index for doc type %q: %w",
-							docType, err)
-					}
-
-					percolateName = n
-				}
-
-				index, err = newIndexWorker(ctx, idx,
-					name, percolateName, docType, langConf, 8)
-				if err != nil {
-					return 0, fmt.Errorf(
-						"create index worker: %w", err)
-				}
-
-				idx.indexes[key] = index
+				index = worker
+				idx.indexes[key] = worker
 			}
 
 			var jobs []*enrichJob
@@ -448,6 +418,50 @@ func (idx *Indexer) loopIteration(
 	}
 
 	return pos, nil
+}
+
+func (idx *Indexer) createIndexWorker(
+	ctx context.Context,
+	docType string,
+	lang string,
+) (*indexWorker, error) {
+	langConf, err := GetLanguageConfig(
+		lang, idx.defaultLanguage, idx.defaultRegions)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"could not get language config: %w", err)
+	}
+
+	name, err := idx.ensureIndex(
+		ctx, "documents", docType, langConf)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"ensure index for doc type %q: %w",
+			docType, err)
+	}
+
+	var percolateName string
+
+	if idx.enablePercolation {
+		n, err := idx.ensureIndex(
+			ctx, "percolate", docType, langConf)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"ensure percolate index for doc type %q: %w",
+				docType, err)
+		}
+
+		percolateName = n
+	}
+
+	index, err := newIndexWorker(ctx, idx,
+		name, percolateName, docType, langConf, 8)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"create index worker: %w", err)
+	}
+
+	return index, nil
 }
 
 func (idx *Indexer) findObsoleteDocuments(
