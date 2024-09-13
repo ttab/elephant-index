@@ -21,7 +21,7 @@ func TestShardingSettings(t *testing.T) {
 					Shards:   1,
 					Replicas: 2,
 				},
-				Indexes: []index.IndexSharding{
+				Indexes: []index.ShardingRule{
 					{
 						Prefix: "core_article-sv-se",
 						Settings: index.ShardingSettings{

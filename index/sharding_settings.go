@@ -9,7 +9,7 @@ import (
 
 type ShardingPolicy struct {
 	Default ShardingSettings
-	Indexes []IndexSharding
+	Indexes []ShardingRule
 }
 
 type ShardingSettings struct {
@@ -17,7 +17,7 @@ type ShardingSettings struct {
 	Replicas int `json:"number_of_replicas"`
 }
 
-type IndexSharding struct {
+type ShardingRule struct {
 	Prefix   string
 	Settings ShardingSettings
 }
@@ -63,7 +63,7 @@ func ParseShardingPolicy(
 			conf.Default.Shards = shards
 			conf.Default.Replicas = replicas
 		} else {
-			conf.Indexes = append(conf.Indexes, IndexSharding{
+			conf.Indexes = append(conf.Indexes, ShardingRule{
 				Prefix: parts[0],
 				Settings: ShardingSettings{
 					Shards:   shards,
@@ -73,7 +73,7 @@ func ParseShardingPolicy(
 		}
 	}
 
-	slices.SortFunc(conf.Indexes, func(a, b IndexSharding) int {
+	slices.SortFunc(conf.Indexes, func(a, b ShardingRule) int {
 		return len(b.Prefix) - len(a.Prefix)
 	})
 
