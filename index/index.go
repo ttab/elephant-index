@@ -400,7 +400,7 @@ func (idx *Indexer) loopIteration(
 					ctx, "percolate", docType, langConf)
 				if err != nil {
 					return 0, fmt.Errorf(
-						"ensure index for doc type %q: %w",
+						"ensure percolate index for doc type %q: %w",
 						docType, err)
 				}
 
@@ -536,7 +536,7 @@ func (idx *Indexer) ensureIndex(
 		defer elephantine.SafeClose(idx.logger, "index create", res.Body)
 
 		if res.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("server response: %s", res.Status())
+			return "", fmt.Errorf("server response: %s", res.String())
 		}
 	}
 
