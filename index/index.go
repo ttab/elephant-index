@@ -279,13 +279,11 @@ func (idx *Indexer) loopIteration(
 		var doc, metaDoc *newsdoc.Document
 
 		docUUID := item.Uuid
-		docVersion := item.Version
 		language := strings.ToLower(item.Language)
 
 		// Switch to main document on meta doc updates.
 		if item.MainDocument != "" {
 			docUUID = item.MainDocument
-			docVersion = 0
 
 			// Treat deleted meta documents as document update
 			// events.
@@ -301,7 +299,6 @@ func (idx *Indexer) loopIteration(
 			docRes, err := idx.documents.Get(ctx,
 				&repository.GetDocumentRequest{
 					Uuid:         docUUID,
-					Version:      docVersion,
 					MetaDocument: repository.GetMetaDoc_META_INCLUDE,
 				})
 			if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
