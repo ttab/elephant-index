@@ -38,7 +38,8 @@
     "content": [
       {
         "id": "NzUsMjQ2LDIwOCwxNTE",
-        "type": "core/heading-1",
+        "type": "core/text",
+        "role": "heading-1",
         "data": {
           "text": "Över 20 döda efter tornador i USA"
         }
@@ -66,63 +67,65 @@
       },
       {
         "id": "pagedateline-5b8149a71b05cef3c73af71ca95c555d",
-        "type": "tt/dateline",
+        "type": "core/text",
+        "role": "vinjette",
         "data": {
           "text": "USA"
         }
       },
       {
         "id": "MjAxLDEzNCwxLDI1Mg",
-        "type": "core/preamble",
+        "type": "core/text",
+        "role": "preamble",
         "data": {
           "text": "Minst 26 människor omkom när vårstormar och tornador slet sönder städer och samhällen i den amerikanska södern och mellanvästern under fredagen och lördagen."
         }
       },
       {
         "id": "paragraph-cf8547dd3e3dd86e539dec87c46e89d8",
-        "type": "core/paragraph",
+        "type": "core/text",
         "data": {
           "text": "Fler än 50 misstänkta tornador rapporterades in under fredagen i minst sju delstater, rapporterar <a href=\"https://edition.cnn.com/2023/04/01/us/us-severe-storm-south-midwest-saturday/index.html\" id=\"link-7a56cea4ba9fbbf883a619e267c44266\">CNN</a>."
         }
       },
       {
         "id": "paragraph-f4016e45d77e66c81f33a384db517ed7",
-        "type": "core/paragraph",
+        "type": "core/text",
         "data": {
           "text": "Den totala omfattningen på skadorna kunde ännu inte överblickas på lördagen, då över 530|000 hem och verksamheter fortfarande saknade ström."
         }
       },
       {
         "id": "paragraph-2861b1ed5df6d41df318e68f6dc24369",
-        "type": "core/paragraph",
+        "type": "core/text",
         "data": {
           "text": "Förstörelsen var närmast ofattbar i det lilla samhället Wynne i Arkansas, omkring åtta mil från Memphis i Tennessee, där minst fyra personer omkom."
         }
       },
       {
         "id": "paragraph-716e843d08f3a0e4c86e0bc74d63963c",
-        "type": "core/paragraph",
+        "type": "core/text",
         "data": {
           "text": "– Vår skola är borta, min kyrka är borta, sade Heidi Jenkins som driver en skönhetssalong i Wynne med omkring 8|000 invånare."
         }
       },
       {
         "id": "paragraph-cfd601ed15ced0f8d92016ff434f70f2",
-        "type": "core/paragraph",
+        "type": "core/text",
         "data": {
           "text": "Ett av de värst utsatta områdena var McNairy County i Tennessee där sju personer dödades."
         }
       },
       {
         "id": "paragraph-b914ddfb88f79a3028718fd63adc5898",
-        "type": "core/paragraph",
+        "type": "core/text",
         "data": {
           "text": "I Belvidere, Illinois, längre norrut i USA slog en tornado till mot teatern Apollo där en hårdrocksfestival pågick. En man omkom när delar av taket rasade in och ytterligare ett 30-tal skadades under konserten."
         }
       },
       {
         "id": "paragraph-4a56852710c11e4d6794b1eb8a374359",
-        "type": "core/paragraph",
+        "type": "core/text",
         "data": {
           "text": "Det vidsträckta stormsystemets vindar fick också bränder till skogs och på slätterna att ta fart. I Oklahoma skadades minst 32 personer och mer än 40 hem förstördes, i över 100 rapporterade bränder."
         }
@@ -138,9 +141,9 @@
       },
       {
         "type": "core/newsvalue",
+        "value": "3",
         "data": {
-          "duration": "86400",
-          "score": "3"
+          "duration": "86400"
         }
       },
       {

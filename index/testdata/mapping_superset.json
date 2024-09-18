@@ -15,6 +15,12 @@
     "document.content.core_preamble.data.text": {
       "type": "text"
     },
+    "document.content.core_text.data.text": {
+      "type": "text"
+    },
+    "document.content.core_text.role": {
+      "type": "keyword"
+    },
     "document.content.tt_dateline.data.text": {
       "type": "text"
     },
@@ -48,7 +54,7 @@
     "document.meta.core_newsvalue.data.duration": {
       "type": "long"
     },
-    "document.meta.core_newsvalue.data.score": {
+    "document.meta.core_newsvalue.value": {
       "type": "double"
     },
     "document.meta.core_note.data.text": {

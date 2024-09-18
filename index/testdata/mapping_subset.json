@@ -39,7 +39,7 @@
     "document.meta.core_newsvalue.data.duration": {
       "type": "long"
     },
-    "document.meta.core_newsvalue.data.score": {
+    "document.meta.core_newsvalue.value": {
       "type": "double"
     },
     "document.meta.core_note.data.text": {

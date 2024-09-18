@@ -1,4 +1,12 @@
 {
+  "document.content.core_text.data.text": {
+    "type": "text",
+    "comparison": "superset"
+  },
+  "document.content.core_text.role": {
+    "type": "keyword",
+    "comparison": "superset"
+  },
   "document.content.tt_visual.rel.self.data.height": {
     "type": "long",
     "comparison": "superset"
@@ -11,7 +19,7 @@
     "type": "long",
     "comparison": "superset"
   },
-  "document.meta.core_newsvalue.data.score": {
+  "document.meta.core_newsvalue.value": {
     "type": "long",
     "comparison": "breaking"
   },

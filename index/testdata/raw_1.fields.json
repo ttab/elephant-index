@@ -11,15 +11,12 @@
       "42"
     ]
   },
-  "document.content.core_heading_1.data.text": {
+  "document.content.core_text.data.text": {
     "type": "text",
     "values": [
-      "Över 20 döda efter tornador i USA"
-    ]
-  },
-  "document.content.core_paragraph.data.text": {
-    "type": "text",
-    "values": [
+      "Över 20 döda efter tornador i USA",
+      "USA",
+      "Minst 26 människor omkom när vårstormar och tornador slet sönder städer och samhällen i den amerikanska södern och mellanvästern under fredagen och lördagen.",
       "Fler än 50 misstänkta tornador rapporterades in under fredagen i minst sju delstater, rapporterar CNN.",
       "Den totala omfattningen på skadorna kunde ännu inte överblickas på lördagen, då över 530|000 hem och verksamheter fortfarande saknade ström.",
       "Förstörelsen var närmast ofattbar i det lilla samhället Wynne i Arkansas, omkring åtta mil från Memphis i Tennessee, där minst fyra personer omkom.",
@@ -29,16 +26,12 @@
       "Det vidsträckta stormsystemets vindar fick också bränder till skogs och på slätterna att ta fart. I Oklahoma skadades minst 32 personer och mer än 40 hem förstördes, i över 100 rapporterade bränder."
     ]
   },
-  "document.content.core_preamble.data.text": {
-    "type": "text",
+  "document.content.core_text.role": {
+    "type": "keyword",
     "values": [
-      "Minst 26 människor omkom när vårstormar och tornador slet sönder städer och samhällen i den amerikanska södern och mellanvästern under fredagen och lördagen."
-    ]
-  },
-  "document.content.tt_dateline.data.text": {
-    "type": "text",
-    "values": [
-      "USA"
+      "heading-1",
+      "vinjette",
+      "preamble"
     ]
   },
   "document.content.tt_visual.data.caption": {
@@ -101,7 +94,7 @@
       "86400"
     ]
   },
-  "document.meta.core_newsvalue.data.score": {
+  "document.meta.core_newsvalue.value": {
     "type": "long",
     "values": [
       "3"
@@ -159,24 +152,6 @@
     "type": "keyword",
     "values": [
       "82119f60-072d-4f78-98b3-4039bf4243c0"
-    ]
-  },
-  "document.rel.subject.title": {
-    "type": "text",
-    "values": [
-      "Utrikes"
-    ]
-  },
-  "document.rel.subject.type": {
-    "type": "keyword",
-    "values": [
-      "core/section"
-    ]
-  },
-  "document.rel.subject.uuid": {
-    "type": "keyword",
-    "values": [
-      "111932dc-99f3-4ba4-acf2-ed9d9f2f1c7c"
     ]
   },
   "document.title": {
