@@ -37,6 +37,7 @@ type CoordinatorOptions struct {
 	Validator       ValidatorSource
 	DefaultLanguage string
 	Sharding        ShardingPolicy
+	NoIndexing      bool
 }
 
 type Coordinator struct {
@@ -233,6 +234,19 @@ func (c *Coordinator) runEventloop(
 	}
 
 	for _, set := range sets {
+		if c.opt.NoIndexing {
+			if set.Active {
+				err := c.ensureActiveClient(set)
+				if err != nil {
+					return fmt.Errorf(
+						"failed to ensure active client %q: %w",
+						set.Name, err)
+				}
+			}
+
+			continue
+		}
+
 		err = c.setUpdate(ctx, set)
 		if err != nil {
 			return fmt.Errorf(
@@ -269,6 +283,19 @@ func (c *Coordinator) handleChange(
 				"read status of changed index set %q: %w",
 				change.Name, err,
 			)
+		}
+
+		if c.opt.NoIndexing {
+			if set.Active {
+				err := c.ensureActiveClient(set)
+				if err != nil {
+					return fmt.Errorf(
+						"failed to ensure active client %q: %w",
+						set.Name, err)
+				}
+			}
+
+			return nil
 		}
 
 		err = c.setUpdate(ctx, set)

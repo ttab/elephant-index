@@ -103,7 +103,7 @@ func (ep *ElasticProxy) searchHandler(
 			"invalid token: %v", err)
 	}
 
-	if !auth.Claims.HasScope("search") {
+	if !auth.Claims.HasScope(ScopeSeach) {
 		return ElasticErrorf(
 			ErrorTypeAccessDenied,
 			"missing 'search' permission")

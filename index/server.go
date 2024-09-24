@@ -46,14 +46,17 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		Documents:       p.Documents,
 		Validator:       p.Validator,
 		Sharding:        p.Sharding,
+		NoIndexing:      p.NoIndexer,
 	})
 	if err != nil {
 		return fmt.Errorf("create coordinator: %w", err)
 	}
 
-	err = coord.EnsureDefaultIndexSet(ctx, p.DefaultCluster, p.ClusterAuth)
-	if err != nil {
-		return fmt.Errorf("ensure default index set: %w", err)
+	if !p.NoIndexer {
+		err = coord.EnsureDefaultIndexSet(ctx, p.DefaultCluster, p.ClusterAuth)
+		if err != nil {
+			return fmt.Errorf("ensure default index set: %w", err)
+		}
 	}
 
 	grace := elephantine.NewGracefulShutdown(logger, 10*time.Second)
@@ -79,6 +82,14 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	)
 
 	registerAPI(router, opts, api)
+
+	seachAPI := index.NewSearchV1Server(
+		NewSearchServiceV1(coord),
+		twirp.WithServerJSONSkipDefaults(true),
+		twirp.WithServerHooks(opts.Hooks),
+	)
+
+	registerAPI(router, opts, seachAPI)
 
 	proxy := NewElasticProxy(logger, coord, p.AuthInfoParser)
 
@@ -151,10 +162,6 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	})
 
 	serverGroup.Go(func() error {
-		if p.NoIndexer {
-			return nil
-		}
-
 		err := coord.Run(gCtx)
 		if err != nil {
 			return fmt.Errorf("coordinator error: %w", err)
