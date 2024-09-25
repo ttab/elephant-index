@@ -99,7 +99,7 @@ func main() {
 		},
 	}
 
-	runCmd.Flags = append(runCmd.Flags, elephantine.OpenIDConnectParameters()...)
+	runCmd.Flags = append(runCmd.Flags, elephantine.AuthenticationCLIFlags()...)
 
 	app := cli.App{
 		Name:  "index",
