@@ -6,25 +6,51 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ttab/elephant-api/index"
+	"github.com/ttab/elephant-api/newsdoc"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/twitchtv/twirp"
+)
+
+const (
+	DefaultSearchSize = 50
 )
 
 var _ index.SearchV1 = &SearchServiceV1{}
 
 func NewSearchServiceV1(
 	active ActiveIndexGetter,
+	repositoryEndpoint string,
 ) *SearchServiceV1 {
+	client := http.Client{
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
+
+	documents := repository.NewDocumentsProtobufClient(repositoryEndpoint, &client)
+
 	return &SearchServiceV1{
-		active: active,
+		active:    active,
+		documents: documents,
 	}
 }
 
 type SearchServiceV1 struct {
-	active ActiveIndexGetter
+	active    ActiveIndexGetter
+	documents repository.Documents
 }
 
 // Query implements index.SearchV1.
@@ -34,6 +60,15 @@ func (s *SearchServiceV1) Query(
 	auth, err := RequireAnyScope(ctx, ScopeSeach)
 	if err != nil {
 		return nil, err
+	}
+
+	if req.Size == 0 {
+		req.Size = DefaultSearchSize
+	}
+
+	if req.LoadDocument && req.Size > 200 {
+		return nil, twirp.InvalidArgumentError("documents",
+			"document loading is not allowed for result sets over 200 items")
 	}
 
 	client, indexSet := s.active.GetActiveIndex()
@@ -134,8 +169,8 @@ func (s *SearchServiceV1) Query(
 			)
 		}
 
-		return nil, fmt.Errorf(
-			"error response from opensearch: %w", elasticErr)
+		return nil, twirp.InternalErrorf(
+			"error response from opensearch: %s", res.Status())
 	}
 
 	var response searchResponse
@@ -164,10 +199,47 @@ func (s *SearchServiceV1) Query(
 		},
 	}
 
+	var documents map[string]*newsdoc.Document
+
+	if req.LoadDocument {
+		documents = make(map[string]*newsdoc.Document, len(response.Hits.Hits))
+		load := make([]*repository.BulkGetReference, len(response.Hits.Hits))
+
+		for i, hit := range response.Hits.Hits {
+			load[i] = &repository.BulkGetReference{
+				Uuid: hit.ID,
+			}
+		}
+
+		// Forward the authentication header.
+		authCtx, err := twirp.WithHTTPRequestHeaders(ctx, http.Header{
+			"Authorization": []string{"Bearer " + auth.Token},
+		})
+		if err != nil {
+			return nil, twirp.InternalErrorf(
+				"invalid header handling: %w", err)
+		}
+
+		bulkRes, err := s.documents.BulkGet(authCtx,
+			&repository.BulkGetRequest{Documents: load})
+		if err != nil {
+			return nil, twirp.InternalErrorf(
+				"error response from repository: %w", err)
+		}
+
+		for _, item := range bulkRes.Items {
+			documents[item.Document.Uuid] = item.Document
+		}
+	}
+
 	for i, hit := range response.Hits.Hits {
 		ph := index.HitV1{
 			Id:     hit.ID,
 			Fields: make(map[string]*index.FieldValuesV1, len(hit.Fields)),
+		}
+
+		if documents != nil {
+			ph.Document = documents[hit.ID]
 		}
 
 		if hit.Score != nil {

@@ -222,13 +222,14 @@ func runIndexer(c *cli.Context) error {
 		ClusterAuth: index.ClusterAuth{
 			IAM: managedOS,
 		},
-		Documents:       documents,
-		Validator:       loader,
-		Metrics:         metrics,
-		DefaultLanguage: defaultLanguage,
-		NoIndexer:       noIndexer,
-		AuthInfoParser:  auth.AuthParser,
-		Sharding:        sharding,
+		Documents:          documents,
+		RepositoryEndpoint: repositoryEndpoint,
+		Validator:          loader,
+		Metrics:            metrics,
+		DefaultLanguage:    defaultLanguage,
+		NoIndexer:          noIndexer,
+		AuthInfoParser:     auth.AuthParser,
+		Sharding:           sharding,
 	})
 	if err != nil {
 		return fmt.Errorf("run application: %w", err)

@@ -192,10 +192,10 @@ github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO
 github.com/stretchr/testify v1.8.2/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
 github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
-github.com/ttab/elephant-api v0.14.0 h1:2GQGgEMR8oxXie49xv8Jjaq2pjsX4I9rREpsmhhi57g=
-github.com/ttab/elephant-api v0.14.0/go.mod h1:d1blYYIcKtkiLIF7Dy9491SDUWylsXGd9xAHSMuRKrA=
-github.com/ttab/elephantine v0.13.5 h1:zm/d0F4s/wMxB5GCNZh1E7OdzDTcasRsIAiC6Wfad1c=
-github.com/ttab/elephantine v0.13.5/go.mod h1:cX8R+UvHHeuqEDCE+EL/NIUDj6boOE5Z/YoL2LXK6K4=
+github.com/ttab/elephant-api v0.15.0 h1:7jRcWBxhQwAgls6zSHzdrfRhNgKyo7TWSYewiWr7Rkg=
+github.com/ttab/elephant-api v0.15.0/go.mod h1:d1blYYIcKtkiLIF7Dy9491SDUWylsXGd9xAHSMuRKrA=
+github.com/ttab/elephantine v0.13.7 h1:Rqs6X6Sqo2DSq5QlpagoEsUB4F62pwm5ceHsUtzXL2w=
+github.com/ttab/elephantine v0.13.7/go.mod h1:cX8R+UvHHeuqEDCE+EL/NIUDj6boOE5Z/YoL2LXK6K4=
 github.com/ttab/langos v0.1.1 h1:87AksvnO5AWdXEKnb5Ga5H+dXvigDX8I1y46pTc8vDE=
 github.com/ttab/langos v0.1.1/go.mod h1:+E1sOSvBJIbE5VM0m2rfr83aqw0kZbfe/clqNtwSP8w=
 github.com/ttab/mage v0.6.2 h1:R9zwfSW3rdgERLQlKdDila4KJrgqKR+BhpIHdl4dmvo=

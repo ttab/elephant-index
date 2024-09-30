@@ -19,20 +19,21 @@ import (
 )
 
 type Parameters struct {
-	Addr            string
-	ProfileAddr     string
-	Logger          *slog.Logger
-	Database        *pgxpool.Pool
-	DefaultCluster  string
-	ClusterAuth     ClusterAuth
-	Client          OpenSearchClientFunc
-	Documents       repository.Documents
-	Validator       ValidatorSource
-	Metrics         *Metrics
-	DefaultLanguage string
-	NoIndexer       bool
-	AuthInfoParser  *elephantine.AuthInfoParser
-	Sharding        ShardingPolicy
+	Addr               string
+	ProfileAddr        string
+	Logger             *slog.Logger
+	Database           *pgxpool.Pool
+	DefaultCluster     string
+	ClusterAuth        ClusterAuth
+	Client             OpenSearchClientFunc
+	Documents          repository.Documents
+	RepositoryEndpoint string
+	Validator          ValidatorSource
+	Metrics            *Metrics
+	DefaultLanguage    string
+	NoIndexer          bool
+	AuthInfoParser     *elephantine.AuthInfoParser
+	Sharding           ShardingPolicy
 }
 
 func RunIndex(ctx context.Context, p Parameters) error {
@@ -84,7 +85,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	registerAPI(router, opts, api)
 
 	seachAPI := index.NewSearchV1Server(
-		NewSearchServiceV1(coord),
+		NewSearchServiceV1(coord, p.RepositoryEndpoint),
 		twirp.WithServerJSONSkipDefaults(true),
 		twirp.WithServerHooks(opts.Hooks),
 	)
