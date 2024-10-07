@@ -120,6 +120,11 @@
     "fields": {
       "keyword": {
         "type": "keyword"
+      },
+      "prefix": {
+        "type": "text",
+        "analyzer": "elephant_prefix_analyzer",
+        "search_analyzer": "elephant_prefix_search_analyzer"
       }
     }
   },
@@ -160,6 +165,11 @@
       "usa-oväderUV2"
     ],
     "fields": {
+      "prefix": {
+        "type": "text",
+        "analyzer": "elephant_prefix_analyzer",
+        "search_analyzer": "elephant_prefix_search_analyzer"
+      },
       "sort": {
         "type": "icu_collation_keyword",
         "language": "sv",

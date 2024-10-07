@@ -19,11 +19,12 @@ import (
 // indexes so that we know what's supported.
 const (
 	FeatureSortable = "sortable"
+	FeaturePrefix   = "prefix"
 )
 
 func BuildDocument(
 	validator *revisor.Validator, state *DocumentState,
-	language LanguageConfig, featureFlags map[string]bool,
+	language OpenSeachIndexConfig, featureFlags map[string]bool,
 ) (*Document, error) {
 	d := NewDocument()
 
@@ -42,8 +43,12 @@ func BuildDocument(
 		addSortSubField(&titleField, language, nil)
 	}
 
+	if featureFlags[FeaturePrefix] {
+		addPrefixSubField(&titleField)
+	}
+
 	// TODO: I'ts a bit awkward that we pre-declare these before running
-	// collection. It should be treated like we do with
+	// collection. It should be treated like we do with all other fields.
 	d.AddField("document.title", titleField)
 	d.AddField("document.uri", Field{
 		Type:   TypeKeyword,
@@ -131,7 +136,7 @@ func BuildDocument(
 func collectDocumentFields(
 	d *Document, prefix string, doc *newsdoc.Document,
 	validator *revisor.Validator,
-	language LanguageConfig, featureFlags map[string]bool, policy *bluemonday.Policy,
+	language OpenSeachIndexConfig, featureFlags map[string]bool, policy *bluemonday.Policy,
 ) error {
 	coll := NewValueCollector()
 
@@ -237,6 +242,12 @@ func collectDocumentFields(
 			}
 		}
 
+		if featureFlags[FeaturePrefix] {
+			if slices.Contains(a.Constraint.Labels, "prefix") {
+				addPrefixSubField(&f)
+			}
+		}
+
 		d.AddField(path, f)
 
 		for _, alias := range aliases {
@@ -252,7 +263,15 @@ func collectDocumentFields(
 	return nil
 }
 
-func addSortSubField(field *Field, language LanguageConfig, labels []string) {
+func addPrefixSubField(field *Field) {
+	field.AddSubField("prefix", SubField{
+		Type:           TypeText,
+		Analyzer:       "elephant_prefix_analyzer",
+		SearchAnalyzer: "elephant_prefix_search_analyzer",
+	})
+}
+
+func addSortSubField(field *Field, language OpenSeachIndexConfig, labels []string) {
 	var variant string
 
 	if language.Language == "de" && slices.Contains(labels, "de-phonebook") {

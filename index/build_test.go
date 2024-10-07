@@ -40,11 +40,12 @@ func TestBuildDocument(t *testing.T) {
 		t.Fatalf("failed to create validator: %v", err)
 	}
 
-	lang, err := index.GetLanguageConfig("sv-se", "sv-se", nil)
+	lang, err := index.GetIndexConfig("sv-se", "sv-se", nil)
 	test.Must(t, err, "get language configuration")
 
 	doc, err := index.BuildDocument(validator, &state, lang, map[string]bool{
 		index.FeatureSortable: true,
+		index.FeaturePrefix:   true,
 	})
 	if err != nil {
 		t.Fatalf("failed to build document: %v", err)

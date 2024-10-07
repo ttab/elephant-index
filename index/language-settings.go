@@ -7,7 +7,7 @@ import (
 	"github.com/ttab/langos"
 )
 
-type LanguageConfig struct {
+type OpenSeachIndexConfig struct {
 	NameSuffix string
 	Language   string
 	Region     string
@@ -24,6 +24,7 @@ type OpensearchSettings struct {
 type OpensearchAnalysis struct {
 	Analyzer   map[string]OpensearchAnalyzer   `json:"analyzer,omitempty"`
 	Normalizer map[string]OpensearchNormaliser `json:"normalizer,omitempty"`
+	Tokenizer  map[string]OpensearchTokenizer  `json:"tokenizer,omitempty"`
 }
 
 func (osa *OpensearchAnalysis) SetAnalyzer(name string, v OpensearchAnalyzer) {
@@ -42,8 +43,18 @@ func (osa *OpensearchAnalysis) SetNormalizer(name string, v OpensearchNormaliser
 	osa.Normalizer[name] = v
 }
 
+func (osa *OpensearchAnalysis) SetTokenizer(name string, v OpensearchTokenizer) {
+	if osa.Tokenizer == nil {
+		osa.Tokenizer = make(map[string]OpensearchTokenizer)
+	}
+
+	osa.Tokenizer[name] = v
+}
+
 type OpensearchAnalyzer struct {
-	Type string `json:"type"`
+	Type      string   `json:"type"`
+	Tokenizer string   `json:"tokenizer,omitempty"`
+	Filter    []string `json:"filter,omitempty"`
 }
 
 type OpensearchNormaliser struct {
@@ -51,12 +62,19 @@ type OpensearchNormaliser struct {
 	Filter []string `json:"filter"`
 }
 
+type OpensearchTokenizer struct {
+	Type       string   `json:"type"`
+	MinGram    int      `json:"min_gram,omitempty"`
+	MaxGram    int      `json:"max_gram,omitempty"`
+	TokenChars []string `json:"token_chars,omitempty"`
+}
+
 var noDefaultRegion = map[string]string{}
 
-func GetLanguageConfig(
+func GetIndexConfig(
 	code string, defaultLanguage string,
 	defaultRegions map[string]string,
-) (LanguageConfig, error) {
+) (OpenSeachIndexConfig, error) {
 	if code == "" {
 		code = defaultLanguage
 	}
@@ -67,7 +85,7 @@ func GetLanguageConfig(
 
 	info, err := langos.GetLanguage(code)
 	if err != nil {
-		return LanguageConfig{}, fmt.Errorf("get language: %w", err)
+		return OpenSeachIndexConfig{}, fmt.Errorf("get language: %w", err)
 	}
 
 	code = strings.ToLower(info.Code)
@@ -100,7 +118,32 @@ func GetLanguageConfig(
 		Type: analyzer,
 	})
 
-	return LanguageConfig{
+	// Set up tokenizer and analyzer for prefix indexing. Not using the
+	// "index_prefixes" mapping parameter as that only works for fields
+	// typed as text. Adding a text subfield with "index_prefixes" would
+	// give use text indexing AND prefix indexing. Instead we go for
+	// subfields dedicated to prefix indexing.
+	s.Settings.Analysis.SetTokenizer("edge_ngram_tokenizer", OpensearchTokenizer{
+		Type:    "edge_ngram",
+		MinGram: 2,
+		MaxGram: 15,
+	})
+
+	s.Settings.Analysis.SetAnalyzer("elephant_prefix_analyzer", OpensearchAnalyzer{
+		Type:      "custom",
+		Tokenizer: "edge_ngram_tokenizer",
+		Filter:    []string{"lowercase"},
+	})
+
+	// The prefix search analyzer skips tokenization but ensures lowercase
+	// so that we get case insensitivity.
+	s.Settings.Analysis.SetAnalyzer("elephant_prefix_search_analyzer", OpensearchAnalyzer{
+		Type:      "custom",
+		Tokenizer: "keyword",
+		Filter:    []string{"lowercase"},
+	})
+
+	return OpenSeachIndexConfig{
 		NameSuffix: fmt.Sprintf("%s-%s", lang, region),
 		Language:   lang,
 		Region:     strings.ToLower(info.Region),

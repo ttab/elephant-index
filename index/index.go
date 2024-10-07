@@ -425,7 +425,7 @@ func (idx *Indexer) createIndexWorker(
 	docType string,
 	lang string,
 ) (*indexWorker, error) {
-	langConf, err := GetLanguageConfig(
+	conf, err := GetIndexConfig(
 		lang, idx.defaultLanguage, idx.defaultRegions)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -433,7 +433,7 @@ func (idx *Indexer) createIndexWorker(
 	}
 
 	name, err := idx.ensureIndex(
-		ctx, "documents", docType, langConf)
+		ctx, "documents", docType, conf)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"ensure index for doc type %q: %w",
@@ -444,7 +444,7 @@ func (idx *Indexer) createIndexWorker(
 
 	if idx.enablePercolation {
 		n, err := idx.ensureIndex(
-			ctx, "percolate", docType, langConf)
+			ctx, "percolate", docType, conf)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"ensure percolate index for doc type %q: %w",
@@ -455,7 +455,7 @@ func (idx *Indexer) createIndexWorker(
 	}
 
 	index, err := newIndexWorker(ctx, idx,
-		name, percolateName, docType, langConf, 8)
+		name, percolateName, docType, conf, 8)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"create index worker: %w", err)
@@ -530,7 +530,7 @@ func createLanguageQuery(uuid string, language string) ElasticSearchRequest {
 }
 
 func (idx *Indexer) ensureIndex(
-	ctx context.Context, indexType string, docType string, config LanguageConfig,
+	ctx context.Context, indexType string, docType string, config OpenSeachIndexConfig,
 ) (string, error) {
 	indexTypeName := idx.getIndexName(docType)
 	indexTypeRoot := idx.getQualifiedIndexName(indexType, indexTypeName)
@@ -611,7 +611,7 @@ func (idx *Indexer) ensureAlias(index string, alias string) error {
 func newIndexWorker(
 	ctx context.Context, idx *Indexer,
 	name, percolateIndex, contentType string,
-	lang LanguageConfig,
+	idxConf OpenSeachIndexConfig,
 	concurrency int,
 ) (*indexWorker, error) {
 	iw := indexWorker{
@@ -625,7 +625,7 @@ func newIndexWorker(
 		knownMappings:      NewMappings(),
 		jobQueue:           make(chan *enrichJob, concurrency),
 		featureFlags:       make(map[string]bool),
-		language:           lang,
+		config:             idxConf,
 	}
 
 	conf, err := idx.q.GetIndexConfiguration(ctx, name)
@@ -642,6 +642,7 @@ func newIndexWorker(
 				// current features. If that changes this will
 				// have to be parameterised.
 				FeatureSortable,
+				FeaturePrefix,
 			},
 		})
 		if err != nil {
@@ -684,7 +685,7 @@ type indexWorker struct {
 	contentType        string
 	indexName          string
 	percolateIndexName string
-	language           LanguageConfig
+	config             OpenSeachIndexConfig
 	jobQueue           chan *enrichJob
 
 	featureFlags  map[string]bool
@@ -847,7 +848,7 @@ func (iw *indexWorker) Process(
 
 		idxDoc, err := BuildDocument(
 			iw.idx.vSource.GetValidator(), job.State,
-			iw.language, iw.featureFlags,
+			iw.config, iw.featureFlags,
 		)
 		if err != nil {
 			return fmt.Errorf("build flat document: %w", err)

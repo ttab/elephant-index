@@ -68,6 +68,11 @@
       "fields": {
         "keyword": {
           "type": "keyword"
+        },
+        "prefix": {
+          "type": "text",
+          "analyzer": "elephant_prefix_analyzer",
+          "search_analyzer": "elephant_prefix_search_analyzer"
         }
       }
     },
@@ -98,6 +103,11 @@
     "document.title": {
       "type": "text",
       "fields": {
+        "prefix": {
+          "type": "text",
+          "analyzer": "elephant_prefix_analyzer",
+          "search_analyzer": "elephant_prefix_search_analyzer"
+        },
         "sort": {
           "type": "icu_collation_keyword",
           "language": "sv",
