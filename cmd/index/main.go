@@ -154,9 +154,9 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("invalid sharding policy: %w", err)
 	}
 
-	_, err = index.GetLanguageConfig(defaultLanguage, "", nil)
+	_, err = index.GetIndexConfig(defaultLanguage, "", nil)
 	if err != nil {
-		return fmt.Errorf("invalid default language: %w", err)
+		return fmt.Errorf("create index config: %w", err)
 	}
 
 	paramSource, err := elephantine.GetParameterSource(paramSourceName)

@@ -60,17 +60,21 @@ func (f *Field) AddSubField(name string, sf SubField) {
 }
 
 type SubField struct {
-	Type       FieldType `json:"type"`
-	Normalizer string    `json:"normalizer,omitempty"`
-	Index      *bool     `json:"index,omitempty"`
-	Language   string    `json:"language,omitempty"`
-	Country    string    `json:"country,omitempty"`
-	Variant    string    `json:"variant,omitempty"`
+	Type           FieldType `json:"type"`
+	Normalizer     string    `json:"normalizer,omitempty"`
+	Analyzer       string    `json:"analyzer,omitempty"`
+	SearchAnalyzer string    `json:"search_analyzer,omitempty"`
+	Index          *bool     `json:"index,omitempty"`
+	Language       string    `json:"language,omitempty"`
+	Country        string    `json:"country,omitempty"`
+	Variant        string    `json:"variant,omitempty"`
 }
 
 func (sf SubField) Equal(other SubField) bool {
 	return other.Type == sf.Type &&
 		other.Normalizer == sf.Normalizer &&
+		other.Analyzer == sf.Analyzer &&
+		other.SearchAnalyzer == sf.SearchAnalyzer &&
 		other.Language == sf.Language &&
 		other.Country == sf.Country &&
 		other.Variant == sf.Variant &&
