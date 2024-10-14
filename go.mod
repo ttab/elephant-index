@@ -15,7 +15,7 @@ require (
 	github.com/ttab/elephantine v0.14.0
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.6.2
-	github.com/ttab/newsdoc v0.5.0
+	github.com/ttab/newsdoc v0.6.0
 	github.com/ttab/revisor v0.9.0
 	github.com/ttab/revisorschemas v0.4.7
 	github.com/twitchtv/twirp v8.1.3+incompatible
