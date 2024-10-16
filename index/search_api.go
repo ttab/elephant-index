@@ -201,7 +201,7 @@ func (s *SearchServiceV1) Query(
 
 	var documents map[string]*newsdoc.Document
 
-	if req.LoadDocument {
+	if req.LoadDocument && len(response.Hits.Hits) > 0 {
 		documents = make(map[string]*newsdoc.Document, len(response.Hits.Hits))
 		load := make([]*repository.BulkGetReference, len(response.Hits.Hits))
 
