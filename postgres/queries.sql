@@ -99,6 +99,12 @@ FROM document_index
 WHERE name = @name
 FOR UPDATE;
 
+-- name: GetMappingsForType :many
+SELECT name, mappings
+FROM document_index
+WHERE set_name = @set_name
+      AND content_type = @content_type;
+
 -- name: UpdateIndexMappings :exec
 UPDATE document_index
 SET mappings = @mappings

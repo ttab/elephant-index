@@ -85,7 +85,10 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	registerAPI(router, opts, api)
 
 	seachAPI := index.NewSearchV1Server(
-		NewSearchServiceV1(coord, p.RepositoryEndpoint),
+		NewSearchServiceV1(
+			NewPostgresMappingSource(postgres.New(p.Database)),
+			coord, p.RepositoryEndpoint,
+		),
 		twirp.WithServerJSONSkipDefaults(true),
 		twirp.WithServerHooks(opts.Hooks),
 	)
