@@ -55,6 +55,7 @@ func newIndexWorker(
 				// have to be parameterised.
 				FeatureSortable,
 				FeaturePrefix,
+				FeatureOnlyICU,
 			},
 		})
 		if err != nil {
@@ -418,7 +419,9 @@ func (iw *indexWorker) attemptMappingUpdate(
 			percolatorMappings := Mappings{
 				Properties: map[string]Mapping{
 					"query": {
-						Type: TypePercolator,
+						FieldOptions: FieldOptions{
+							Type: TypePercolator,
+						},
 					},
 				},
 			}

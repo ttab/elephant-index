@@ -19,7 +19,9 @@
       "type": "text"
     },
     "document.content.core_text.role": {
-      "type": "keyword"
+      "type": "icu_collation_keyword",
+      "language": "sv",
+      "country": "se"
     },
     "document.content.tt_dateline.data.text": {
       "type": "text"
@@ -61,13 +63,17 @@
       "type": "text"
     },
     "document.meta.core_note.role": {
-      "type": "keyword"
+      "type": "icu_collation_keyword",
+      "language": "sv",
+      "country": "se"
     },
     "document.meta.tt_slugline.value": {
       "type": "text",
       "fields": {
         "keyword": {
-          "type": "keyword"
+          "type": "icu_collation_keyword",
+          "language": "sv",
+          "country": "se"
         },
         "prefix": {
           "type": "text",
@@ -158,7 +164,9 @@
       "type": "date"
     },
     "readers": {
-      "type": "keyword"
+      "type": "icu_collation_keyword",
+      "language": "sv",
+      "country": "se"
     },
     "slug": {
       "type": "alias",

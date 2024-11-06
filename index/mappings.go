@@ -45,21 +45,7 @@ func (ft FieldType) Priority() int {
 	return 0
 }
 
-type Field struct {
-	Type   FieldType           `json:"type"`
-	Values []string            `json:"values"`
-	Fields map[string]SubField `json:"fields,omitempty"`
-}
-
-func (f *Field) AddSubField(name string, sf SubField) {
-	if f.Fields == nil {
-		f.Fields = make(map[string]SubField)
-	}
-
-	f.Fields[name] = sf
-}
-
-type SubField struct {
+type FieldOptions struct {
 	Type           FieldType `json:"type"`
 	Normalizer     string    `json:"normalizer,omitempty"`
 	Analyzer       string    `json:"analyzer,omitempty"`
@@ -70,15 +56,30 @@ type SubField struct {
 	Variant        string    `json:"variant,omitempty"`
 }
 
-func (sf SubField) Equal(other SubField) bool {
-	return other.Type == sf.Type &&
-		other.Normalizer == sf.Normalizer &&
-		other.Analyzer == sf.Analyzer &&
-		other.SearchAnalyzer == sf.SearchAnalyzer &&
-		other.Language == sf.Language &&
-		other.Country == sf.Country &&
-		other.Variant == sf.Variant &&
-		equalPointerValue(other.Index, sf.Index)
+type Field struct {
+	FieldOptions
+
+	Values []string                `json:"values"`
+	Fields map[string]FieldOptions `json:"fields,omitempty"`
+}
+
+func (f *Field) AddSubField(name string, sf FieldOptions) {
+	if f.Fields == nil {
+		f.Fields = make(map[string]FieldOptions)
+	}
+
+	f.Fields[name] = sf
+}
+
+func (fo FieldOptions) Equal(other FieldOptions) bool {
+	return other.Type == fo.Type &&
+		other.Normalizer == fo.Normalizer &&
+		other.Analyzer == fo.Analyzer &&
+		other.SearchAnalyzer == fo.SearchAnalyzer &&
+		other.Language == fo.Language &&
+		other.Country == fo.Country &&
+		other.Variant == fo.Variant &&
+		equalPointerValue(other.Index, fo.Index)
 }
 
 func equalPointerValue[T comparable](a *T, b *T) bool {
@@ -94,9 +95,10 @@ func equalPointerValue[T comparable](a *T, b *T) bool {
 }
 
 type Mapping struct {
-	Type   FieldType           `json:"type"`
-	Path   string              `json:"path,omitempty"`
-	Fields map[string]SubField `json:"fields,omitempty"`
+	FieldOptions
+
+	Path   string                  `json:"path,omitempty"`
+	Fields map[string]FieldOptions `json:"fields,omitempty"`
 }
 
 type MappingComparison string
@@ -108,7 +110,7 @@ const (
 )
 
 func (m Mapping) Compare(other Mapping) MappingComparison {
-	equal := other.Type == m.Type && other.Path == m.Path
+	equal := m.FieldOptions.Equal(other.FieldOptions) && other.Path == m.Path
 	if !equal {
 		return MappingBreaking
 	}
@@ -132,7 +134,7 @@ func (m Mapping) Compare(other Mapping) MappingComparison {
 			return MappingBreaking
 		}
 
-		if nv.Normalizer != v.Normalizer || nv.Type != v.Type {
+		if !nv.Equal(v) {
 			// Type of subfield has changed.
 			return MappingBreaking
 		}
@@ -148,7 +150,7 @@ func (m Mapping) Compare(other Mapping) MappingComparison {
 			continue
 		}
 
-		if ov.Normalizer != v.Normalizer || ov.Type != v.Type {
+		if !ov.Equal(v) {
 			return MappingBreaking
 		}
 	}

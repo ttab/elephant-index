@@ -149,9 +149,11 @@ func fieldTypeToExternalType(ft FieldType) (string, bool) {
 	// Convert field type to external type. This switch statement must
 	// always be exhaustive.
 	switch ft {
-	case TypeAlias, TypeBoolean, TypeDate, TypeDouble, TypeICUKeyword,
+	case TypeAlias, TypeBoolean, TypeDate, TypeDouble,
 		TypeKeyword, TypeLong, TypeText:
 		return string(ft), true
+	case TypeICUKeyword:
+		return "keyword", true
 	case TypeUnknown, TypePercolator:
 		return "", false
 	}

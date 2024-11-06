@@ -33,8 +33,8 @@ func (d *Document) AddTime(name string, value time.Time) {
 	v := value.Format(time.RFC3339)
 
 	d.AddField(name, Field{
-		Type:   TypeDate,
-		Values: []string{v},
+		FieldOptions: FieldOptions{Type: TypeDate},
+		Values:       []string{v},
 	})
 }
 
@@ -42,8 +42,8 @@ func (d *Document) AddInteger(name string, value int64) {
 	v := strconv.FormatInt(value, 10)
 
 	d.AddField(name, Field{
-		Type:   TypeLong,
-		Values: []string{v},
+		FieldOptions: FieldOptions{Type: TypeLong},
+		Values:       []string{v},
 	})
 }
 
@@ -51,7 +51,7 @@ func (d *Document) AddField(name string, f Field) {
 	e := d.Fields[name]
 
 	if f.Type.Priority() > e.Type.Priority() {
-		e.Type = f.Type
+		e.FieldOptions = f.FieldOptions
 	}
 
 	for name, def := range f.Fields {
@@ -76,14 +76,14 @@ func (d *Document) Mappings() Mappings {
 		switch def.Type { //nolint: exhaustive
 		case TypeAlias:
 			m.Properties[name] = Mapping{
-				Type:   def.Type,
-				Path:   def.Values[0],
-				Fields: def.Fields,
+				FieldOptions: def.FieldOptions,
+				Path:         def.Values[0],
+				Fields:       def.Fields,
 			}
 		default:
 			m.Properties[name] = Mapping{
-				Type:   def.Type,
-				Fields: def.Fields,
+				FieldOptions: def.FieldOptions,
+				Fields:       def.Fields,
 			}
 		}
 	}

@@ -46,6 +46,7 @@ func TestBuildDocument(t *testing.T) {
 	doc, err := index.BuildDocument(validator, &state, lang, map[string]bool{
 		index.FeatureSortable: true,
 		index.FeaturePrefix:   true,
+		index.FeatureOnlyICU:  true,
 	})
 	if err != nil {
 		t.Fatalf("failed to build document: %v", err)
