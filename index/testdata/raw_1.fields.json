@@ -27,7 +27,9 @@
     ]
   },
   "document.content.core_text.role": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "heading-1",
       "vinjette",
@@ -65,25 +67,33 @@
     ]
   },
   "document.content.tt_visual.rel.self.type": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "tt/picture"
     ]
   },
   "document.content.tt_visual.rel.self.uri": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "http://tt.se/media/image/sdl75GGVjG0o-Q"
     ]
   },
   "document.content.tt_visual.rel.self.url": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "https://beta.tt.se/media/image/sdl75GGVjG0o-Q_NormalPreview.jpg"
     ]
   },
   "document.language": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "sv"
     ]
@@ -107,7 +117,9 @@
     ]
   },
   "document.meta.core_note.role": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "public"
     ]
@@ -119,7 +131,9 @@
     ],
     "fields": {
       "keyword": {
-        "type": "keyword"
+        "type": "icu_collation_keyword",
+        "language": "sv",
+        "country": "se"
       },
       "prefix": {
         "type": "text",
@@ -129,32 +143,42 @@
     }
   },
   "document.rel.assignment.type": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "core/assignment"
     ]
   },
   "document.rel.assignment.uuid": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "c3c4327a-4fa1-4a5b-b709-bd3e9b8d6807"
     ]
   },
   "document.rel.source.type": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "core/article",
       "core/content-source"
     ]
   },
   "document.rel.source.uri": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "tt://content-source/tt-ap-afp"
     ]
   },
   "document.rel.source.uuid": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "82119f60-072d-4f78-98b3-4039bf4243c0"
     ]
@@ -178,19 +202,25 @@
     }
   },
   "document.type": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "core/article"
     ]
   },
   "document.uri": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "core://article/4589c261-2bda-407e-b72d-ac0331264b23"
     ]
   },
   "document.url": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       ""
     ]
@@ -202,7 +232,9 @@
     ]
   },
   "heads.approved.creator": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "imid://user/sub/dbf4aa9e-3725-4bfd-8daf-b4c379dd0625"
     ]
@@ -214,7 +246,9 @@
     ]
   },
   "heads.approved.meta.cause": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "development"
     ]
@@ -232,7 +266,9 @@
     ]
   },
   "heads.usable.creator": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "imid://user/sub/dbf4aa9e-3725-4bfd-8daf-b4c379dd0625"
     ]
@@ -244,7 +280,9 @@
     ]
   },
   "heads.usable.meta.cause": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "development"
     ]
@@ -262,7 +300,9 @@
     ]
   },
   "readers": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "values": [
       "core://unit/redaktionen"
     ]

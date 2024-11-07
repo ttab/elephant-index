@@ -33,25 +33,19 @@ func main() {
 		Action:      runIndexer,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:  "addr",
-				Value: ":1080",
+				Name:    "addr",
+				EnvVars: []string{"ADDR"},
+				Value:   ":1080",
 			},
 			&cli.StringFlag{
-				Name:  "profile-addr",
-				Value: ":1081",
+				Name:    "profile-addr",
+				EnvVars: []string{"PROFILE_ADDR"},
+				Value:   ":1081",
 			},
 			&cli.StringFlag{
 				Name:    "log-level",
 				EnvVars: []string{"LOG_LEVEL"},
 				Value:   "debug",
-			},
-			&cli.StringFlag{
-				Name:    "jwks-endpoint",
-				EnvVars: []string{"JWKS_ENDPOINT"},
-			},
-			&cli.StringFlag{
-				Name:    "jwks-endpoint-parameter",
-				EnvVars: []string{"JWKS_ENDPOINT_PARAMETER"},
 			},
 			&cli.StringFlag{
 				Name:    "default-language",

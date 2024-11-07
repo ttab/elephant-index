@@ -354,6 +354,43 @@ func (q *Queries) GetIndexSets(ctx context.Context) ([]IndexSet, error) {
 	return items, nil
 }
 
+const getMappingsForType = `-- name: GetMappingsForType :many
+SELECT name, mappings
+FROM document_index
+WHERE set_name = $1
+      AND content_type = $2
+`
+
+type GetMappingsForTypeParams struct {
+	SetName     string
+	ContentType string
+}
+
+type GetMappingsForTypeRow struct {
+	Name     string
+	Mappings []byte
+}
+
+func (q *Queries) GetMappingsForType(ctx context.Context, arg GetMappingsForTypeParams) ([]GetMappingsForTypeRow, error) {
+	rows, err := q.db.Query(ctx, getMappingsForType, arg.SetName, arg.ContentType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMappingsForTypeRow
+	for rows.Next() {
+		var i GetMappingsForTypeRow
+		if err := rows.Scan(&i.Name, &i.Mappings); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const indexSetExists = `-- name: IndexSetExists :one
 SELECT COUNT(*) = 1
 FROM index_set

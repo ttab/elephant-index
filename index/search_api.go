@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,7 +25,16 @@ const (
 
 var _ index.SearchV1 = &SearchServiceV1{}
 
+type MappingSource interface {
+	GetMappings(
+		ctx context.Context,
+		indexSet string,
+		docType string,
+	) (map[string]Mapping, error)
+}
+
 func NewSearchServiceV1(
+	mappings MappingSource,
 	active ActiveIndexGetter,
 	repositoryEndpoint string,
 ) *SearchServiceV1 {
@@ -43,21 +53,119 @@ func NewSearchServiceV1(
 	documents := repository.NewDocumentsProtobufClient(repositoryEndpoint, &client)
 
 	return &SearchServiceV1{
+		mappings:  mappings,
 		active:    active,
 		documents: documents,
 	}
 }
 
 type SearchServiceV1 struct {
+	mappings  MappingSource
 	active    ActiveIndexGetter
 	documents repository.Documents
+}
+
+// GetMappings implements index.SearchV1.
+func (s *SearchServiceV1) GetMappings(
+	ctx context.Context, req *index.GetMappingsRequestV1,
+) (*index.GetMappingsResponseV1, error) {
+	_, err := RequireAnyScope(ctx, ScopeSearch, ScopeIndexAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	_, set := s.active.GetActiveIndex()
+
+	if req.DocumentType == "" {
+		return nil, twirp.RequiredArgumentError("document_type")
+	}
+
+	mappings, err := s.mappings.GetMappings(ctx, set, req.DocumentType)
+	if err != nil {
+		return nil, twirp.InternalErrorf("read mappings: %w", err)
+	}
+
+	res := index.GetMappingsResponseV1{
+		Properties: make([]*index.MappingPropertyV1, 0, len(mappings)),
+	}
+
+	for name, prop := range mappings {
+		t, ok := fieldTypeToExternalType(prop.Type)
+		if !ok {
+			return nil, twirp.InternalErrorf(
+				"unknown mapping type %q for %q",
+				prop.Type, prop.Path,
+			)
+		}
+
+		p := index.MappingPropertyV1{
+			Name: name,
+			Path: prop.Path,
+			Type: t,
+		}
+
+		for fName, sf := range prop.Fields {
+			t, ok := fieldTypeToExternalType(sf.Type)
+			if !ok {
+				return nil, twirp.InternalErrorf(
+					"unknown mapping type %q for field %q of %q",
+					sf.Type, fName, name,
+				)
+			}
+
+			switch sf.Analyzer {
+			case "elephant_prefix_analyzer":
+				t = "prefix"
+			case "":
+			default:
+				// We don't want to miscategorise any fields
+				// with special analysers.
+				return nil, twirp.InternalErrorf(
+					"unknown analyzer %q for field %q of %q",
+					sf.Analyzer, fName, name,
+				)
+			}
+
+			p.Fields = append(p.Fields, &index.MappingFieldV1{
+				Name: fName,
+				Type: t,
+			})
+		}
+
+		res.Properties = append(res.Properties, &p)
+	}
+
+	slices.SortFunc(res.Properties, func(
+		a *index.MappingPropertyV1,
+		b *index.MappingPropertyV1,
+	) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	return &res, nil
+}
+
+func fieldTypeToExternalType(ft FieldType) (string, bool) {
+	// Convert field type to external type. This switch statement must
+	// always be exhaustive.
+	switch ft {
+	case TypeAlias, TypeBoolean, TypeDate, TypeDouble,
+		TypeKeyword, TypeLong, TypeText:
+		return string(ft), true
+	case TypeICUKeyword:
+		return "keyword", true
+	case TypeUnknown, TypePercolator:
+		return "", false
+	}
+
+	return "", false
 }
 
 // Query implements index.SearchV1.
 func (s *SearchServiceV1) Query(
 	ctx context.Context, req *index.QueryRequestV1,
 ) (_ *index.QueryResponseV1, outErr error) {
-	auth, err := RequireAnyScope(ctx, ScopeSeach)
+	auth, err := RequireAnyScope(ctx, ScopeSearch, ScopeIndexAdmin)
 	if err != nil {
 		return nil, err
 	}

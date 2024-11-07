@@ -20,6 +20,7 @@ import (
 const (
 	FeatureSortable = "sortable"
 	FeaturePrefix   = "prefix"
+	FeatureOnlyICU  = "only_icu"
 )
 
 func BuildDocument(
@@ -35,32 +36,38 @@ func BuildDocument(
 	doc := &state.Document
 
 	titleField := Field{
-		Type:   TypeText,
-		Values: []string{doc.Title},
+		FieldOptions: FieldOptions{Type: TypeText},
+		Values:       []string{doc.Title},
 	}
 
 	if featureFlags[FeatureSortable] {
-		addSortSubField(&titleField, language, nil)
+		titleField.AddSubField("sort",
+			collatedKeywordOptions(language, nil))
 	}
 
 	if featureFlags[FeaturePrefix] {
-		addPrefixSubField(&titleField)
+		titleField.AddSubField("prefix", prefixFieldOptions())
+	}
+
+	keywordOptions := FieldOptions{Type: TypeKeyword}
+	if featureFlags[FeatureOnlyICU] {
+		keywordOptions = collatedKeywordOptions(language, nil)
 	}
 
 	// TODO: I'ts a bit awkward that we pre-declare these before running
 	// collection. It should be treated like we do with all other fields.
 	d.AddField("document.title", titleField)
 	d.AddField("document.uri", Field{
-		Type:   TypeKeyword,
-		Values: []string{doc.URI},
+		FieldOptions: keywordOptions,
+		Values:       []string{doc.URI},
 	})
 	d.AddField("document.url", Field{
-		Type:   TypeKeyword,
-		Values: []string{doc.URL},
+		FieldOptions: keywordOptions,
+		Values:       []string{doc.URL},
 	})
 	d.AddField("document.language", Field{
-		Type:   TypeKeyword,
-		Values: []string{doc.Language},
+		FieldOptions: keywordOptions,
+		Values:       []string{doc.Language},
 	})
 
 	d.AddInteger("current_version", state.CurrentVersion)
@@ -73,15 +80,15 @@ func BuildDocument(
 		d.AddInteger(base+".id", status.ID)
 		d.AddInteger(base+".version", status.Version)
 		d.AddField(base+".creator", Field{
-			Type:   TypeKeyword,
-			Values: []string{status.Creator},
+			FieldOptions: keywordOptions,
+			Values:       []string{status.Creator},
 		})
 		d.AddTime(base+".created", status.Created)
 
 		for k, v := range status.Meta {
 			d.AddField(base+".meta."+k, Field{
-				Type:   TypeKeyword,
-				Values: []string{v},
+				FieldOptions: keywordOptions,
+				Values:       []string{v},
 			})
 		}
 	}
@@ -92,8 +99,8 @@ func BuildDocument(
 		}
 
 		d.AddField("readers", Field{
-			Type:   TypeKeyword,
-			Values: []string{a.URI},
+			FieldOptions: keywordOptions,
+			Values:       []string{a.URI},
 		})
 	}
 
@@ -110,8 +117,8 @@ func BuildDocument(
 	}
 
 	d.AddField("text", Field{
-		Type:   TypeText,
-		Values: text,
+		FieldOptions: FieldOptions{Type: TypeText},
+		Values:       text,
 	})
 
 	err := collectDocumentFields(
@@ -140,6 +147,13 @@ func collectDocumentFields(
 ) error {
 	coll := NewValueCollector()
 
+	keywordOptions := collatedKeywordOptions(language, nil)
+
+	onlyICU := featureFlags[FeatureOnlyICU]
+	if !onlyICU {
+		keywordOptions = FieldOptions{Type: TypeKeyword}
+	}
+
 	_, err := validator.ValidateDocument(
 		context.Background(),
 		doc,
@@ -149,40 +163,40 @@ func collectDocumentFields(
 	}
 
 	for _, a := range coll.Values() {
-		var ft FieldType
+		var fo FieldOptions
 
 		val := a.Value
 
 		switch {
 		case a.Constraint.Format == revisor.StringFormatFloat:
-			ft = TypeDouble
+			fo.Type = TypeDouble
 		case a.Constraint.Format == revisor.StringFormatInt:
-			ft = TypeLong
+			fo.Type = TypeLong
 		case a.Constraint.Format == revisor.StringFormatBoolean:
-			ft = TypeBoolean
+			fo.Type = TypeBoolean
 		case a.Constraint.Format == revisor.StringFormatUUID:
-			ft = TypeKeyword
+			fo.Type = TypeKeyword
 		case a.Constraint.Format == revisor.StringFormatRFC3339:
-			ft = TypeDate
+			fo.Type = TypeDate
 		case a.Constraint.Format == revisor.StringFormatHTML:
-			ft = TypeText
+			fo.Type = TypeText
 			val = policy.Sanitize(val)
 			val = html.UnescapeString(val)
 		case a.Constraint.Time != "":
-			ft = TypeDate
+			fo.Type = TypeDate
 
 			t, err := time.Parse(a.Constraint.Time, val)
 			if err == nil {
 				val = t.Format(time.RFC3339)
 			}
 		case len(a.Constraint.Enum) > 0:
-			ft = TypeKeyword
+			fo = keywordOptions
 		case a.Constraint.Pattern != nil:
-			ft = TypeKeyword
+			fo = keywordOptions
 		case len(a.Constraint.Glob) > 0:
-			ft = TypeKeyword
+			fo = keywordOptions
 		default:
-			ft = TypeText
+			fo.Type = TypeText
 		}
 
 		var parent revisor.EntityRef
@@ -209,11 +223,11 @@ func collectDocumentFields(
 
 		// All attributes except title and value should default to
 		// keyword if they're just text.
-		if tail.RefType == revisor.RefTypeAttribute && ft == TypeText {
+		if tail.RefType == revisor.RefTypeAttribute && fo.Type == TypeText {
 			switch tail.Name {
 			case "title", "value":
 			default:
-				ft = TypeKeyword
+				fo = keywordOptions
 			}
 		}
 
@@ -226,26 +240,30 @@ func collectDocumentFields(
 		}
 
 		f := Field{
-			Type:   ft,
-			Values: []string{val},
+			FieldOptions: fo,
+			Values:       []string{val},
 		}
 
 		if slices.Contains(a.Constraint.Labels, "keyword") {
-			f.AddSubField("keyword", SubField{
-				Type: TypeKeyword,
-			})
-		}
-
-		if featureFlags[FeatureSortable] {
-			if slices.Contains(a.Constraint.Labels, "sortable") {
-				addSortSubField(&f, language, a.Constraint.Labels)
+			if onlyICU {
+				f.AddSubField("keyword", collatedKeywordOptions(
+					language, a.Constraint.Labels))
+			} else {
+				f.AddSubField("keyword", FieldOptions{
+					Type: TypeKeyword,
+				})
 			}
 		}
 
-		if featureFlags[FeaturePrefix] {
-			if slices.Contains(a.Constraint.Labels, "prefix") {
-				addPrefixSubField(&f)
-			}
+		if featureFlags[FeatureSortable] &&
+			slices.Contains(a.Constraint.Labels, "sortable") {
+			f.AddSubField("sort", collatedKeywordOptions(
+				language, a.Constraint.Labels))
+		}
+
+		if featureFlags[FeaturePrefix] &&
+			slices.Contains(a.Constraint.Labels, "prefix") {
+			f.AddSubField("prefix", prefixFieldOptions())
 		}
 
 		d.AddField(path, f)
@@ -254,7 +272,9 @@ func collectDocumentFields(
 			// TODO: can we alias the sub-fields as well, is it
 			// needed or is an alias like a directory symlink?
 			d.AddField(alias, Field{
-				Type:   TypeAlias,
+				FieldOptions: FieldOptions{
+					Type: TypeAlias,
+				},
 				Values: []string{path},
 			})
 		}
@@ -263,27 +283,29 @@ func collectDocumentFields(
 	return nil
 }
 
-func addPrefixSubField(field *Field) {
-	field.AddSubField("prefix", SubField{
+func prefixFieldOptions() FieldOptions {
+	return FieldOptions{
 		Type:           TypeText,
 		Analyzer:       "elephant_prefix_analyzer",
 		SearchAnalyzer: "elephant_prefix_search_analyzer",
-	})
+	}
 }
 
-func addSortSubField(field *Field, language OpenSeachIndexConfig, labels []string) {
+func collatedKeywordOptions(
+	language OpenSeachIndexConfig, labels []string,
+) FieldOptions {
 	var variant string
 
 	if language.Language == "de" && slices.Contains(labels, "de-phonebook") {
 		variant = "@collation=phonebook"
 	}
 
-	field.AddSubField("sort", SubField{
+	return FieldOptions{
 		Type:     TypeICUKeyword,
 		Language: language.Language,
 		Country:  language.Region,
 		Variant:  variant,
-	})
+	}
 }
 
 func blockText(policy *bluemonday.Policy, b newsdoc.Block, text []string) []string {

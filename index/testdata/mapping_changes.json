@@ -4,7 +4,9 @@
     "comparison": "superset"
   },
   "document.content.core_text.role": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "comparison": "superset"
   },
   "document.content.tt_visual.rel.self.data.height": {
@@ -19,19 +21,47 @@
     "type": "long",
     "comparison": "superset"
   },
+  "document.content.tt_visual.rel.self.type": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "document.content.tt_visual.rel.self.uri": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "document.content.tt_visual.rel.self.url": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "document.language": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
   "document.meta.core_newsvalue.value": {
     "type": "long",
     "comparison": "breaking"
   },
   "document.meta.core_note.role": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "comparison": "superset"
   },
   "document.meta.tt_slugline.value": {
     "type": "text",
     "fields": {
       "keyword": {
-        "type": "keyword"
+        "type": "icu_collation_keyword",
+        "language": "sv",
+        "country": "se"
       },
       "prefix": {
         "type": "text",
@@ -40,6 +70,36 @@
       }
     },
     "comparison": "superset"
+  },
+  "document.rel.assignment.type": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "document.rel.assignment.uuid": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "document.rel.source.type": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "document.rel.source.uri": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "document.rel.source.uuid": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
   },
   "document.title": {
     "type": "text",
@@ -57,8 +117,52 @@
     },
     "comparison": "superset"
   },
+  "document.type": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "document.uri": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "document.url": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "heads.approved.creator": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "heads.approved.meta.cause": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "heads.usable.creator": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
+  "heads.usable.meta.cause": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "breaking"
+  },
   "readers": {
-    "type": "keyword",
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "comparison": "superset"
   },
   "slug": {
