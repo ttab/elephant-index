@@ -69,7 +69,7 @@ type SearchServiceV1 struct {
 func (s *SearchServiceV1) GetMappings(
 	ctx context.Context, req *index.GetMappingsRequestV1,
 ) (*index.GetMappingsResponseV1, error) {
-	_, err := RequireAnyScope(ctx, ScopeSeach, ScopeIndexAdmin)
+	_, err := RequireAnyScope(ctx, ScopeSearch, ScopeIndexAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ func fieldTypeToExternalType(ft FieldType) (string, bool) {
 func (s *SearchServiceV1) Query(
 	ctx context.Context, req *index.QueryRequestV1,
 ) (_ *index.QueryResponseV1, outErr error) {
-	auth, err := RequireAnyScope(ctx, ScopeSeach, ScopeIndexAdmin)
+	auth, err := RequireAnyScope(ctx, ScopeSearch, ScopeIndexAdmin)
 	if err != nil {
 		return nil, err
 	}

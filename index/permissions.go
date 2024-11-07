@@ -10,7 +10,7 @@ import (
 
 const (
 	ScopeIndexAdmin = "index_admin"
-	ScopeSeach      = "search"
+	ScopeSearch     = "search"
 )
 
 func RequireAnyScope(ctx context.Context, scopes ...string) (*elephantine.AuthInfo, error) {
