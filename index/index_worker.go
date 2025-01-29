@@ -23,7 +23,7 @@ import (
 func newIndexWorker(
 	ctx context.Context, idx *Indexer,
 	name, percolateIndex, contentType string,
-	idxConf OpenSeachIndexConfig,
+	idxConf OpenSearchIndexConfig,
 	concurrency int,
 ) (*indexWorker, error) {
 	iw := indexWorker{
@@ -98,7 +98,7 @@ type indexWorker struct {
 	contentType        string
 	indexName          string
 	percolateIndexName string
-	config             OpenSeachIndexConfig
+	config             OpenSearchIndexConfig
 	jobQueue           chan *enrichJob
 
 	featureFlags  map[string]bool

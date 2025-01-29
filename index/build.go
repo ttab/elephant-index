@@ -25,7 +25,7 @@ const (
 
 func BuildDocument(
 	validator *revisor.Validator, state *DocumentState,
-	language OpenSeachIndexConfig, featureFlags map[string]bool,
+	language OpenSearchIndexConfig, featureFlags map[string]bool,
 ) (*Document, error) {
 	d := NewDocument()
 
@@ -143,7 +143,7 @@ func BuildDocument(
 func collectDocumentFields(
 	d *Document, prefix string, doc *newsdoc.Document,
 	validator *revisor.Validator,
-	language OpenSeachIndexConfig, featureFlags map[string]bool, policy *bluemonday.Policy,
+	language OpenSearchIndexConfig, featureFlags map[string]bool, policy *bluemonday.Policy,
 ) error {
 	coll := NewValueCollector()
 
@@ -292,7 +292,7 @@ func prefixFieldOptions() FieldOptions {
 }
 
 func collatedKeywordOptions(
-	language OpenSeachIndexConfig, labels []string,
+	language OpenSearchIndexConfig, labels []string,
 ) FieldOptions {
 	var variant string
 

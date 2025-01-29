@@ -7,7 +7,7 @@ import (
 	"github.com/ttab/langos"
 )
 
-type OpenSeachIndexConfig struct {
+type OpenSearchIndexConfig struct {
 	NameSuffix string
 	Language   string
 	Region     string
@@ -74,7 +74,7 @@ var noDefaultRegion = map[string]string{}
 func GetIndexConfig(
 	code string, defaultLanguage string,
 	defaultRegions map[string]string,
-) (OpenSeachIndexConfig, error) {
+) (OpenSearchIndexConfig, error) {
 	if code == "" {
 		code = defaultLanguage
 	}
@@ -85,7 +85,7 @@ func GetIndexConfig(
 
 	info, err := langos.GetLanguage(code)
 	if err != nil {
-		return OpenSeachIndexConfig{}, fmt.Errorf("get language: %w", err)
+		return OpenSearchIndexConfig{}, fmt.Errorf("get language: %w", err)
 	}
 
 	code = strings.ToLower(info.Code)
@@ -143,7 +143,7 @@ func GetIndexConfig(
 		Filter:    []string{"lowercase"},
 	})
 
-	return OpenSeachIndexConfig{
+	return OpenSearchIndexConfig{
 		NameSuffix: fmt.Sprintf("%s-%s", lang, region),
 		Language:   lang,
 		Region:     strings.ToLower(info.Region),

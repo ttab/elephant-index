@@ -529,7 +529,7 @@ func createLanguageQuery(uuid string, language string) ElasticSearchRequest {
 }
 
 func (idx *Indexer) ensureIndex(
-	ctx context.Context, indexType string, docType string, config OpenSeachIndexConfig,
+	ctx context.Context, indexType string, docType string, config OpenSearchIndexConfig,
 ) (string, error) {
 	indexTypeName := idx.getIndexName(docType)
 	indexTypeRoot := idx.getQualifiedIndexName(indexType, indexTypeName)
