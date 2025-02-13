@@ -18,14 +18,14 @@ type ActiveIndexGetter interface {
 
 type ElasticProxy struct {
 	logger         *slog.Logger
-	authInfoParser *elephantine.AuthInfoParser
+	authInfoParser elephantine.AuthInfoParser
 	active         ActiveIndexGetter
 }
 
 func NewElasticProxy(
 	logger *slog.Logger,
 	active ActiveIndexGetter,
-	authInfoParser *elephantine.AuthInfoParser,
+	authInfoParser elephantine.AuthInfoParser,
 ) *ElasticProxy {
 	return &ElasticProxy{
 		logger:         logger,

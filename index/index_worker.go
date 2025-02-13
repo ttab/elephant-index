@@ -373,7 +373,7 @@ func InterpretBulkResponse(
 func (iw *indexWorker) attemptMappingUpdate(
 	ctx context.Context, mappings Mappings,
 ) error {
-	err := pg.WithTX(ctx, iw.logger, iw.idx.database, "mapping update", func(tx pgx.Tx) error {
+	err := pg.WithTX(ctx, iw.idx.database, func(tx pgx.Tx) error {
 		// Abort if another goroutine has updated the mappings and added
 		// the mappings we were missing.
 		changes := mappings.ChangesFrom(iw.knownMappings)

@@ -51,34 +51,33 @@ func (s *ManagementService) DeleteIndexSet(
 
 	var twErr twirp.Error
 
-	err = pg.WithTX(ctx, s.logger, s.db, "delete index",
-		func(tx pgx.Tx) error {
-			q := postgres.New(tx)
+	err = pg.WithTX(ctx, s.db, func(tx pgx.Tx) error {
+		q := postgres.New(tx)
 
-			idx, err := q.GetIndexSetForUpdate(ctx, req.Name)
-			if errors.Is(err, pgx.ErrNoRows) || idx.Deleted {
-				return nil
-			}
-
-			if idx.Active || idx.Enabled {
-				return twirp.FailedPrecondition.Error(
-					"active or enabled index sets cannot be deleted",
-				)
-			}
-
-			err = s.updateIndexSetStatus(ctx, q,
-				postgres.SetIndexSetStatusParams{
-					Name:    idx.Name,
-					Enabled: false,
-					Active:  false,
-					Deleted: true,
-				})
-			if err != nil {
-				return err
-			}
-
+		idx, err := q.GetIndexSetForUpdate(ctx, req.Name)
+		if errors.Is(err, pgx.ErrNoRows) || idx.Deleted {
 			return nil
-		})
+		}
+
+		if idx.Active || idx.Enabled {
+			return twirp.FailedPrecondition.Error(
+				"active or enabled index sets cannot be deleted",
+			)
+		}
+
+		err = s.updateIndexSetStatus(ctx, q,
+			postgres.SetIndexSetStatusParams{
+				Name:    idx.Name,
+				Enabled: false,
+				Active:  false,
+				Deleted: true,
+			})
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
 	if ok := errors.As(err, &twErr); ok {
 		return nil, twErr
 	} else if err != nil {
@@ -128,10 +127,9 @@ func (s *ManagementService) DeleteCluster(
 
 	var twErr twirp.Error
 
-	err = pg.WithTX(ctx, s.logger, s.db, "delete cluster",
-		func(tx pgx.Tx) error {
-			return s.deleteCluster(ctx, tx, req.Name)
-		})
+	err = pg.WithTX(ctx, s.db, func(tx pgx.Tx) error {
+		return s.deleteCluster(ctx, tx, req.Name)
+	})
 	if ok := errors.As(err, &twErr); ok {
 		return nil, twErr
 	} else if err != nil {
@@ -333,21 +331,20 @@ func (s *ManagementService) RegisterCluster(
 
 	var twErr twirp.Error
 
-	err = pg.WithTX(ctx, s.logger, s.db, "register cluster",
-		func(tx pgx.Tx) error {
-			q := postgres.New(tx)
+	err = pg.WithTX(ctx, s.db, func(tx pgx.Tx) error {
+		q := postgres.New(tx)
 
-			err := q.AddCluster(ctx, postgres.AddClusterParams{
-				Name: req.Name,
-				Url:  req.Endpoint,
-				Auth: authData,
-			})
-			if err != nil {
-				return fmt.Errorf("add cluster: %w", err)
-			}
-
-			return nil
+		err := q.AddCluster(ctx, postgres.AddClusterParams{
+			Name: req.Name,
+			Url:  req.Endpoint,
+			Auth: authData,
 		})
+		if err != nil {
+			return fmt.Errorf("add cluster: %w", err)
+		}
+
+		return nil
+	})
 	if ok := errors.As(err, &twErr); ok {
 		return nil, twErr
 	} else if err != nil {
@@ -377,17 +374,16 @@ func (s *ManagementService) Reindex(
 		twErr twirp.Error
 	)
 
-	err = pg.WithTX(ctx, s.logger, s.db, "reindex",
-		func(tx pgx.Tx) error {
-			n, err := s.reindex(ctx, tx, req.Cluster)
-			if err != nil {
-				return err
-			}
+	err = pg.WithTX(ctx, s.db, func(tx pgx.Tx) error {
+		n, err := s.reindex(ctx, tx, req.Cluster)
+		if err != nil {
+			return err
+		}
 
-			name = n
+		name = n
 
-			return nil
-		})
+		return nil
+	})
 	if ok := errors.As(err, &twErr); ok {
 		return nil, twErr
 	} else if err != nil {
@@ -487,10 +483,9 @@ func (s *ManagementService) SetIndexSetStatus(
 
 	var twErr twirp.Error
 
-	err = pg.WithTX(ctx, s.logger, s.db, "update index status",
-		func(tx pgx.Tx) error {
-			return s.setIndexSetStatus(ctx, tx, req)
-		})
+	err = pg.WithTX(ctx, s.db, func(tx pgx.Tx) error {
+		return s.setIndexSetStatus(ctx, tx, req)
+	})
 	if ok := errors.As(err, &twErr); ok {
 		return nil, twErr
 	} else if err != nil {

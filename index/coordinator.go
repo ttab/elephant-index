@@ -352,12 +352,10 @@ func (c *Coordinator) setUpdate(ctx context.Context, set postgres.IndexSet) erro
 		go func() {
 			ctx := context.WithoutCancel(ctx)
 
-			err := pg.WithTX(ctx, c.logger, c.db,
-				"direct indice delete",
-				func(tx pgx.Tx) error {
-					return c.finaliseSetDelete(
-						ctx, tx, set.Name)
-				})
+			err := pg.WithTX(ctx, c.db, func(tx pgx.Tx) error {
+				return c.finaliseSetDelete(
+					ctx, tx, set.Name)
+			})
 			if err != nil {
 				c.logger.Error(
 					"cleanup of indices failed",
@@ -670,7 +668,7 @@ func (c *Coordinator) cleanupLoop(ctx context.Context) {
 // Delete old index sets that have been marked as deleted.
 func (c *Coordinator) cleanup(ctx context.Context) error {
 	//nolint:wrapcheck
-	return pg.WithTX(ctx, c.logger, c.db, "cleanup", func(tx pgx.Tx) error {
+	return pg.WithTX(ctx, c.db, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		// Get any remaining deleted sets and delete their indices. This
@@ -704,7 +702,7 @@ func (c *Coordinator) EnsureDefaultIndexSet(
 	clusterAuth ClusterAuth,
 ) error {
 	//nolint:wrapcheck
-	return pg.WithTX(ctx, c.logger, c.db, "ensure-default-indexer", func(tx pgx.Tx) error {
+	return pg.WithTX(ctx, c.db, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
 		// Completely lock the cluster table while we initialise.

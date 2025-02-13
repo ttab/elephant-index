@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.23.2-alpine3.20 AS build
+FROM --platform=$BUILDPLATFORM golang:1.24.0-alpine3.21 AS build
 
 WORKDIR /usr/src
 
@@ -11,7 +11,7 @@ ARG TARGETOS TARGETARCH
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -o /build/index ./cmd/index
 
-FROM alpine:3.20
+FROM alpine:3.21
 
 COPY --from=build /build/index /usr/local/bin/index
 

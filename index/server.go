@@ -32,7 +32,7 @@ type Parameters struct {
 	Metrics            *Metrics
 	DefaultLanguage    string
 	NoIndexer          bool
-	AuthInfoParser     *elephantine.AuthInfoParser
+	AuthInfoParser     elephantine.AuthInfoParser
 	Sharding           ShardingPolicy
 }
 
@@ -245,7 +245,7 @@ type ServerOptions struct {
 	) error
 }
 
-func (so *ServerOptions) SetJWTValidation(parser *elephantine.AuthInfoParser) {
+func (so *ServerOptions) SetJWTValidation(parser elephantine.AuthInfoParser) {
 	// TODO: This feels like an initial sketch that should be further
 	// developed to address the JWT cacheing.
 	so.AuthMiddleware = func(
