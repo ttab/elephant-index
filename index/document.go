@@ -10,13 +10,15 @@ import (
 
 // DocumentState is the full state that we want to index.
 type DocumentState struct {
-	Created        time.Time         `json:"created"`
-	Modified       time.Time         `json:"modified"`
-	CurrentVersion int64             `json:"current_version"`
-	ACL            []ACLEntry        `json:"acl"`
-	Heads          map[string]Status `json:"heads"`
-	Document       newsdoc.Document  `json:"document"`
-	MetaDocument   *newsdoc.Document `json:"meta_document"`
+	Created            time.Time         `json:"created"`
+	Modified           time.Time         `json:"modified"`
+	CurrentVersion     int64             `json:"current_version"`
+	ACL                []ACLEntry        `json:"acl"`
+	Heads              map[string]Status `json:"heads"`
+	Document           newsdoc.Document  `json:"document"`
+	MetaDocument       *newsdoc.Document `json:"meta_document"`
+	WorkflowState      string            `json:"workflow_state"`
+	WorkflowCheckpoint string            `json:"workflow_checkpoint"`
 }
 
 type Document struct {

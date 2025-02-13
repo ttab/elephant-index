@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -252,6 +251,7 @@ const (
 	DeleteEvent   = "document_delete"
 	ACLEvent      = "acl"
 	StatusEvent   = "status"
+	WorkflowEvent = "workflow"
 )
 
 func (idx *Indexer) loopIteration(
@@ -343,26 +343,17 @@ func (idx *Indexer) loopIteration(
 				Operation: opDelete,
 				doc:       doc,
 			}
-		case DocumentEvent, ACLEvent, StatusEvent:
-			// Find all existing documents with the same Id but a
-			// different language
-			obDocs, err := idx.findObsoleteDocuments(ctx, item, language)
-			if err != nil {
-				return 0, fmt.Errorf("find obsolete docs: %w", err)
-			}
+		case DocumentEvent, ACLEvent, StatusEvent, WorkflowEvent:
+			if item.OldLanguage != "" && item.Language != item.OldLanguage {
+				byObLang, ok := byType[item.OldLanguage]
+				if !ok {
+					byObLang = make(map[string]*enrichJob)
+					byType[item.OldLanguage] = byObLang
+				}
 
-			for _, obDoc := range obDocs {
-				for _, obLang := range obDoc.DocumentLanguage {
-					byObLang, ok := byType[obLang]
-					if !ok {
-						byObLang = make(map[string]*enrichJob)
-						byType[obLang] = byObLang
-					}
-
-					byObLang[docUUID] = &enrichJob{
-						UUID:      docUUID,
-						Operation: opDelete,
-					}
+				byObLang[docUUID] = &enrichJob{
+					UUID:      docUUID,
+					Operation: opDelete,
 				}
 			}
 
@@ -461,71 +452,6 @@ func (idx *Indexer) createIndexWorker(
 	}
 
 	return index, nil
-}
-
-func (idx *Indexer) findObsoleteDocuments(
-	ctx context.Context,
-	item *repository.EventlogItem,
-	language string,
-) ([]DocumentSource, error) {
-	query, err := json.Marshal(createLanguageQuery(item.Uuid, language))
-	if err != nil {
-		return nil, fmt.Errorf("marshal json: %w", err)
-	}
-
-	name := idx.getIndexName(item.Type)
-	rootAlias := idx.getQualifiedIndexName("documents", name)
-
-	obDocsRes, err := idx.client.Search(
-		idx.client.Search.WithIndex(rootAlias),
-		idx.client.Search.WithBody(bytes.NewReader(query)),
-		idx.client.Search.WithContext(ctx),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("lookup document: %w", err)
-	}
-
-	defer elephantine.SafeClose(idx.logger, "index exists", obDocsRes.Body)
-
-	obDocsBody, err := io.ReadAll(obDocsRes.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response body: %w", err)
-	}
-
-	var obDocs SearchResponseBody
-
-	err = json.Unmarshal(obDocsBody, &obDocs)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal existing document result: %w", err)
-	}
-
-	obsolete := make([]DocumentSource, len(obDocs.Hits.Hits))
-	for i, doc := range obDocs.Hits.Hits {
-		obsolete[i] = doc.Source
-	}
-
-	return obsolete, nil
-}
-
-func createLanguageQuery(uuid string, language string) ElasticSearchRequest {
-	return ElasticSearchRequest{
-		Query: ElasticQuery{
-			Bool: &BooleanQuery{
-				Filter: []ElasticQuery{
-					{IDs: &IDsQuery{
-						Values: []string{uuid},
-					}},
-				},
-				MustNot: []ElasticQuery{
-					{
-						Term: map[string]string{
-							"document.language": language,
-						},
-					},
-				},
-			},
-		},
-	}
 }
 
 func (idx *Indexer) ensureIndex(

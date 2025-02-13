@@ -74,6 +74,20 @@ func BuildDocument(
 	d.AddTime("created", state.Created)
 	d.AddTime("modified", state.Modified)
 
+	if state.WorkflowState != "" {
+		d.AddField("workflow_state", Field{
+			FieldOptions: keywordOptions,
+			Values:       []string{state.WorkflowState},
+		})
+	}
+
+	if state.WorkflowCheckpoint != "" {
+		d.AddField("workflow_checkpoint", Field{
+			FieldOptions: keywordOptions,
+			Values:       []string{state.WorkflowCheckpoint},
+		})
+	}
+
 	for name, status := range state.Heads {
 		base := "heads." + name
 

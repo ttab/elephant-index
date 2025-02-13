@@ -142,6 +142,8 @@ func (iw *indexWorker) enrich(
 	}
 
 	state.CurrentVersion = metaRes.Meta.CurrentVersion
+	state.WorkflowState = metaRes.Meta.WorkflowState
+	state.WorkflowCheckpoint = metaRes.Meta.WorkflowCheckpoint
 
 	created, err := time.Parse(time.RFC3339, metaRes.Meta.Created)
 	if err != nil {
