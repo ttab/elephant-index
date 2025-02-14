@@ -493,6 +493,14 @@ func (c *Coordinator) startIndexer(
 		DefaultRegions: map[string]string{
 			"sv": "SE",
 			"en": "GB",
+			"es": "ES",
+			"fr": "FR",
+			"it": "IT",
+			"de": "DE",
+			"fi": "FI",
+			"da": "DK",
+			"nn": "NO",
+			"no": "NO",
 		},
 	})
 	if err != nil {
