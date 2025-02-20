@@ -65,6 +65,20 @@ type SearchServiceV1 struct {
 	documents repository.Documents
 }
 
+// EndSubscription implements index.SearchV1.
+func (s *SearchServiceV1) EndSubscription(
+	_ context.Context, _ *index.EndSubscriptionRequest,
+) (*index.EndSubscriptionResponse, error) {
+	panic("unimplemented")
+}
+
+// PollSubscription implements index.SearchV1.
+func (s *SearchServiceV1) PollSubscription(
+	_ context.Context, _ *index.PollSubscriptionRequest,
+) (*index.PollSubscriptionResponse, error) {
+	panic("unimplemented")
+}
+
 // GetMappings implements index.SearchV1.
 func (s *SearchServiceV1) GetMappings(
 	ctx context.Context, req *index.GetMappingsRequestV1,
@@ -218,7 +232,7 @@ func (s *SearchServiceV1) Query(
 
 		boolQuery.Filter = append(
 			boolQuery.Filter,
-			termsQueryV1("readers", readers))
+			termsQueryV1("readers", readers, 0, false))
 	}
 
 	osReq := searchRequestV1{
@@ -488,17 +502,29 @@ func protoToQuery(p *index.QueryV1) (map[string]any, error) {
 	case *index.QueryV1_MatchAll:
 		return matchAllQueryV1(), nil
 	case *index.QueryV1_Term:
-		return termQueryV1(q.Term.Field, q.Term.Value), nil
+		return termQueryV1(
+			q.Term.Field, q.Term.Value,
+			q.Term.Boost, false,
+		), nil
 	case *index.QueryV1_Terms:
-		return termsQueryV1(q.Terms.Field, q.Terms.Values), nil
+		return termsQueryV1(
+			q.Terms.Field, q.Terms.Values,
+			q.Terms.Boost, false,
+		), nil
 	case *index.QueryV1_Match:
-		return matchQueryV1(q.Match.Field, q.Match.Value), nil
+		return matchQueryV1(
+			q.Match.Field, q.Match.Value,
+			q.Match.Boost, false,
+		), nil
 	case *index.QueryV1_MatchPhrase:
 		return matchPhraseQueryV1(q.MatchPhrase.Field, q.MatchPhrase.Value), nil
 	case *index.QueryV1_QueryString:
 		return queryStringQueryV1(q.QueryString), nil
 	case *index.QueryV1_Prefix:
-		return prefixQueryV1(q.Prefix.Field, q.Prefix.Value), nil
+		return prefixQueryV1(
+			q.Prefix.Field, q.Prefix.Value,
+			q.Prefix.Boost, q.Prefix.CaseInsensitive,
+		), nil
 	default:
 		return nil, fmt.Errorf("unknown query type %T", v)
 	}
@@ -563,21 +589,52 @@ func matchAllQueryV1() map[string]any {
 	return qWrap("match_all", struct{}{})
 }
 
-func termQueryV1(field string, term string) map[string]any {
-	return qWrap("term", map[string]string{
-		field: term,
+func termQueryV1(
+	field string, term string,
+	boost float64, caseInsensitive bool,
+) map[string]any {
+	spec := map[string]string{
+		"value": term,
+	}
+
+	spec = addBoostCase(spec, boost, caseInsensitive)
+
+	return qWrap("term", map[string]any{
+		field: spec,
 	})
 }
 
-func termsQueryV1(field string, terms []string) map[string]any {
-	return qWrap("terms", map[string][]string{
+func termsQueryV1(
+	field string, terms []string,
+	boost float64, caseInsensitive bool,
+) map[string]any {
+	spec := map[string]any{
 		field: terms,
-	})
+	}
+
+	if boost != 0 {
+		spec["boost"] = fmt.Sprintf("%f", boost)
+	}
+
+	if caseInsensitive {
+		spec["case_insensitive"] = "true"
+	}
+
+	return qWrap("terms", spec)
 }
 
-func matchQueryV1(field string, match string) map[string]any {
-	return qWrap("match", map[string]string{
-		field: match,
+func matchQueryV1(
+	field string, match string,
+	boost float64, caseInsensitive bool,
+) map[string]any {
+	spec := map[string]string{
+		"query": match,
+	}
+
+	spec = addBoostCase(spec, boost, caseInsensitive)
+
+	return qWrap("match", map[string]any{
+		field: spec,
 	})
 }
 
@@ -593,8 +650,31 @@ func queryStringQueryV1(query string) map[string]any {
 	})
 }
 
-func prefixQueryV1(field string, prefix string) map[string]any {
-	return qWrap("prefix", map[string]string{
-		field: prefix,
+func prefixQueryV1(
+	field string, term string,
+	boost float64, caseInsensitive bool,
+) map[string]any {
+	spec := map[string]string{
+		"value": term,
+	}
+
+	spec = addBoostCase(spec, boost, caseInsensitive)
+
+	return qWrap("prefix", map[string]any{
+		field: spec,
 	})
+}
+
+func addBoostCase(
+	values map[string]string, boost float64, caseInsensitive bool,
+) map[string]string {
+	if boost != 0 {
+		values["boost"] = fmt.Sprintf("%f", boost)
+	}
+
+	if caseInsensitive {
+		values["case_insensitive"] = "true"
+	}
+
+	return values
 }
