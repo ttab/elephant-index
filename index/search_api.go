@@ -3,9 +3,11 @@ package index
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"slices"
@@ -13,9 +15,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-index/postgres"
+	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/pg"
 	"github.com/twitchtv/twirp"
 )
 
@@ -34,6 +40,8 @@ type MappingSource interface {
 }
 
 func NewSearchServiceV1(
+	logger *slog.Logger,
+	db *pgxpool.Pool,
 	mappings MappingSource,
 	active ActiveIndexGetter,
 	repositoryEndpoint string,
@@ -53,6 +61,7 @@ func NewSearchServiceV1(
 	documents := repository.NewDocumentsProtobufClient(repositoryEndpoint, &client)
 
 	return &SearchServiceV1{
+		log:       logger,
 		mappings:  mappings,
 		active:    active,
 		documents: documents,
@@ -60,6 +69,8 @@ func NewSearchServiceV1(
 }
 
 type SearchServiceV1 struct {
+	log       *slog.Logger
+	db        *pgxpool.Pool
 	mappings  MappingSource
 	active    ActiveIndexGetter
 	documents repository.Documents
@@ -193,6 +204,13 @@ func (s *SearchServiceV1) Query(
 			"document loading is not allowed for result sets over 200 items")
 	}
 
+	paginated := req.From != 0 || len(req.SearchAfter) > 0
+
+	if req.Subscribe && paginated {
+		return nil, twirp.InvalidArgumentError("subscribe",
+			"pagination cannot be used with subscriptions")
+	}
+
 	client, indexSet := s.active.GetActiveIndex()
 
 	indexPattern := "documents-" + indexSet
@@ -223,9 +241,14 @@ func (s *SearchServiceV1) Query(
 
 	boolQuery.Must = append(boolQuery.Must, userQuery)
 
+	// Whether a query is shared primarily affects subscriptions.
+	shared := req.Shared
+
+	var readers []string
+
 	if !auth.Claims.HasScope("doc_admin") {
-		readers := []string{
-			auth.Claims.Subject,
+		if !req.Shared {
+			readers = append(readers, auth.Claims.Subject)
 		}
 
 		readers = append(readers, auth.Claims.Units...)
@@ -233,6 +256,9 @@ func (s *SearchServiceV1) Query(
 		boolQuery.Filter = append(
 			boolQuery.Filter,
 			termsQueryV1("readers", readers, 0, false))
+	} else {
+		// Always treat doc admin searches and subscriptions as private.
+		shared = false
 	}
 
 	osReq := searchRequestV1{
@@ -391,7 +417,104 @@ func (s *SearchServiceV1) Query(
 		pRes.Hits.Hits[i] = &ph
 	}
 
+	if req.Subscribe {
+		subID, subCursor, err := s.createSubscription(
+			ctx, auth.Claims.Subject, shared, boolQueryV1(boolQuery),
+			SubscriptionSpec{
+				Source:        req.Source,
+				LoadDocuments: req.LoadDocument,
+				Fields:        req.Fields,
+			},
+		)
+		if err != nil {
+			// We just log here, issues with subscriptions should
+			// not bring down search in general.
+			s.log.ErrorContext(ctx, "set up subscription for search request",
+				elephantine.LogKeyError, err)
+		} else {
+			pRes.Subscription = &index.SubscriptionReference{
+				Id:     subID,
+				Cursor: subCursor,
+			}
+		}
+	}
+
 	return &pRes, nil
+}
+
+// TODO: Move to store layer?
+func (s *SearchServiceV1) createSubscription(
+	ctx context.Context,
+	sub string,
+	shared bool,
+	query map[string]any,
+	spec SubscriptionSpec,
+) (_ int64, _ int64, outErr error) {
+	queryJSON, err := json.Marshal(query)
+	if err != nil {
+		return 0, 0, fmt.Errorf("marshal query spec: %w", err)
+	}
+
+	specJSON, err := json.Marshal(spec)
+	if err != nil {
+		return 0, 0, fmt.Errorf("marshal subscription spec: %w", err)
+	}
+
+	percHash := sha256.Sum256(queryJSON)
+	subHash := sha256.Sum256(specJSON)
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("begin transaction: %w", err)
+	}
+
+	defer pg.Rollback(tx, &outErr)
+
+	owner := sub
+	if shared {
+		owner = ""
+	}
+
+	q := postgres.New(s.db)
+
+	perc, err := q.CreatePercolator(ctx, postgres.CreatePercolatorParams{
+		Hash:    percHash[:],
+		Owner:   pg.TextOrNull(owner),
+		Created: pg.Time(time.Now()),
+		Query:   queryJSON,
+	})
+	if err != nil {
+		return 0, 0, fmt.Errorf("register percolator: %w", err)
+	}
+
+	subID, err := q.CreateSubscription(ctx, postgres.CreateSubscriptionParams{
+		Percolator: perc.ID,
+		Client:     sub,
+		Hash:       subHash[:],
+		Touched:    pg.Time(time.Now()),
+		Spec:       specJSON,
+	})
+	if err != nil {
+		return 0, 0, fmt.Errorf("register subscription: %w", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("commit changes: %w", err)
+	}
+
+	return subID, perc.CurrentID, nil
+}
+
+type SubscriptionSpec struct {
+	Source        bool
+	Fields        []string
+	LoadDocuments bool
+}
+
+type EventPayload struct {
+	Document *newsdoc.Document
+	Fields   map[string][]string
 }
 
 func anySliceToStrings(s []any) []string {

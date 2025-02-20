@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lucasepe/codename"
 	"github.com/opensearch-project/opensearch-go/v2"
+	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
@@ -25,19 +25,39 @@ import (
 
 const IndexerStopTimeout = 10 * time.Second
 
+const (
+	NotifyIndexStatusChange string = "index_status_change"
+	NotifyPercolated        string = "percolation_event"
+)
+
+type IndexStatusChange struct {
+	Name string
+}
+
+type PercolationEvent struct {
+	Subscription int64
+	Percolator   int64
+}
+
 type OpenSearchClientFunc func(
 	ctx context.Context, cluster string,
 ) (*opensearch.Client, error)
 
 type CoordinatorOptions struct {
-	Logger          *slog.Logger
-	Metrics         *Metrics
-	Documents       repository.Documents
-	ClientGetter    OpenSearchClientFunc
-	Validator       ValidatorSource
+	Logger       *slog.Logger
+	Metrics      *Metrics
+	Documents    repository.Documents
+	ClientGetter OpenSearchClientFunc
+	Validator    ValidatorSource
+	Languages    LanguageOptions
+	Sharding     ShardingPolicy
+	NoIndexing   bool
+}
+
+type LanguageOptions struct {
+	Substitutions   map[string]string
 	DefaultLanguage string
-	Sharding        ShardingPolicy
-	NoIndexing      bool
+	DefaultRegions  map[string]string
 }
 
 type Coordinator struct {
@@ -46,7 +66,6 @@ type Coordinator struct {
 	nameRng    *rand.Rand
 	db         *pgxpool.Pool
 	q          *postgres.Queries
-	changes    chan Notification
 	startCount int32
 
 	activeMut    sync.RWMutex
@@ -56,6 +75,13 @@ type Coordinator struct {
 	indexers     map[string]*Indexer
 	indexerCtx   context.Context
 	indexerGroup *errgroup.Group
+
+	percolator *Percolator
+
+	indexStatuses *pg.FanOut[IndexStatusChange]
+	changes       chan IndexStatusChange
+
+	percolationEvents *pg.FanOut[PercolationEvent]
 
 	stopOnce sync.Once
 	stop     chan struct{}
@@ -78,17 +104,19 @@ func NewCoordinator(
 	indexGrp, gCtx := errgroup.WithContext(context.Background())
 
 	c := Coordinator{
-		logger:       logger,
-		db:           db,
-		q:            postgres.New(db),
-		opt:          opt,
-		nameRng:      rng,
-		changes:      make(chan Notification),
-		indexers:     make(map[string]*Indexer),
-		indexerCtx:   gCtx,
-		indexerGroup: indexGrp,
-		stop:         make(chan struct{}),
-		stopped:      make(chan struct{}),
+		logger:            logger,
+		db:                db,
+		q:                 postgres.New(db),
+		opt:               opt,
+		nameRng:           rng,
+		indexStatuses:     pg.NewFanOut[IndexStatusChange](NotifyIndexStatusChange),
+		percolationEvents: pg.NewFanOut[PercolationEvent](NotifyPercolated),
+		changes:           make(chan IndexStatusChange),
+		indexers:          make(map[string]*Indexer),
+		indexerCtx:        gCtx,
+		indexerGroup:      indexGrp,
+		stop:              make(chan struct{}),
+		stopped:           make(chan struct{}),
 	}
 
 	return &c, nil
@@ -116,11 +144,20 @@ func (c *Coordinator) Run(ctx context.Context) error {
 
 	go c.cleanupLoop(ctx)
 
+	go pg.Subscribe(
+		ctx, c.logger, c.db,
+		c.percolationEvents, c.indexStatuses)
+
+	go func() {
+		c.indexStatuses.ListenAll(ctx, c.changes)
+		close(c.changes)
+	}()
+
 	defer close(c.stopped)
 
 	var errs []error
 
-	err := c.run(ctx)
+	err := c.runEventloop(ctx)
 	if err != nil {
 		c.stopOnce.Do(func() {
 			close(c.stop)
@@ -145,27 +182,6 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	return nil
 }
 
-func (c *Coordinator) run(ctx context.Context) error {
-	eg, ctx := errgroup.WithContext(ctx)
-
-	subscribed := make(chan struct{})
-
-	eg.Go(func() error {
-		return c.runListener(ctx, subscribed)
-	})
-
-	eg.Go(func() error {
-		return c.runEventloop(ctx, subscribed)
-	})
-
-	err := eg.Wait()
-	if err != nil {
-		return fmt.Errorf("run listener and eventloop: %w", err)
-	}
-
-	return nil
-}
-
 func (c *Coordinator) finalise() error {
 	// Give an extra 30% on top of the index stop timeout.
 	indexerDeadline := IndexerStopTimeout / 100 * 130
@@ -185,47 +201,9 @@ func (c *Coordinator) finalise() error {
 	}
 }
 
-type NotifyChannel string
-
-const (
-	NotifyIndexStatusChange NotifyChannel = "index_status_change"
-)
-
-type Notification struct {
-	Type NotifyChannel
-	Name string
-}
-
-func (n Notification) Send(ctx context.Context, q *postgres.Queries) error {
-	data, err := json.Marshal(n)
-	if err != nil {
-		return fmt.Errorf("marshal notification: %w", err)
-	}
-
-	err = q.Notify(ctx, postgres.NotifyParams{
-		Channel: string(n.Type),
-		Message: string(data),
-	})
-	if err != nil {
-		return fmt.Errorf("send %q notification", n.Type)
-	}
-
-	return nil
-}
-
 func (c *Coordinator) runEventloop(
 	ctx context.Context,
-	subscribed chan struct{},
 ) error {
-	// Wait with setup until we're subscribed to notifications, better to
-	// load state and get redundant notifications, than miss a notification
-	// that would affect state.
-	select {
-	case <-subscribed:
-	case <-ctx.Done():
-		return ctx.Err() //nolint:wrapcheck
-	}
-
 	q := postgres.New(c.db)
 
 	sets, err := q.GetIndexSets(ctx)
@@ -270,41 +248,35 @@ func (c *Coordinator) runEventloop(
 }
 
 func (c *Coordinator) handleChange(
-	ctx context.Context, change Notification,
+	ctx context.Context, change IndexStatusChange,
 ) error {
-	// Keeping this as a switch to keep exhaustive linting of NotifyChannel.
-	//
-	//nolint:gocritic
-	switch change.Type {
-	case NotifyIndexStatusChange:
-		set, err := c.q.GetIndexSet(ctx, change.Name)
-		if err != nil {
-			return fmt.Errorf(
-				"read status of changed index set %q: %w",
-				change.Name, err,
-			)
-		}
+	set, err := c.q.GetIndexSet(ctx, change.Name)
+	if err != nil {
+		return fmt.Errorf(
+			"read status of changed index set %q: %w",
+			change.Name, err,
+		)
+	}
 
-		if c.opt.NoIndexing {
-			if set.Active {
-				err := c.ensureActiveClient(set)
-				if err != nil {
-					return fmt.Errorf(
-						"failed to ensure active client %q: %w",
-						set.Name, err)
-				}
+	if c.opt.NoIndexing {
+		if set.Active {
+			err := c.ensureActiveClient(set)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to ensure active client %q: %w",
+					set.Name, err)
 			}
-
-			return nil
 		}
 
-		err = c.setUpdate(ctx, set)
-		if err != nil {
-			return fmt.Errorf(
-				"update changed index set %q: %w",
-				change.Name, err,
-			)
-		}
+		return nil
+	}
+
+	err = c.setUpdate(ctx, set)
+	if err != nil {
+		return fmt.Errorf(
+			"update changed index set %q: %w",
+			change.Name, err,
+		)
 	}
 
 	return nil
@@ -467,6 +439,21 @@ func (c *Coordinator) ensureActiveClient(set postgres.IndexSet) error {
 	return nil
 }
 
+// PercolateDocument acts as a filter that only runs percolation for the
+// currently active indexer.
+func (c *Coordinator) PercolateDocument(
+	setName string, index string, document map[string][]string, doc *newsdoc.Document,
+) {
+	c.activeMut.RLock()
+	defer c.activeMut.RUnlock()
+
+	if setName != c.activeSet {
+		return
+	}
+
+	c.percolator.PercolateDocument(index, document, doc)
+}
+
 func (c *Coordinator) startIndexer(
 	ctx context.Context, set postgres.IndexSet,
 ) (*Indexer, error) {
@@ -482,26 +469,16 @@ func (c *Coordinator) startIndexer(
 			"cluster_name", set.Cluster.String,
 			"indexer_name", set.Name,
 		),
-		SetName:         set.Name,
-		Database:        c.db,
-		Client:          client,
-		Documents:       c.opt.Documents,
-		Validator:       c.opt.Validator,
-		Metrics:         c.opt.Metrics,
-		DefaultLanguage: c.opt.DefaultLanguage,
-		Sharding:        c.opt.Sharding,
-		DefaultRegions: map[string]string{
-			"sv": "SE",
-			"en": "GB",
-			"es": "ES",
-			"fr": "FR",
-			"it": "IT",
-			"de": "DE",
-			"fi": "FI",
-			"da": "DK",
-			"nn": "NO",
-			"no": "NO",
-		},
+		SetName:           set.Name,
+		Database:          c.db,
+		Client:            client,
+		Documents:         c.opt.Documents,
+		Validator:         c.opt.Validator,
+		Metrics:           c.opt.Metrics,
+		LanguageOptions:   c.opt.Languages,
+		Sharding:          c.opt.Sharding,
+		EnablePercolation: true,
+		Percolator:        c,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create indexer: %w", err)
@@ -530,95 +507,6 @@ func (c *Coordinator) startIndexer(
 	}()
 
 	return i, nil
-}
-
-func (c *Coordinator) runListener(
-	ctx context.Context,
-	subscribed chan struct{},
-) error {
-	// We need an actual connection here, as we're giong to hijack it and
-	// punt it into listen mode.
-	poolConn, err := c.db.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("acquire connection from pool: %w", err)
-	}
-
-	conn := poolConn.Hijack()
-
-	defer func() {
-		err := conn.Close(ctx)
-		if err != nil {
-			c.logger.ErrorContext(ctx,
-				"failed to close PG listen connection",
-				elephantine.LogKeyError, err)
-		}
-	}()
-
-	notifications := []NotifyChannel{
-		NotifyIndexStatusChange,
-	}
-
-	for _, channel := range notifications {
-		ident := pgx.Identifier{string(channel)}
-
-		_, err := conn.Exec(ctx, "LISTEN "+ident.Sanitize())
-		if err != nil {
-			return fmt.Errorf("failed to start listening to %q: %w",
-				channel, err)
-		}
-	}
-
-	close(subscribed)
-
-	received := make(chan *pgconn.Notification)
-	grp, gCtx := errgroup.WithContext(ctx)
-
-	grp.Go(func() error {
-		for {
-			notification, err := conn.WaitForNotification(gCtx)
-			if err != nil {
-				return fmt.Errorf(
-					"error while waiting for notification: %w", err)
-			}
-
-			received <- notification
-		}
-	})
-
-	grp.Go(func() error {
-		for {
-			var notification *pgconn.Notification
-
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case notification = <-received:
-			}
-
-			var note Notification
-
-			err := json.Unmarshal(
-				[]byte(notification.Payload), &note,
-			)
-			if err != nil {
-				c.logger.Error("invalid notification payload",
-					elephantine.LogKeyError, err,
-					"payload", notification.Payload,
-				)
-
-				continue
-			}
-
-			c.changes <- note
-		}
-	})
-
-	err = grp.Wait()
-	if err != nil {
-		return err //nolint:wrapcheck
-	}
-
-	return nil
 }
 
 // Convenience function for cases where it's easier than doing a channel select
@@ -767,12 +655,9 @@ func (c *Coordinator) EnsureDefaultIndexSet(
 			return fmt.Errorf("create default index set: %w", err)
 		}
 
-		note := Notification{
-			Type: NotifyIndexStatusChange,
+		err = c.indexStatuses.Publish(ctx, tx, IndexStatusChange{
 			Name: indexName,
-		}
-
-		err = note.Send(ctx, q)
+		})
 		if err != nil {
 			return fmt.Errorf(
 				"notify of index set status change: %w",

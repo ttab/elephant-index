@@ -145,3 +145,45 @@ FOR UPDATE NOWAIT;
 -- name: DeleteIndexSet :exec
 DELETE FROM index_set
 WHERE name = @name AND deleted = true;
+
+-- name: CreatePercolator :one
+INSERT INTO percolator(hash, owner, created, current_id, query)
+VALUES(@hash, @owner, @created, 0, @query)
+ON CONFLICT (hash, owner) DO UPDATE
+   SET hash = excluded.hash -- noop, but gets us the id and cursor
+RETURNING id, current_id;
+
+-- name: GetPercolatorState :one
+SELECT current_id FROM percolator
+WHERE id = @id;
+
+-- name: InsertPercolatorEvent :exec
+INSERT INTO percolator_event(
+       percolator, id, created, payload
+) VALUES (
+       @percolator, @id, @created, @payload
+);
+
+-- name: CreateSubscription :one
+INSERT INTO subscription(
+       percolator, client, hash, touched, spec
+) VALUES (
+       @percolator, @client, @hash, @touched, @spec
+)
+ON CONFLICT (percolator, client, hash) DO UPDATE
+   SET touched = @touched
+RETURNING id;
+
+-- name: TouchSubscription :exec
+UPDATE subscription
+       SET touched = @touched
+WHERE id = @id;
+
+-- name: DropSubscription :exec
+DELETE FROM subscription
+WHERE percolator = @percolator
+      AND client = @client;
+
+-- name: GetActiveSubscriptionCount :one
+SELECT COUNT(*) FROM subscription
+WHERE percolator = @percolator AND touched > @cutoff;

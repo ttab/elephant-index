@@ -30,7 +30,7 @@ type Parameters struct {
 	RepositoryEndpoint string
 	Validator          ValidatorSource
 	Metrics            *Metrics
-	DefaultLanguage    string
+	Languages          LanguageOptions
 	NoIndexer          bool
 	AuthInfoParser     elephantine.AuthInfoParser
 	Sharding           ShardingPolicy
@@ -40,14 +40,14 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	logger := p.Logger
 
 	coord, err := NewCoordinator(p.Database, CoordinatorOptions{
-		Logger:          logger,
-		Metrics:         p.Metrics,
-		DefaultLanguage: p.DefaultLanguage,
-		ClientGetter:    p.Client,
-		Documents:       p.Documents,
-		Validator:       p.Validator,
-		Sharding:        p.Sharding,
-		NoIndexing:      p.NoIndexer,
+		Logger:       logger,
+		Metrics:      p.Metrics,
+		Languages:    p.Languages,
+		ClientGetter: p.Client,
+		Documents:    p.Documents,
+		Validator:    p.Validator,
+		Sharding:     p.Sharding,
+		NoIndexing:   p.NoIndexer,
 	})
 	if err != nil {
 		return fmt.Errorf("create coordinator: %w", err)
@@ -61,11 +61,10 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	}
 
 	grace := elephantine.NewGracefulShutdown(logger, 10*time.Second)
-	ctx = grace.CancelOnStop(ctx)
 
 	healthServer := elephantine.NewHealthServer(logger, p.ProfileAddr)
 	router := http.NewServeMux()
-	serverGroup, gCtx := errgroup.WithContext(ctx)
+	serverGroup, gCtx := errgroup.WithContext(grace.CancelOnQuit(ctx))
 
 	var opts ServerOptions
 
@@ -86,6 +85,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 
 	searchAPI := index.NewSearchV1Server(
 		NewSearchServiceV1(
+			logger,
 			NewPostgresMappingSource(postgres.New(p.Database)),
 			coord, p.RepositoryEndpoint,
 		),
@@ -166,7 +166,9 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	})
 
 	serverGroup.Go(func() error {
-		err := coord.Run(gCtx)
+		ctx := grace.CancelOnStop(gCtx)
+
+		err := coord.Run(ctx)
 		if err != nil {
 			return fmt.Errorf("coordinator error: %w", err)
 		}

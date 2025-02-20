@@ -99,6 +99,70 @@ func (q *Queries) CreateIndexSet(ctx context.Context, arg CreateIndexSetParams) 
 	return err
 }
 
+const createPercolator = `-- name: CreatePercolator :one
+INSERT INTO percolator(hash, owner, created, current_id, query)
+VALUES($1, $2, $3, 0, $4)
+ON CONFLICT (hash, owner) DO UPDATE
+   SET hash = excluded.hash -- noop, but gets us the id and cursor
+RETURNING id, current_id
+`
+
+type CreatePercolatorParams struct {
+	Hash    []byte
+	Owner   pgtype.Text
+	Created pgtype.Timestamptz
+	Query   []byte
+}
+
+type CreatePercolatorRow struct {
+	ID        int64
+	CurrentID int64
+}
+
+func (q *Queries) CreatePercolator(ctx context.Context, arg CreatePercolatorParams) (CreatePercolatorRow, error) {
+	row := q.db.QueryRow(ctx, createPercolator,
+		arg.Hash,
+		arg.Owner,
+		arg.Created,
+		arg.Query,
+	)
+	var i CreatePercolatorRow
+	err := row.Scan(&i.ID, &i.CurrentID)
+	return i, err
+}
+
+const createSubscription = `-- name: CreateSubscription :one
+INSERT INTO subscription(
+       percolator, client, hash, touched, spec
+) VALUES (
+       $1, $2, $3, $4, $5
+)
+ON CONFLICT (percolator, client, hash) DO UPDATE
+   SET touched = $4
+RETURNING id
+`
+
+type CreateSubscriptionParams struct {
+	Percolator int64
+	Client     string
+	Hash       []byte
+	Touched    pgtype.Timestamptz
+	Spec       []byte
+}
+
+func (q *Queries) CreateSubscription(ctx context.Context, arg CreateSubscriptionParams) (int64, error) {
+	row := q.db.QueryRow(ctx, createSubscription,
+		arg.Percolator,
+		arg.Client,
+		arg.Hash,
+		arg.Touched,
+		arg.Spec,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deleteCluster = `-- name: DeleteCluster :exec
 DELETE FROM cluster WHERE name = $1
 `
@@ -115,6 +179,22 @@ WHERE name = $1 AND deleted = true
 
 func (q *Queries) DeleteIndexSet(ctx context.Context, name string) error {
 	_, err := q.db.Exec(ctx, deleteIndexSet, name)
+	return err
+}
+
+const dropSubscription = `-- name: DropSubscription :exec
+DELETE FROM subscription
+WHERE percolator = $1
+      AND client = $2
+`
+
+type DropSubscriptionParams struct {
+	Percolator int64
+	Client     string
+}
+
+func (q *Queries) DropSubscription(ctx context.Context, arg DropSubscriptionParams) error {
+	_, err := q.db.Exec(ctx, dropSubscription, arg.Percolator, arg.Client)
 	return err
 }
 
@@ -136,6 +216,23 @@ func (q *Queries) GetActiveIndexSet(ctx context.Context) (IndexSet, error) {
 		&i.Modified,
 	)
 	return i, err
+}
+
+const getActiveSubscriptionCount = `-- name: GetActiveSubscriptionCount :one
+SELECT COUNT(*) FROM subscription
+WHERE percolator = $1 AND touched > $2
+`
+
+type GetActiveSubscriptionCountParams struct {
+	Percolator int64
+	Cutoff     pgtype.Timestamptz
+}
+
+func (q *Queries) GetActiveSubscriptionCount(ctx context.Context, arg GetActiveSubscriptionCountParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getActiveSubscriptionCount, arg.Percolator, arg.Cutoff)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const getCluster = `-- name: GetCluster :one
@@ -391,6 +488,18 @@ func (q *Queries) GetMappingsForType(ctx context.Context, arg GetMappingsForType
 	return items, nil
 }
 
+const getPercolatorState = `-- name: GetPercolatorState :one
+SELECT current_id FROM percolator
+WHERE id = $1
+`
+
+func (q *Queries) GetPercolatorState(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, getPercolatorState, id)
+	var current_id int64
+	err := row.Scan(&current_id)
+	return current_id, err
+}
+
 const indexSetExists = `-- name: IndexSetExists :one
 SELECT COUNT(*) = 1
 FROM index_set
@@ -451,6 +560,31 @@ func (q *Queries) IndexSetQuery(ctx context.Context, arg IndexSetQueryParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const insertPercolatorEvent = `-- name: InsertPercolatorEvent :exec
+INSERT INTO percolator_event(
+       percolator, id, created, payload
+) VALUES (
+       $1, $2, $3, $4
+)
+`
+
+type InsertPercolatorEventParams struct {
+	Percolator int64
+	ID         int64
+	Created    pgtype.Timestamptz
+	Payload    []byte
+}
+
+func (q *Queries) InsertPercolatorEvent(ctx context.Context, arg InsertPercolatorEventParams) error {
+	_, err := q.db.Exec(ctx, insertPercolatorEvent,
+		arg.Percolator,
+		arg.ID,
+		arg.Created,
+		arg.Payload,
+	)
+	return err
 }
 
 const listClustersWithCounts = `-- name: ListClustersWithCounts :many
@@ -601,6 +735,22 @@ func (q *Queries) SetIndexSetStatus(ctx context.Context, arg SetIndexSetStatusPa
 		arg.Deleted,
 		arg.Name,
 	)
+	return err
+}
+
+const touchSubscription = `-- name: TouchSubscription :exec
+UPDATE subscription
+       SET touched = $1
+WHERE id = $2
+`
+
+type TouchSubscriptionParams struct {
+	Touched pgtype.Timestamptz
+	ID      int64
+}
+
+func (q *Queries) TouchSubscription(ctx context.Context, arg TouchSubscriptionParams) error {
+	_, err := q.db.Exec(ctx, touchSubscription, arg.Touched, arg.ID)
 	return err
 }
 

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -20,7 +19,6 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/revisor"
-	"github.com/twitchtv/twirp"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -28,6 +26,10 @@ const (
 	LogKeyIndexOperation = "index_operation"
 	LogKeyResponseStatus = "response_status"
 )
+
+type PercolatorWorker interface {
+	PercolateDocument(setName string, index string, document map[string][]string, doc *newsdoc.Document)
+}
 
 type ValidatorSource interface {
 	GetValidator() *revisor.Validator
@@ -41,9 +43,9 @@ type IndexerOptions struct {
 	Documents         repository.Documents
 	Validator         ValidatorSource
 	Metrics           *Metrics
-	DefaultLanguage   string
-	DefaultRegions    map[string]string
+	LanguageOptions   LanguageOptions
 	EnablePercolation bool
+	Percolator        PercolatorWorker
 	Sharding          ShardingPolicy
 }
 
@@ -58,10 +60,10 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 		vSource:           opts.Validator,
 		q:                 postgres.New(opts.Database),
 		indexes:           make(map[string]*indexWorker),
-		defaultLanguage:   opts.DefaultLanguage,
-		defaultRegions:    opts.DefaultRegions,
+		lang:              NewLanguageResolver(opts.LanguageOptions),
 		sharding:          opts.Sharding,
 		enablePercolation: opts.EnablePercolation,
+		percolator:        opts.Percolator,
 		stop:              make(chan struct{}),
 		stopped:           make(chan struct{}),
 	}
@@ -82,16 +84,17 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 
 // Indexer takes care of indexing to a named set of indexes in a cluster.
 type Indexer struct {
-	logger            *slog.Logger
-	metrics           *Metrics
-	name              string
-	defaultLanguage   string
-	defaultRegions    map[string]string
-	sharding          ShardingPolicy
-	database          *pgxpool.Pool
-	documents         repository.Documents
-	vSource           ValidatorSource
-	client            *opensearch.Client
+	logger    *slog.Logger
+	metrics   *Metrics
+	name      string
+	lang      *LanguageResolver
+	sharding  ShardingPolicy
+	database  *pgxpool.Pool
+	documents repository.Documents
+	vSource   ValidatorSource
+	client    *opensearch.Client
+
+	percolator        PercolatorWorker
 	enablePercolation bool
 
 	q *postgres.Queries
@@ -248,7 +251,7 @@ func (idx *Indexer) indexerLoop(ctx context.Context) error {
 
 const (
 	DocumentEvent = "document"
-	DeleteEvent   = "document_delete"
+	DeleteEvent   = "delete_document"
 	ACLEvent      = "acl"
 	StatusEvent   = "status"
 	WorkflowEvent = "workflow"
@@ -266,6 +269,10 @@ func (idx *Indexer) loopIteration(
 		return 0, fmt.Errorf("get eventlog entries: %w", err)
 	}
 
+	idx.logger.DebugContext(ctx, "got events",
+		elephantine.LogKeyEventID, pos,
+		"count", len(log.Items))
+
 	changes := make(map[string]map[string]map[string]*enrichJob)
 
 	for _, item := range log.Items {
@@ -275,52 +282,42 @@ func (idx *Indexer) loopIteration(
 			continue
 		}
 
-		var doc, metaDoc *newsdoc.Document
-
 		docUUID := item.Uuid
-		language := strings.ToLower(item.Language)
+		language, err := idx.lang.GetLanguageInfo(item.Language)
+		if err != nil {
+			return 0, fmt.Errorf(
+				"get language information for event %d: %w",
+				item.Id, err)
+		}
+
+		var oldLanguage *LanguageInfo
+
+		if item.OldLanguage != "" {
+			ol, err := idx.lang.GetLanguageInfo(item.OldLanguage)
+			if err != nil {
+				return 0, fmt.Errorf(
+					"get old language information for event %d: %w",
+					item.Id, err)
+			}
+
+			oldLanguage = &ol
+		}
 
 		// Switch to main document on meta doc updates.
 		if item.MainDocument != "" {
+			// Ignore meta doc events from before repo v0.10.0.
+			if item.MainDocumentType == "" {
+				continue
+			}
+
 			docUUID = item.MainDocument
+			item.Uuid = docUUID
+			item.Type = item.MainDocumentType
 
 			// Treat deleted meta documents as document update
 			// events.
 			if item.Event == DeleteEvent {
 				item.Event = DocumentEvent
-			}
-		}
-
-		// Load document early so that we can pivot to a delete if the
-		// document has been deleted. But only try to fetch it if we
-		// don't already know that it has been deleted.
-		if item.Event != DeleteEvent { //nolint: nestif
-			docRes, err := idx.documents.Get(ctx,
-				&repository.GetDocumentRequest{
-					Uuid:         docUUID,
-					MetaDocument: repository.GetMetaDoc_META_INCLUDE,
-				})
-			if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
-				// TODO: we need to blanket delete the ID in all indexes
-				// here. Resorting to doing a delete for default
-				// language at the moment.
-				item.Event = DeleteEvent
-			} else if err != nil {
-				return 0, fmt.Errorf("get document: %w", err)
-			}
-
-			if docRes != nil {
-				doc = docRes.Document
-
-				if docRes.Meta != nil {
-					metaDoc = docRes.Meta.Document
-				}
-
-				// TODO: include main document type in the
-				// eventlog?
-				item.Type = doc.Type
-				// Normalize to lowercase
-				language = strings.ToLower(doc.Language)
 			}
 		}
 
@@ -330,10 +327,10 @@ func (idx *Indexer) loopIteration(
 			changes[item.Type] = byType
 		}
 
-		byLang, ok := byType[language]
+		byLang, ok := byType[language.Code]
 		if !ok {
 			byLang = make(map[string]*enrichJob)
-			byType[language] = byLang
+			byType[language.Code] = byLang
 		}
 
 		switch item.Event {
@@ -341,14 +338,13 @@ func (idx *Indexer) loopIteration(
 			byLang[docUUID] = &enrichJob{
 				UUID:      docUUID,
 				Operation: opDelete,
-				doc:       doc,
 			}
 		case DocumentEvent, ACLEvent, StatusEvent, WorkflowEvent:
-			if item.OldLanguage != "" && item.Language != item.OldLanguage {
-				byObLang, ok := byType[item.OldLanguage]
+			if oldLanguage != nil && language.Code != oldLanguage.Code {
+				byObLang, ok := byType[oldLanguage.Code]
 				if !ok {
 					byObLang = make(map[string]*enrichJob)
-					byType[item.OldLanguage] = byObLang
+					byType[oldLanguage.Code] = byObLang
 				}
 
 				byObLang[docUUID] = &enrichJob{
@@ -360,8 +356,6 @@ func (idx *Indexer) loopIteration(
 			byLang[docUUID] = &enrichJob{
 				UUID:      docUUID,
 				Operation: opUpdate,
-				doc:       doc,
-				metadoc:   metaDoc,
 			}
 		default:
 			idx.metrics.unknownEvents.WithLabelValues(item.Event).Inc()
@@ -374,11 +368,17 @@ func (idx *Indexer) loopIteration(
 
 	for docType := range changes {
 		for lang := range changes[docType] {
-			key := fmt.Sprintf("%s-%s", docType, lang)
+			// Get canonical language with defaults applied.
+			language, err := idx.lang.GetLanguageInfo(lang)
+			if err != nil {
+				return 0, fmt.Errorf("get language information for %q: %w", lang, err)
+			}
+
+			key := fmt.Sprintf("%s-%s", docType, language.Code)
 
 			index, ok := idx.indexes[key]
 			if !ok {
-				worker, err := idx.createIndexWorker(ctx, docType, lang)
+				worker, err := idx.createIndexWorker(ctx, docType, language)
 				if err != nil {
 					return 0, err
 				}
@@ -397,6 +397,11 @@ func (idx *Indexer) loopIteration(
 			}
 
 			group.Go(func() error {
+				idx.logger.DebugContext(ctx, "process documents",
+					"doc_type", docType,
+					"language", lang,
+					"count", len(jobs))
+
 				return index.Process(gCtx, jobs)
 			})
 		}
@@ -413,14 +418,9 @@ func (idx *Indexer) loopIteration(
 func (idx *Indexer) createIndexWorker(
 	ctx context.Context,
 	docType string,
-	lang string,
+	lang LanguageInfo,
 ) (*indexWorker, error) {
-	conf, err := GetIndexConfig(
-		lang, idx.defaultLanguage, idx.defaultRegions)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"could not get language config: %w", err)
-	}
+	conf := GetIndexConfig(lang)
 
 	name, err := idx.ensureIndex(
 		ctx, "documents", docType, conf)
@@ -445,7 +445,7 @@ func (idx *Indexer) createIndexWorker(
 	}
 
 	index, err := newIndexWorker(ctx, idx,
-		name, percolateName, docType, conf, 8)
+		name, percolateName, docType, conf, 8, idx.percolator)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"create index worker: %w", err)

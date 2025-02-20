@@ -65,7 +65,7 @@ func (s *ManagementService) DeleteIndexSet(
 			)
 		}
 
-		err = s.updateIndexSetStatus(ctx, q,
+		err = s.updateIndexSetStatus(ctx, tx, q,
 			postgres.SetIndexSetStatusParams{
 				Name:    idx.Name,
 				Enabled: false,
@@ -91,6 +91,7 @@ func (s *ManagementService) DeleteIndexSet(
 
 func (s *ManagementService) updateIndexSetStatus(
 	ctx context.Context,
+	tx pgx.Tx,
 	q *postgres.Queries,
 	params postgres.SetIndexSetStatusParams,
 ) error {
@@ -99,14 +100,12 @@ func (s *ManagementService) updateIndexSetStatus(
 		return fmt.Errorf("set status: %w", err)
 	}
 
-	note := Notification{
-		Type: NotifyIndexStatusChange,
-		Name: params.Name,
-	}
-
-	err = note.Send(ctx, q)
+	err = pg.Publish(ctx, tx, NotifyIndexStatusChange,
+		IndexStatusChange{
+			Name: params.Name,
+		})
 	if err != nil {
-		return err
+		return fmt.Errorf("publish status change event: %w", err)
 	}
 
 	return nil
@@ -459,14 +458,12 @@ func (s *ManagementService) reindex(
 			"create index set in database: %w", err)
 	}
 
-	note := Notification{
-		Type: NotifyIndexStatusChange,
-		Name: name,
-	}
-
-	err = note.Send(ctx, q)
+	err = pg.Publish(ctx, tx, NotifyIndexStatusChange,
+		IndexStatusChange{
+			Name: name,
+		})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("publish index status change event: %w", err)
 	}
 
 	return name, nil
@@ -517,13 +514,13 @@ func (s *ManagementService) setIndexSetStatus(
 	}
 
 	if req.Active {
-		err := s.checkActiveReplaced(ctx, q, idx, req.ForceActive)
+		err := s.checkActiveReplaced(ctx, tx, q, idx, req.ForceActive)
 		if err != nil {
 			return err
 		}
 	}
 
-	err = s.updateIndexSetStatus(ctx, q,
+	err = s.updateIndexSetStatus(ctx, tx, q,
 		postgres.SetIndexSetStatusParams{
 			Name:    idx.Name,
 			Enabled: req.Enabled,
@@ -539,6 +536,7 @@ func (s *ManagementService) setIndexSetStatus(
 
 func (s *ManagementService) checkActiveReplaced(
 	ctx context.Context,
+	tx pgx.Tx,
 	q *postgres.Queries,
 	idx postgres.IndexSet,
 	forceActive bool,
@@ -559,7 +557,7 @@ func (s *ManagementService) checkActiveReplaced(
 			)
 		}
 
-		err := s.updateIndexSetStatus(ctx, q,
+		err := s.updateIndexSetStatus(ctx, tx, q,
 			postgres.SetIndexSetStatusParams{
 				Name:    currentActive.Name,
 				Enabled: currentActive.Enabled,

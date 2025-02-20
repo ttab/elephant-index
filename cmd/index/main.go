@@ -148,9 +148,23 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("invalid sharding policy: %w", err)
 	}
 
-	_, err = index.GetIndexConfig(defaultLanguage, "", nil)
-	if err != nil {
-		return fmt.Errorf("create index config: %w", err)
+	langOpts := index.LanguageOptions{
+		DefaultLanguage: defaultLanguage,
+		Substitutions: map[string]string{
+			"se": "sv",
+		},
+		DefaultRegions: map[string]string{
+			"sv": "SE",
+			"en": "GB",
+			"es": "ES",
+			"fr": "FR",
+			"it": "IT",
+			"de": "DE",
+			"fi": "FI",
+			"da": "DK",
+			"nn": "NO",
+			"no": "NO",
+		},
 	}
 
 	paramSource, err := elephantine.GetParameterSource(paramSourceName)
@@ -220,7 +234,7 @@ func runIndexer(c *cli.Context) error {
 		RepositoryEndpoint: repositoryEndpoint,
 		Validator:          loader,
 		Metrics:            metrics,
-		DefaultLanguage:    defaultLanguage,
+		Languages:          langOpts,
 		NoIndexer:          noIndexer,
 		AuthInfoParser:     auth.AuthParser,
 		Sharding:           sharding,

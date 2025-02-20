@@ -71,43 +71,108 @@ type OpensearchTokenizer struct {
 
 var noDefaultRegion = map[string]string{}
 
-func GetIndexConfig(
-	code string, defaultLanguage string,
-	defaultRegions map[string]string,
-) (OpenSearchIndexConfig, error) {
-	if code == "" {
-		code = defaultLanguage
+func NewLanguageResolver(opts LanguageOptions) *LanguageResolver {
+	if opts.DefaultRegions == nil {
+		opts.DefaultRegions = make(map[string]string)
 	}
 
-	if defaultRegions == nil {
-		defaultRegions = noDefaultRegion
+	if opts.Substitutions == nil {
+		opts.Substitutions = make(map[string]string)
+	}
+
+	return &LanguageResolver{
+		opts:   opts,
+		lTable: make(map[string]lrItem),
+	}
+}
+
+type LanguageResolver struct {
+	opts   LanguageOptions
+	lTable map[string]lrItem
+}
+
+type lrItem struct {
+	Info LanguageInfo
+	Err  error
+}
+
+func (lr *LanguageResolver) GetLanguageInfo(code string) (LanguageInfo, error) {
+	item, ok := lr.lTable[code]
+	if ok {
+		return item.Info, item.Err
+	}
+
+	info, err := getLanguageInfo(code, lr.opts)
+
+	lr.lTable[code] = lrItem{
+		Info: info,
+		Err:  err,
+	}
+
+	return info, err
+}
+
+type LanguageInfo struct {
+	Code     string
+	Language string
+	Region   string
+}
+
+func getLanguageInfo(
+	code string, opts LanguageOptions,
+) (LanguageInfo, error) {
+	if code == "" {
+		code = opts.DefaultLanguage
+	}
+
+	sub, ok := opts.Substitutions[code]
+	if ok {
+		code = sub
 	}
 
 	info, err := langos.GetLanguage(code)
 	if err != nil {
-		return OpenSearchIndexConfig{}, fmt.Errorf("get language: %w", err)
+		return LanguageInfo{}, fmt.Errorf("get language: %w", err)
 	}
 
-	code = strings.ToLower(info.Code)
-	lang := strings.ToLower(info.Language)
+	lang := LanguageInfo{
+		Code:     strings.ToLower(info.Code),
+		Language: info.Language,
+	}
 
-	region := "unspecified"
 	if info.HasRegion {
-		region = strings.ToLower(info.Region)
-	} else if defaultRegion, ok := defaultRegions[lang]; ok {
-		region = strings.ToLower(defaultRegion)
+		lang.Region = strings.ToLower(info.Region)
+
+		return lang, nil
+	}
+
+	region, hasDefault := opts.DefaultRegions[info.Language]
+	if hasDefault {
+		lang.Region = strings.ToLower(region)
+		lang.Code += "-" + lang.Region
+	}
+
+	return lang, nil
+}
+
+func GetIndexConfig(
+	lang LanguageInfo,
+) OpenSearchIndexConfig {
+	regionSuffix := "unspecified"
+	if lang.Region != "" {
+		regionSuffix = strings.ToLower(lang.Region)
 	}
 
 	analyzer := "standard"
 
 	for _, ls := range languages {
-		if ls.Code == code {
+		if ls.Code == lang.Code {
 			analyzer = ls.Analyzer
 
 			break
 		}
 
-		if ls.Language == lang {
+		if ls.Language == lang.Language {
 			analyzer = ls.Analyzer
 		}
 	}
@@ -144,11 +209,11 @@ func GetIndexConfig(
 	})
 
 	return OpenSearchIndexConfig{
-		NameSuffix: fmt.Sprintf("%s-%s", lang, region),
-		Language:   lang,
-		Region:     strings.ToLower(info.Region),
+		NameSuffix: fmt.Sprintf("%s-%s", lang.Language, regionSuffix),
+		Language:   lang.Language,
+		Region:     lang.Region,
 		Settings:   s,
-	}, nil
+	}
 }
 
 type Language struct {

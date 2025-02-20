@@ -46,6 +46,31 @@ type JobLock struct {
 	Iteration int64
 }
 
+type Percolator struct {
+	ID        int64
+	Hash      []byte
+	Owner     pgtype.Text
+	Created   pgtype.Timestamptz
+	CurrentID int64
+	Query     []byte
+}
+
+type PercolatorEvent struct {
+	Percolator int64
+	ID         int64
+	Created    pgtype.Timestamptz
+	Payload    []byte
+}
+
 type SchemaVersion struct {
 	Version int32
+}
+
+type Subscription struct {
+	ID         int64
+	Percolator int64
+	Client     string
+	Hash       []byte
+	Touched    pgtype.Timestamptz
+	Spec       []byte
 }

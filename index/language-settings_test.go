@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ttab/elephant-index/index"
+	"github.com/ttab/elephantine/test"
 )
 
 type expectation struct {
@@ -13,6 +14,7 @@ type expectation struct {
 	language       string
 	analyzer       string
 	defaultRegions map[string]string
+	substitutions  map[string]string
 }
 
 var params = []expectation{
@@ -26,6 +28,16 @@ var params = []expectation{
 		name: "sv-se", language: "sv", analyzer: "swedish",
 		defaultRegions: map[string]string{
 			"sv": "SE",
+		},
+	},
+	{
+		code: "se",
+		name: "sv-se", language: "sv", analyzer: "swedish",
+		substitutions: map[string]string{
+			"se": "sv",
+		},
+		defaultRegions: map[string]string{
+			"sv": "se",
 		},
 	},
 	{code: "pt-BR", name: "pt-br", language: "pt", analyzer: "brazilian"},
@@ -42,7 +54,16 @@ var params = []expectation{
 
 func TestGetLanguageSetting(t *testing.T) {
 	for _, param := range params {
-		s, _ := index.GetIndexConfig(param.code, param.defaultCode, param.defaultRegions)
+		res := index.NewLanguageResolver(index.LanguageOptions{
+			DefaultLanguage: param.defaultCode,
+			Substitutions:   param.substitutions,
+			DefaultRegions:  param.defaultRegions,
+		})
+
+		lang, err := res.GetLanguageInfo(param.code)
+		test.Must(t, err, "get language info")
+
+		s := index.GetIndexConfig(lang)
 
 		if s.NameSuffix != param.name {
 			t.Fatalf("%s: expected Name: %q, got %q", param.code, param.name, s.NameSuffix)
