@@ -516,6 +516,8 @@ func protoToQuery(p *index.QueryV1) (map[string]any, error) {
 			q.Match.Field, q.Match.Value,
 			q.Match.Boost, false,
 		), nil
+	case *index.QueryV1_MultiMatch:
+		return multiMatchQueryV1(q.MultiMatch), nil
 	case *index.QueryV1_MatchPhrase:
 		return matchPhraseQueryV1(q.MatchPhrase.Field, q.MatchPhrase.Value), nil
 	case *index.QueryV1_QueryString:
@@ -613,7 +615,7 @@ func termsQueryV1(
 	}
 
 	if boost != 0 {
-		spec["boost"] = fmt.Sprintf("%f", boost)
+		spec["boost"] = boost
 	}
 
 	if caseInsensitive {
@@ -621,6 +623,35 @@ func termsQueryV1(
 	}
 
 	return qWrap("terms", spec)
+}
+
+func multiMatchQueryV1(q *index.MultiMatchQueryV1) map[string]any {
+	spec := map[string]any{
+		"fields": q.Fields,
+		"query":  q.Query,
+	}
+
+	if q.Boost != 0 {
+		spec["boost"] = q.Boost
+	}
+
+	if q.Type != "" {
+		spec["type"] = q.Type
+	}
+
+	if q.BooleanAnd {
+		spec["operator"] = "AND"
+	}
+
+	if q.MinimumShouldMatch != "" {
+		spec["minimum_should_match"] = q.MinimumShouldMatch
+	}
+
+	if q.TieBreaker != 0 {
+		spec["tie_breaker"] = q.TieBreaker
+	}
+
+	return qWrap("multi_match", spec)
 }
 
 func matchQueryV1(
