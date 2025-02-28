@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lucasepe/codename"
 	"github.com/opensearch-project/opensearch-go/v2"
-	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
@@ -26,17 +25,23 @@ import (
 const IndexerStopTimeout = 10 * time.Second
 
 const (
-	NotifyIndexStatusChange string = "index_status_change"
-	NotifyPercolated        string = "percolation_event"
+	ChanIndexStatusChange string = "index_status_change"
+	ChanPercolatorUpdate  string = "percolator_update"
+	ChanPercolateEvent    string = "percolate_event"
+	ChanPercolated        string = "percolation_event"
 )
 
 type IndexStatusChange struct {
 	Name string
 }
 
-type PercolationEvent struct {
-	Subscription int64
-	Percolator   int64
+type PercolateEvent struct {
+	ID int64
+}
+
+type EventPercolated struct {
+	ID          int64
+	Percolators []int64
 }
 
 type OpenSearchClientFunc func(
@@ -44,20 +49,42 @@ type OpenSearchClientFunc func(
 ) (*opensearch.Client, error)
 
 type CoordinatorOptions struct {
-	Logger       *slog.Logger
-	Metrics      *Metrics
-	Documents    repository.Documents
-	ClientGetter OpenSearchClientFunc
-	Validator    ValidatorSource
-	Languages    LanguageOptions
-	Sharding     ShardingPolicy
-	NoIndexing   bool
+	Logger          *slog.Logger
+	Metrics         *Metrics
+	Documents       repository.Documents
+	ClientGetter    OpenSearchClientFunc
+	Validator       ValidatorSource
+	Languages       LanguageOptions
+	Sharding        ShardingPolicy
+	PercolatorCache *PercolatorDocCache
+	NoIndexing      bool
 }
 
 type LanguageOptions struct {
 	Substitutions   map[string]string
 	DefaultLanguage string
 	DefaultRegions  map[string]string
+}
+
+func StandardLanguageOptions(defaultLanguage string) LanguageOptions {
+	return LanguageOptions{
+		DefaultLanguage: defaultLanguage,
+		Substitutions: map[string]string{
+			"se": "sv",
+		},
+		DefaultRegions: map[string]string{
+			"sv": "SE",
+			"en": "GB",
+			"es": "ES",
+			"fr": "FR",
+			"it": "IT",
+			"de": "DE",
+			"fi": "FI",
+			"da": "DK",
+			"nn": "NO",
+			"no": "NO",
+		},
+	}
 }
 
 type Coordinator struct {
@@ -67,6 +94,7 @@ type Coordinator struct {
 	db         *pgxpool.Pool
 	q          *postgres.Queries
 	startCount int32
+	lang       *LanguageResolver
 
 	activeMut    sync.RWMutex
 	activeClient *opensearch.Client
@@ -77,11 +105,14 @@ type Coordinator struct {
 	indexerGroup *errgroup.Group
 
 	percolator *Percolator
+	percDocs   *PercolatorDocCache
 
 	indexStatuses *pg.FanOut[IndexStatusChange]
 	changes       chan IndexStatusChange
 
-	percolationEvents *pg.FanOut[PercolationEvent]
+	percolatorUpdate *pg.FanOut[PercolatorUpdate]
+	percolateEvent   *pg.FanOut[PercolateEvent]
+	eventPercolated  *pg.FanOut[EventPercolated]
 
 	stopOnce sync.Once
 	stop     chan struct{}
@@ -101,23 +132,38 @@ func NewCoordinator(
 		logger = slog.Default()
 	}
 
+	lang := NewLanguageResolver(opt.Languages)
+
 	indexGrp, gCtx := errgroup.WithContext(context.Background())
 
 	c := Coordinator{
-		logger:            logger,
-		db:                db,
-		q:                 postgres.New(db),
-		opt:               opt,
-		nameRng:           rng,
-		indexStatuses:     pg.NewFanOut[IndexStatusChange](NotifyIndexStatusChange),
-		percolationEvents: pg.NewFanOut[PercolationEvent](NotifyPercolated),
-		changes:           make(chan IndexStatusChange),
-		indexers:          make(map[string]*Indexer),
-		indexerCtx:        gCtx,
-		indexerGroup:      indexGrp,
-		stop:              make(chan struct{}),
-		stopped:           make(chan struct{}),
+		logger:           logger,
+		db:               db,
+		q:                postgres.New(db),
+		lang:             lang,
+		opt:              opt,
+		nameRng:          rng,
+		indexStatuses:    pg.NewFanOut[IndexStatusChange](ChanIndexStatusChange),
+		percolatorUpdate: pg.NewFanOut[PercolatorUpdate](ChanPercolatorUpdate),
+		percolateEvent:   pg.NewFanOut[PercolateEvent](ChanPercolateEvent),
+		eventPercolated:  pg.NewFanOut[EventPercolated](ChanPercolated),
+		changes:          make(chan IndexStatusChange),
+		indexers:         make(map[string]*Indexer),
+		indexerCtx:       gCtx,
+		indexerGroup:     indexGrp,
+		percDocs:         opt.PercolatorCache,
+		stop:             make(chan struct{}),
+		stopped:          make(chan struct{}),
 	}
+
+	percolator, err := NewPercolator(
+		gCtx, logger, db, &c, lang, opt.PercolatorCache,
+		c.percolatorUpdate, c.percolateEvent, c.eventPercolated)
+	if err != nil {
+		return nil, fmt.Errorf("create percolator: %w", err)
+	}
+
+	c.percolator = percolator
 
 	return &c, nil
 }
@@ -137,6 +183,14 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		return errors.New("coordinator has been stopped")
 	}
 
+	stopCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	go func() {
+		<-c.stop
+		cancel()
+	}()
+
 	count := atomic.AddInt32(&c.startCount, 1)
 	if count > 1 {
 		return errors.New("already started")
@@ -144,20 +198,40 @@ func (c *Coordinator) Run(ctx context.Context) error {
 
 	go c.cleanupLoop(ctx)
 
-	go pg.Subscribe(
-		ctx, c.logger, c.db,
-		c.percolationEvents, c.indexStatuses)
+	fanOuts := []pg.ChannelSubscription{
+		c.indexStatuses,
+		c.percolatorUpdate,
+		c.percolateEvent,
+		c.eventPercolated,
+	}
+
+	go pg.Subscribe(stopCtx, c.logger, c.db, fanOuts...)
 
 	go func() {
-		c.indexStatuses.ListenAll(ctx, c.changes)
+		c.indexStatuses.ListenAll(stopCtx, c.changes)
 		close(c.changes)
 	}()
 
 	defer close(c.stopped)
 
+	lang := NewLanguageResolver(c.opt.Languages)
+
+	perc, err := NewPercolator(
+		stopCtx, c.logger, c.db, c, lang, NewPercolatorDocCache(c.db),
+		c.percolatorUpdate, c.percolateEvent, c.eventPercolated)
+	if err != nil {
+		c.stopOnce.Do(func() {
+			close(c.stop)
+		})
+
+		return fmt.Errorf("create percolator: %w", err)
+	}
+
+	c.percolator = perc
+
 	var errs []error
 
-	err := c.runEventloop(ctx)
+	err = c.runEventloop(ctx)
 	if err != nil {
 		c.stopOnce.Do(func() {
 			close(c.stop)
@@ -345,7 +419,7 @@ func (c *Coordinator) finaliseSetDelete(
 	ctx context.Context,
 	tx pgx.Tx,
 	name string,
-) error {
+) (outErr error) {
 	q := postgres.New(tx)
 
 	// GetIndexSetForDelete gets the index_set_row with a FOR UPDATE NOWAIT
@@ -376,8 +450,7 @@ func (c *Coordinator) finaliseSetDelete(
 		return fmt.Errorf("list indices: %w", err)
 	}
 
-	defer elephantine.SafeClose(
-		c.logger, "indices list", listRes.Body)
+	defer elephantine.Close("indices list", listRes.Body, &outErr)
 
 	var indices []struct {
 		Index string `json:"index"`
@@ -405,8 +478,8 @@ func (c *Coordinator) finaliseSetDelete(
 			return fmt.Errorf("delete indices: %w", err)
 		}
 
-		defer elephantine.SafeClose(
-			c.logger, "indices delete response", delRes.Body)
+		defer elephantine.Close(
+			"indices delete response", delRes.Body, &outErr)
 	}
 
 	err = q.DeleteIndexSet(ctx, idx.Name)
@@ -442,7 +515,10 @@ func (c *Coordinator) ensureActiveClient(set postgres.IndexSet) error {
 // PercolateDocument acts as a filter that only runs percolation for the
 // currently active indexer.
 func (c *Coordinator) PercolateDocument(
-	setName string, index string, document map[string][]string, doc *newsdoc.Document,
+	ctx context.Context,
+	setName string,
+	index string,
+	doc postgres.PercolatorDocument,
 ) {
 	c.activeMut.RLock()
 	defer c.activeMut.RUnlock()
@@ -451,7 +527,35 @@ func (c *Coordinator) PercolateDocument(
 		return
 	}
 
-	c.percolator.PercolateDocument(index, document, doc)
+	c.percDocs.CacheDocument(doc)
+
+	err := pg.WithTX(ctx, c.db, func(tx pgx.Tx) error {
+		q := postgres.New(tx)
+
+		err := q.InsertPercolatorEventPayload(ctx, postgres.InsertPercolatorEventPayloadParams{
+			ID:      doc.ID,
+			Created: pg.Time(time.Now()),
+			Data:    doc,
+		})
+		if err != nil {
+			return fmt.Errorf("store percolator document: %w", err)
+		}
+
+		err = c.percolateEvent.Publish(ctx, tx, PercolateEvent{
+			ID: doc.ID,
+		})
+		if err != nil {
+			return fmt.Errorf("send percolate event: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		c.logger.ErrorContext(ctx, "failed to queue event for percolation",
+			elephantine.LogKeyEventID, doc.ID,
+			elephantine.LogKeyError, err,
+		)
+	}
 }
 
 func (c *Coordinator) startIndexer(
@@ -475,7 +579,7 @@ func (c *Coordinator) startIndexer(
 		Documents:         c.opt.Documents,
 		Validator:         c.opt.Validator,
 		Metrics:           c.opt.Metrics,
-		LanguageOptions:   c.opt.Languages,
+		Language:          c.lang,
 		Sharding:          c.opt.Sharding,
 		EnablePercolation: true,
 		Percolator:        c,

@@ -5,8 +5,14 @@
 package postgres
 
 import (
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type AppState struct {
+	Name string
+	Data AppStateData
+}
 
 type Cluster struct {
 	Name    string
@@ -31,6 +37,7 @@ type IndexSet struct {
 	Enabled  bool
 	Deleted  bool
 	Modified pgtype.Timestamptz
+	CaughtUp bool
 }
 
 type IndexingOverride struct {
@@ -47,19 +54,25 @@ type JobLock struct {
 }
 
 type Percolator struct {
-	ID        int64
-	Hash      []byte
-	Owner     pgtype.Text
-	Created   pgtype.Timestamptz
-	CurrentID int64
-	Query     []byte
+	ID      int64
+	Hash    []byte
+	Owner   pgtype.Text
+	Created pgtype.Timestamptz
+	DocType string
+	Query   map[string]any
 }
 
 type PercolatorEvent struct {
-	Percolator int64
 	ID         int64
+	Document   uuid.UUID
+	Percolator int64
 	Created    pgtype.Timestamptz
-	Payload    []byte
+}
+
+type PercolatorEventPayload struct {
+	ID      int64
+	Created pgtype.Timestamptz
+	Data    PercolatorDocument
 }
 
 type SchemaVersion struct {
@@ -72,5 +85,5 @@ type Subscription struct {
 	Client     string
 	Hash       []byte
 	Touched    pgtype.Timestamptz
-	Spec       []byte
+	Spec       SubscriptionSpec
 }

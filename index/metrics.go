@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/ttab/koonkie"
 )
 
 type Metrics struct {
@@ -13,7 +14,9 @@ type Metrics struct {
 	ignoredMapping  *prometheus.CounterVec
 	indexedDocument *prometheus.CounterVec
 	enrichErrors    *prometheus.CounterVec
-	logPos          *prometheus.GaugeVec
+	logPos          *koonkie.PrometheusFollowerMetrics
+
+	Registerer prometheus.Registerer
 }
 
 func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
@@ -25,7 +28,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		[]string{"name"},
 	)
 	if err := reg.Register(indexerFailures); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
+		return nil, fmt.Errorf("register indexer failure metric: %w", err)
 	}
 
 	unknownEvents := prometheus.NewCounterVec(
@@ -36,7 +39,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		[]string{"type"},
 	)
 	if err := reg.Register(unknownEvents); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
+		return nil, fmt.Errorf("register unknown events metric: %w", err)
 	}
 
 	mappingUpdate := prometheus.NewCounterVec(
@@ -47,7 +50,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		[]string{"index"},
 	)
 	if err := reg.Register(mappingUpdate); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
+		return nil, fmt.Errorf("register mapping updates metric: %w", err)
 	}
 
 	ignoredMapping := prometheus.NewCounterVec(
@@ -58,7 +61,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		[]string{"index", "property"},
 	)
 	if err := reg.Register(ignoredMapping); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
+		return nil, fmt.Errorf("register ignored mappings metric: %w", err)
 	}
 
 	indexedDocument := prometheus.NewCounterVec(
@@ -69,7 +72,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		[]string{"type", "index", "result"},
 	)
 	if err := reg.Register(indexedDocument); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
+		return nil, fmt.Errorf("register doc count metric: %w", err)
 	}
 
 	enrichErrors := prometheus.NewCounterVec(
@@ -80,18 +83,12 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		[]string{"type", "index"},
 	)
 	if err := reg.Register(enrichErrors); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
+		return nil, fmt.Errorf("register enrich errors metric: %w", err)
 	}
 
-	logPos := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "elephant_indexer_log_position",
-			Help: "Indexer eventlog position.",
-		},
-		[]string{"name"},
-	)
-	if err := reg.Register(logPos); err != nil {
-		return nil, fmt.Errorf("failed to register metric: %w", err)
+	logPos, err := koonkie.NewPrometheusFollowerMetrics(reg, "elephant-index")
+	if err != nil {
+		return nil, fmt.Errorf("register follower metrics: %w", err)
 	}
 
 	m := Metrics{
@@ -102,6 +99,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		ignoredMapping:  ignoredMapping,
 		indexedDocument: indexedDocument,
 		enrichErrors:    enrichErrors,
+		Registerer:      reg,
 	}
 
 	return &m, nil

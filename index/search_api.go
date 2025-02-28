@@ -8,13 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gobwas/glob"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/newsdoc"
@@ -23,6 +23,7 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
 	"github.com/twitchtv/twirp"
+	"github.com/viccon/sturdyc"
 )
 
 const (
@@ -44,36 +45,36 @@ func NewSearchServiceV1(
 	db *pgxpool.Pool,
 	mappings MappingSource,
 	active ActiveIndexGetter,
-	repositoryEndpoint string,
+	documents repository.Documents,
+	percChanges *pg.FanOut[PercolatorUpdate],
+	eventPercolated *pg.FanOut[EventPercolated],
+	percDocs PercolatorDocumentGetter,
 ) *SearchServiceV1 {
-	client := http.Client{
-		Transport: &http.Transport{
-			Dial: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).Dial,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: 10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		},
-	}
-
-	documents := repository.NewDocumentsProtobufClient(repositoryEndpoint, &client)
-
 	return &SearchServiceV1{
-		log:       logger,
-		mappings:  mappings,
-		active:    active,
-		documents: documents,
+		log:             logger,
+		db:              db,
+		mappings:        mappings,
+		active:          active,
+		documents:       documents,
+		percDocs:        percDocs,
+		percChanges:     percChanges,
+		eventPercolated: eventPercolated,
+		subscriptions: sturdyc.New[userSub](
+			5000, 5, 30*time.Minute, 10,
+		),
 	}
 }
 
 type SearchServiceV1 struct {
-	log       *slog.Logger
-	db        *pgxpool.Pool
-	mappings  MappingSource
-	active    ActiveIndexGetter
-	documents repository.Documents
+	log             *slog.Logger
+	db              *pgxpool.Pool
+	mappings        MappingSource
+	active          ActiveIndexGetter
+	documents       repository.Documents
+	percDocs        PercolatorDocumentGetter
+	percChanges     *pg.FanOut[PercolatorUpdate]
+	eventPercolated *pg.FanOut[EventPercolated]
+	subscriptions   *sturdyc.Client[userSub]
 }
 
 // EndSubscription implements index.SearchV1.
@@ -85,9 +86,404 @@ func (s *SearchServiceV1) EndSubscription(
 
 // PollSubscription implements index.SearchV1.
 func (s *SearchServiceV1) PollSubscription(
-	_ context.Context, _ *index.PollSubscriptionRequest,
+	ctx context.Context, req *index.PollSubscriptionRequest,
 ) (*index.PollSubscriptionResponse, error) {
-	panic("unimplemented")
+	auth, err := RequireAnyScope(ctx, ScopeSearch, ScopeIndexAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(req.Subscriptions) == 0 {
+		return nil, twirp.RequiredArgumentError("subscriptions")
+	}
+
+	batchDelay := time.Duration(req.BatchDelayMs) * time.Millisecond
+	if req.BatchDelayMs == 0 {
+		batchDelay = 200 * time.Millisecond
+	}
+
+	maxWait := time.Duration(req.MaxWaitMs) * time.Millisecond
+	if req.MaxWaitMs == 0 {
+		maxWait = 10 * time.Second
+	}
+
+	// Requested subscriptions
+	var (
+		subIDs    []int64
+		subCursor []int64
+	)
+
+	// Validate and decompose.
+	for _, s := range req.Subscriptions {
+		if s.Id == 0 {
+			return nil, twirp.RequiredArgumentError("subscriptions.id")
+		}
+
+		if slices.Contains(subIDs, s.Id) {
+			return nil, twirp.InvalidArgumentError("subscription.id",
+				fmt.Sprintf("the subscription %d was specified more than once", s.Id))
+		}
+
+		subIDs = append(subIDs, s.Id)
+		subCursor = append(subCursor, s.Cursor)
+	}
+
+	q := postgres.New(s.db)
+
+	subscriptions, err := s.getSubscriptionsForUser(ctx, q, auth.Claims.Subject, subIDs)
+	if err != nil {
+		return nil, twirp.InternalErrorf("get subscription details: %w", err)
+	}
+
+	// Underlying percolators for the subscription.
+	var percIDs []int64
+
+	// Store the subscription definition so that we can access it easily,
+	// this is needed to apply things like fields and load document.
+	subDefs := make(map[int64]userSub)
+
+	for _, sub := range subscriptions {
+		for _, rSub := range req.Subscriptions {
+			if rSub.Id != sub.ID {
+				continue
+			}
+
+			sub.Cursor = rSub.Cursor
+		}
+
+		subDefs[sub.ID] = sub
+
+		if !slices.Contains(percIDs, sub.Percolator) {
+			percIDs = append(percIDs, sub.Percolator)
+		}
+	}
+
+	// Collect the lowest cursor for each percolator.
+	cursorCollect := make(map[int64]int64)
+	// Map the percolators to their subscriptions, a client might have two
+	// subscriptions for the same percolator with different subsciption
+	// specs (fields et.c.).
+	percSubs := make(map[int64][]int64)
+
+	// Unknown subs will be reported back to the client.
+	var (
+		unknownSubs []int64
+		knownSubs   []int64
+	)
+
+	for i, subID := range subIDs {
+		def, ok := subDefs[subID]
+		if !ok {
+			unknownSubs = append(unknownSubs, subID)
+
+			continue
+		}
+
+		knownSubs = append(knownSubs, subID)
+
+		c := cursorCollect[def.Percolator]
+		if c == 0 {
+			c = subCursor[i]
+		} else {
+			c = min(c, subCursor[i])
+		}
+
+		cursorCollect[def.Percolator] = c
+		percSubs[def.Percolator] = append(percSubs[def.Percolator], subID)
+	}
+
+	err = q.TouchSubscriptions(ctx, postgres.TouchSubscriptionsParams{
+		Touched: pg.Time(time.Now()),
+		Ids:     knownSubs,
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf("failed to set subscriptions as touched: %v", err)
+	}
+
+	// All subscriptions were unknown.
+	if len(cursorCollect) == 0 {
+		return &index.PollSubscriptionResponse{
+			UnknownSubscriptions: unknownSubs,
+		}, nil
+	}
+
+	deadline := time.Now().Add(maxWait)
+	events := make(chan EventPercolated)
+
+	// Subscribe to percolation events, but only accept percolation events
+	// that match one of our percolator IDs and are after our cursor.
+	go s.eventPercolated.Listen(ctx, events, func(v EventPercolated) bool {
+		for _, s := range v.Percolators {
+			cursor, ok := cursorCollect[s]
+			if ok && v.ID > cursor {
+				return true
+			}
+		}
+
+		return false
+	})
+
+	res := index.PollSubscriptionResponse{
+		UnknownSubscriptions: unknownSubs,
+	}
+
+	// Collect the percolator cursors in an array in the same order as the
+	// percIDs slice so that they can be unnested together in the
+	// FetchPercolatorEvents query.
+	percCursors := make([]int64, len(percIDs))
+
+	for idx, id := range percIDs {
+		percCursors[idx] = cursorCollect[id]
+	}
+
+	// Collect the poll result by subscription id.
+	p := make(map[int64]*index.SubscriptionPollResult)
+
+	for i := range 2 {
+		items, err := q.FetchPercolatorEvents(ctx,
+			postgres.FetchPercolatorEventsParams{
+				Ids:         percCursors,
+				Percolators: percIDs,
+				Limit:       30,
+			})
+		if err != nil {
+			return nil, fmt.Errorf("fetch events: %w", err)
+		}
+
+		for _, item := range items {
+			for _, subID := range percSubs[item.Percolator] {
+				sub := subDefs[subID]
+
+				if item.ID <= sub.Cursor {
+					continue
+				}
+
+				doc, err := s.percDocs.GetDocument(ctx, item.ID)
+				if err != nil {
+					s.log.WarnContext(ctx,
+						"failed to load document for poll result",
+						elephantine.LogKeyEventID, item.ID,
+						elephantine.LogKeyError, err)
+				}
+
+				r, ok := p[subID]
+				if !ok {
+					r = &index.SubscriptionPollResult{
+						Subscription: &index.SubscriptionReference{
+							Id: subID,
+						},
+					}
+
+					p[subID] = r
+				}
+
+				// Items are sorted in ascending order by ID so
+				// just set the cursor.
+				r.Subscription.Cursor = item.ID
+				r.Items = append(r.Items, documentToHit(sub, doc))
+			}
+		}
+
+		if len(items) > 0 || i > 0 {
+			break
+		}
+
+		if !batchWait(ctx, events, deadline, 10, batchDelay) {
+			return &res, nil
+		}
+	}
+
+	for _, sub := range p {
+		res.Result = append(res.Result, sub)
+	}
+
+	return &res, nil
+}
+
+// Wait until we're likely to fill a batch or batchDuration has passed since we
+// got the first item. Returns false if we hit the deadline or the context is
+// cancelled before we get any item.
+func batchWait(ctx context.Context,
+	events chan EventPercolated, deadline time.Time,
+	batchSize int, batchDuration time.Duration,
+) bool {
+	var (
+		got       int
+		batchDone <-chan time.Time
+	)
+
+	doneWaiting := time.After(time.Until(deadline))
+
+	for {
+		select {
+		case <-batchDone:
+			return true
+		case <-events:
+			if got == 0 {
+				// Force finish batch after batch duration or
+				// just before we hit the request deadline.
+				batchDone = time.After(min(
+					batchDuration,
+					time.Until(deadline)-1*time.Millisecond,
+				))
+			}
+
+			got++
+
+			if got == batchSize {
+				return true
+			}
+		case <-doneWaiting:
+			return false
+		case <-ctx.Done():
+			return false
+		}
+	}
+}
+
+func documentToHit(sub userSub, doc postgres.PercolatorDocument) *index.HitV1 {
+	hit := index.HitV1{
+		Id: doc.Document.UUID,
+	}
+
+	if sub.Spec.LoadDocuments {
+		hit.Document = newsdoc.DocumentToRPC(*doc.Document)
+	}
+
+	if sub.Spec.Source {
+		hit.Source = make(map[string]*index.FieldValuesV1)
+
+		for key, values := range doc.Fields {
+			hit.Source[key] = &index.FieldValuesV1{
+				Values: values,
+			}
+		}
+	}
+
+	if sub.Filter != nil {
+		hit.Fields = make(map[string]*index.FieldValuesV1)
+
+		for field, values := range doc.Fields {
+			if !sub.Filter.Includes(field) {
+				continue
+			}
+
+			hit.Fields[field] = &index.FieldValuesV1{
+				Values: values,
+			}
+		}
+
+	}
+
+	return &hit
+}
+
+type FieldFilter struct {
+	globs []glob.Glob
+	exact map[string]struct{}
+}
+
+func NewFieldFilter(fields []string) (*FieldFilter, error) {
+	ff := FieldFilter{
+		exact: make(map[string]struct{}),
+	}
+
+	for _, field := range fields {
+		if !strings.Contains(field, "*") {
+			ff.exact[field] = struct{}{}
+
+			continue
+		}
+
+		g, err := glob.Compile(field, '.')
+		if err != nil {
+			return nil, fmt.Errorf(
+				"invalid field expression %q: %w", field, err)
+		}
+
+		ff.globs = append(ff.globs, g)
+	}
+
+	return &ff, nil
+}
+
+func (ff *FieldFilter) Includes(field string) bool {
+	if _, ok := ff.exact[field]; ok {
+		return true
+	}
+
+	for i := range ff.globs {
+		if ff.globs[i].Match(field) {
+			return true
+		}
+	}
+
+	return false
+}
+
+type userSub struct {
+	postgres.GetSubscriptionsRow
+
+	Cursor int64
+	Filter *FieldFilter
+}
+
+func (s *SearchServiceV1) getSubscriptionsForUser(
+	ctx context.Context, q *postgres.Queries, client string, subIDs []int64,
+) ([]userSub, error) {
+	subCacheKeys := make([]string, len(subIDs))
+
+	for i, id := range subIDs {
+		subCacheKeys[i] = strconv.FormatInt(id, 10)
+	}
+
+	res, err := s.subscriptions.GetOrFetchBatch(ctx, subCacheKeys, func(id string) string {
+		// Make sure that the cache key is scoped per user.
+		return id + " " + client
+	}, func(ctx context.Context, ids []string) (map[string]userSub, error) {
+		missIDs := make([]int64, len(ids))
+
+		for idx, s := range ids {
+			// Ignoring error here, but we know that these were
+			// created using FormatInt().
+			missIDs[idx], _ = strconv.ParseInt(s, 10, 64)
+		}
+
+		subscriptions, err := q.GetSubscriptions(ctx, postgres.GetSubscriptionsParams{
+			Subscriptions: missIDs,
+			Client:        client,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("load subscriptions from DB: %v", err)
+		}
+
+		result := make(map[string]userSub)
+
+		for _, sub := range subscriptions {
+			var filter *FieldFilter
+			if len(sub.Spec.Fields) > 0 {
+				filter, _ = NewFieldFilter(sub.Spec.Fields)
+			}
+
+			result[strconv.FormatInt(sub.ID, 10)] = userSub{
+				GetSubscriptionsRow: sub,
+				Filter:              filter,
+			}
+		}
+
+		return result, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	subs := make([]userSub, 0, len(res))
+
+	for _, sub := range res {
+		subs = append(subs, sub)
+	}
+
+	return subs, nil
 }
 
 // GetMappings implements index.SearchV1.
@@ -211,6 +607,11 @@ func (s *SearchServiceV1) Query(
 			"pagination cannot be used with subscriptions")
 	}
 
+	if req.Subscribe && req.DocumentType == "" {
+		return nil, twirp.InvalidArgumentError("subscribe",
+			"document type is required for subscriptions")
+	}
+
 	client, indexSet := s.active.GetActiveIndex()
 
 	indexPattern := "documents-" + indexSet
@@ -313,7 +714,7 @@ func (s *SearchServiceV1) Query(
 		if err != nil {
 			return nil, errors.Join(
 				fmt.Errorf("opensearch responded with: %s", res.Status()),
-				fmt.Errorf("decode error response: %w", err),
+				fmt.Errorf("decoded error response: %w", err),
 			)
 		}
 
@@ -418,9 +819,13 @@ func (s *SearchServiceV1) Query(
 	}
 
 	if req.Subscribe {
-		subID, subCursor, err := s.createSubscription(
-			ctx, auth.Claims.Subject, shared, boolQueryV1(boolQuery),
-			SubscriptionSpec{
+		subID, cursor, err := s.createSubscription(
+			ctx,
+			auth.Claims.Subject,
+			shared,
+			req.DocumentType,
+			boolQueryV1(boolQuery),
+			postgres.SubscriptionSpec{
 				Source:        req.Source,
 				LoadDocuments: req.LoadDocument,
 				Fields:        req.Fields,
@@ -434,7 +839,7 @@ func (s *SearchServiceV1) Query(
 		} else {
 			pRes.Subscription = &index.SubscriptionReference{
 				Id:     subID,
-				Cursor: subCursor,
+				Cursor: cursor,
 			}
 		}
 	}
@@ -447,8 +852,9 @@ func (s *SearchServiceV1) createSubscription(
 	ctx context.Context,
 	sub string,
 	shared bool,
+	docType string,
 	query map[string]any,
-	spec SubscriptionSpec,
+	spec postgres.SubscriptionSpec,
 ) (_ int64, _ int64, outErr error) {
 	queryJSON, err := json.Marshal(query)
 	if err != nil {
@@ -481,7 +887,8 @@ func (s *SearchServiceV1) createSubscription(
 		Hash:    percHash[:],
 		Owner:   pg.TextOrNull(owner),
 		Created: pg.Time(time.Now()),
-		Query:   queryJSON,
+		DocType: docType,
+		Query:   query,
 	})
 	if err != nil {
 		return 0, 0, fmt.Errorf("register percolator: %w", err)
@@ -492,10 +899,25 @@ func (s *SearchServiceV1) createSubscription(
 		Client:     sub,
 		Hash:       subHash[:],
 		Touched:    pg.Time(time.Now()),
-		Spec:       specJSON,
+		Spec:       spec,
 	})
 	if err != nil {
 		return 0, 0, fmt.Errorf("register subscription: %w", err)
+	}
+
+	// TODO: Only publish on initial create. CurrentID == 0 might be good
+	// enough.
+	err = s.percChanges.Publish(ctx, tx, PercolatorUpdate{
+		ID:      perc.ID,
+		DocType: docType,
+	})
+	if err != nil {
+		return 0, 0, fmt.Errorf("publish percolator update: %w", err)
+	}
+
+	cursor, err := q.GetLastPercolatorEventID(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("get current cursor: %w", err)
 	}
 
 	err = tx.Commit(ctx)
@@ -503,13 +925,7 @@ func (s *SearchServiceV1) createSubscription(
 		return 0, 0, fmt.Errorf("commit changes: %w", err)
 	}
 
-	return subID, perc.CurrentID, nil
-}
-
-type SubscriptionSpec struct {
-	Source        bool
-	Fields        []string
-	LoadDocuments bool
+	return subID, cursor, nil
 }
 
 type EventPayload struct {

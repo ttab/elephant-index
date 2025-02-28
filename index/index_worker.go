@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -87,7 +86,7 @@ func newIndexWorker(
 			"unmarshal current index mappings: %w", err)
 	}
 
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		go iw.loop(ctx)
 	}
 
@@ -217,7 +216,7 @@ func (iw *indexWorker) enrich(
 // Process indexes the documents in a batch, and should only return an error if
 // we get an indication that indexing in ES/OS has become impossible.
 func (iw *indexWorker) Process(
-	ctx context.Context, documents []*enrichJob,
+	ctx context.Context, documents []*enrichJob, caughtUp bool,
 ) error {
 	go func() {
 		for _, job := range documents {
@@ -287,6 +286,7 @@ func (iw *indexWorker) Process(
 		changes := mappings.ChangesFrom(iw.knownMappings)
 
 		if changes.HasNew() {
+
 			err := iw.attemptMappingUpdate(ctx, mappings)
 			if err != nil {
 				return err
@@ -302,15 +302,6 @@ func (iw *indexWorker) Process(
 				continue
 			}
 
-			enc := json.NewEncoder(os.Stderr)
-			enc.SetIndent("", "  ")
-
-			enc.Encode(iw.knownMappings.Properties[p])
-			enc.Encode(mappings.Properties[p])
-			enc.Encode(c)
-
-			os.Exit(1)
-
 			iw.idx.metrics.ignoredMapping.WithLabelValues(
 				iw.indexName, p,
 			).Add(1)
@@ -318,8 +309,17 @@ func (iw *indexWorker) Process(
 
 		values := idxDoc.Values()
 
-		if iw.idx.enablePercolation {
-			iw.percolator.PercolateDocument(iw.idx.name, iw.percolateIndexName, values, job.doc)
+		if iw.idx.enablePercolation && caughtUp {
+			iw.percolator.PercolateDocument(
+				ctx,
+				iw.idx.name,
+				iw.percolateIndexName,
+				postgres.PercolatorDocument{
+					ID:       job.EventID,
+					Fields:   values,
+					Document: &job.State.Document,
+				},
+			)
 		}
 
 		err = errors.Join(

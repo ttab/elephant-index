@@ -100,7 +100,7 @@ func (s *ManagementService) updateIndexSetStatus(
 		return fmt.Errorf("set status: %w", err)
 	}
 
-	err = pg.Publish(ctx, tx, NotifyIndexStatusChange,
+	err = pg.Publish(ctx, tx, ChanIndexStatusChange,
 		IndexStatusChange{
 			Name: params.Name,
 		})
@@ -458,7 +458,7 @@ func (s *ManagementService) reindex(
 			"create index set in database: %w", err)
 	}
 
-	err = pg.Publish(ctx, tx, NotifyIndexStatusChange,
+	err = pg.Publish(ctx, tx, ChanIndexStatusChange,
 		IndexStatusChange{
 			Name: name,
 		})

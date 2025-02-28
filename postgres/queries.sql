@@ -45,11 +45,11 @@ INSERT INTO cluster(name, url, auth) VALUES(@name, @url, @auth);
 SELECT name FROM index_set WHERE deleted = false;
 
 -- name: GetActiveIndexSet :one
-SELECT name, position, cluster, active, enabled, deleted, modified
+SELECT name, position, cluster, active, enabled, deleted, modified, caught_up
 FROM index_set WHERE active = true;
 
 -- name: GetIndexSets :many
-SELECT name, position, cluster, active, enabled, deleted, modified
+SELECT name, position, cluster, active, enabled, deleted, modified, caught_up
 FROM index_set WHERE deleted = false;
 
 -- name: IndexSetQuery :many
@@ -61,7 +61,7 @@ AND (sqlc.narg(enabled)::bool IS NULL OR enabled = @enabled)
 LIMIT 10 OFFSET @row_offset;
 
 -- name: GetIndexSet :one
-SELECT name, position, cluster, active, enabled, deleted, modified
+SELECT name, position, cluster, active, enabled, deleted, modified, caught_up
 FROM index_set WHERE name = @name;
 
 -- name: IndexSetExists :one
@@ -85,11 +85,11 @@ WHERE cluster IS NULL;
 
 -- name: UpdateSetPosition :exec
 UPDATE index_set
-SET position = @position, modified = NOW()
+SET position = @position, modified = NOW(), caught_up = @caught_up
 WHERE name = @name;
 
 -- name: GetIndexSetPosition :one
-SELECT position
+SELECT position, caught_up
 FROM index_set
 WHERE name = @name;
 
@@ -115,7 +115,7 @@ INSERT INTO document_index(name, set_name, content_type, mappings, feature_flags
 VALUES (@name, @set_name, @content_type, @mappings, @feature_flags);
 
 -- name: GetIndexSetForUpdate :one
-SELECT name, position, cluster, active, enabled, deleted, modified
+SELECT name, position, cluster, active, enabled, deleted, modified, caught_up
 FROM index_set
 WHERE name = @name
 FOR UPDATE;
@@ -147,22 +147,63 @@ DELETE FROM index_set
 WHERE name = @name AND deleted = true;
 
 -- name: CreatePercolator :one
-INSERT INTO percolator(hash, owner, created, current_id, query)
-VALUES(@hash, @owner, @created, 0, @query)
+INSERT INTO percolator(hash, owner, created, doc_type, query)
+VALUES(@hash, @owner, @created, @doc_type, @query)
 ON CONFLICT (hash, owner) DO UPDATE
    SET hash = excluded.hash -- noop, but gets us the id and cursor
-RETURNING id, current_id;
+RETURNING id, created != @created AS existed;
 
--- name: GetPercolatorState :one
-SELECT current_id FROM percolator
-WHERE id = @id;
+-- TODO: add pagination
+-- name: GetPercolators :many
+SELECT id, hash, owner, created, doc_type, query
+FROM percolator
+WHERE deleted = false;
 
--- name: InsertPercolatorEvent :exec
-INSERT INTO percolator_event(
-       percolator, id, created, payload
+-- name: GetPercolator :one
+SELECT id, hash, owner, created, doc_type, query FROM percolator
+WHERE id = @id AND deleted = false;
+
+-- name: InsertPercolatorEvents :exec
+INSERT INTO percolator_event(id, document, percolator, created) (
+       SELECT @id::bigint,
+              @document::uuid,
+              unnest(@percolators::bigint[]),
+              @created::timestamptz
+) ON CONFLICT (id, percolator) DO NOTHING;
+
+-- name: FetchPercolatorEvents :many
+WITH p AS (
+     SELECT unnest(@ids::bigint[]) AS id,
+            unnest(@percolators::bigint[]) AS percolator
+)
+SELECT sub.id, sub.percolator FROM (
+       -- We're only interested in the latest event for each document and
+       -- percolator, so dedupe using window func. This also means that limit is
+       -- applied pre-deduplication.
+       SELECT e.id, e.percolator,
+              ROW_NUMBER() OVER (PARTITION BY e.document, e.percolator ORDER BY e.id DESC) AS rownum
+       FROM percolator_event AS e
+            INNER JOIN p ON e.id > p.id AND e.percolator = p.percolator
+       ORDER by e.id ASC
+       LIMIT sqlc.arg('limit')::bigint
+) AS sub
+WHERE sub.rownum = 1;
+
+-- name: InsertPercolatorEventPayload :exec
+INSERT INTO percolator_event_payload(
+       id, created, data
 ) VALUES (
-       @percolator, @id, @created, @payload
-);
+       @id, @created, @data
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- name: GetLastPercolatorEventID :one
+SELECT MAX(id)::bigint FROM percolator_event_payload;
+
+-- name: GetPercolatorEventPayload :one
+SELECT id, created, data
+FROM percolator_event_payload
+WHERE id = @id;
 
 -- name: CreateSubscription :one
 INSERT INTO subscription(
@@ -174,10 +215,16 @@ ON CONFLICT (percolator, client, hash) DO UPDATE
    SET touched = @touched
 RETURNING id;
 
--- name: TouchSubscription :exec
+-- name: GetSubscriptions :many
+SELECT id, percolator, spec
+FROM subscription
+WHERE id = ANY(@subscriptions::bigint[])
+      AND client = @client;
+
+-- name: TouchSubscriptions :exec
 UPDATE subscription
        SET touched = @touched
-WHERE id = @id;
+WHERE id = ANY(@ids::bigint[]);
 
 -- name: DropSubscription :exec
 DELETE FROM subscription
@@ -187,3 +234,48 @@ WHERE percolator = @percolator
 -- name: GetActiveSubscriptionCount :one
 SELECT COUNT(*) FROM subscription
 WHERE percolator = @percolator AND touched > @cutoff;
+
+-- name: PercolatorsToDelete :many
+SELECT id FROM percolator AS p
+WHERE NOT EXISTS (
+      SELECT 1 FROM subscription AS s
+      WHERE s.percolator = p.id
+);
+
+-- name: DeletePercolators :exec
+DELETE FROM percolator
+WHERE id = ANY(@ids::bigint[]);
+
+-- name: MarkPercolatorsForDeletion :exec
+UPDATE percolator SET deleted = true
+WHERE id = ANY(@ids::bigint[]);
+
+-- name: GetPercolatorsMarkedForDeletion :exec
+SELECT id FROM percolator WHERE deleted = true;
+
+-- name: SubscriptionsToDelete :many
+SELECT id FROM subscription
+WHERE touched < @cutoff;
+
+-- name: DeleteSubscriptions :exec
+DELETE FROM subscription
+WHERE id = ANY(@ids::bigint[]);
+
+-- name: DeleteSubscriptionsForPercolators :exec
+DELETE FROM subscription
+WHERE percolator = ANY(@percolators::bigint[]);
+
+-- name: DeletePercolatorEvents :exec
+DELETE FROM percolator_event WHERE created < @cutoff;
+
+-- name: DeletePercolatorEventPayloads :exec
+DELETE FROM percolator_event_payload WHERE created < @cutoff;
+
+-- name: SetAppState :exec
+INSERT INTO app_state(name, data)
+VALUES (@name, @data)
+ON CONFLICT (name) DO UPDATE SET
+   data = excluded.data;
+
+-- name: GetAppState :one
+SELECT data FROM app_state WHERE name = @name;

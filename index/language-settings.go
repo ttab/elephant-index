@@ -8,10 +8,8 @@ import (
 )
 
 type OpenSearchIndexConfig struct {
-	NameSuffix string
-	Language   string
-	Region     string
-	Settings   OpensearchSettings
+	Language LanguageInfo
+	Settings OpensearchSettings
 }
 
 type OpensearchSettings struct {
@@ -113,9 +111,10 @@ func (lr *LanguageResolver) GetLanguageInfo(code string) (LanguageInfo, error) {
 }
 
 type LanguageInfo struct {
-	Code     string
-	Language string
-	Region   string
+	Code         string
+	Language     string
+	Region       string
+	RegionSuffix string
 }
 
 func getLanguageInfo(
@@ -142,15 +141,20 @@ func getLanguageInfo(
 
 	if info.HasRegion {
 		lang.Region = strings.ToLower(info.Region)
-
-		return lang, nil
+	} else {
+		region, hasDefault := opts.DefaultRegions[info.Language]
+		if hasDefault {
+			lang.Region = strings.ToLower(region)
+			lang.Code += "-" + lang.Region
+		}
 	}
 
-	region, hasDefault := opts.DefaultRegions[info.Language]
-	if hasDefault {
-		lang.Region = strings.ToLower(region)
-		lang.Code += "-" + lang.Region
+	regionSuffix := "unspecified"
+	if lang.Region != "" {
+		regionSuffix = strings.ToLower(lang.Region)
 	}
+
+	lang.RegionSuffix = regionSuffix
 
 	return lang, nil
 }
@@ -158,11 +162,6 @@ func getLanguageInfo(
 func GetIndexConfig(
 	lang LanguageInfo,
 ) OpenSearchIndexConfig {
-	regionSuffix := "unspecified"
-	if lang.Region != "" {
-		regionSuffix = strings.ToLower(lang.Region)
-	}
-
 	analyzer := "standard"
 
 	for _, ls := range languages {
@@ -209,10 +208,8 @@ func GetIndexConfig(
 	})
 
 	return OpenSearchIndexConfig{
-		NameSuffix: fmt.Sprintf("%s-%s", lang.Language, regionSuffix),
-		Language:   lang.Language,
-		Region:     lang.Region,
-		Settings:   s,
+		Language: lang,
+		Settings: s,
 	}
 }
 

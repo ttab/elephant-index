@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 	"github.com/ttab/elephantine"
 )
 
@@ -120,6 +121,27 @@ func (et ElasticErrorType) Reason() string {
 	}
 
 	return ErrorTypeInternal.Reason()
+}
+
+func ElasticErrorFromResponse(res *opensearchapi.Response) error {
+	if !res.IsError() {
+		return nil
+	}
+
+	dec := json.NewDecoder(res.Body)
+
+	var elasticErr ElasticErrorResponse
+
+	err := dec.Decode(&elasticErr)
+	if err != nil {
+		return errors.Join(
+			fmt.Errorf("opensearch responded with: %s", res.Status()),
+			fmt.Errorf("decoded error response: %w", err),
+		)
+	}
+
+	return fmt.Errorf(
+		"error response from opensearch: %s", res.Status())
 }
 
 type ElasticErrorResponse struct {

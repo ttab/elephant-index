@@ -6,15 +6,29 @@ Before indexing, documents are flattened to a [flat property structure](index/te
 
 The indexer will add to the index mappings as needed, and no new properties will be indexed without first creating a mapping for it. A separate index is created for each document type and language. This lets us avoid conflicts between mappings of separate document types, and allows us to use language specific analyzers for better multilingual support.
 
-## Searching
-
-Elephant index proxies search requests to OpenSearch with some extra processing. First the index name is mapped to the currently active index(es) for the specified type(s). Then, we check that the client has the "search" scope, and then incoming query is wrapped in a boolean query that enforces that only documents that has the client subject or one of the clients units in its allowed `readers` are searchable.
-
-### Index names
+## Index names
 
 The elephant index creates indexes in the pattern `documents-[random name]-[type]-[language]`. So if the name of the index set is "factual-tiger", the type of the document is "core/article", and the language is "sv-se", the following index will be used: "documents-factual-tiger-core_article-sv-se". For language codes without region the suffix "-unspecified" will be used, e.g. "sv" -> "documents-factual-tiger-core_article-sv-unspecified".
 
-Incoming searches will only be able to specify the part of the index name that comes after "documents-factual-tiger-" as the first part depends on internal indexer state. The reason for having a index set part of the index name is that that will be used when re-indexing. When re-indexing a new index set will be created, and the event-log will be replayed to populate those indexes. When the new indexes have caught up we can switch over to using the new indexes. 
+## Subscriptions and percolation
+
+When searching, clients can create a subscription for the query. This will register the percolation query and subscription in the database. The next time a document with a type matching the query is indexed a percolator document will be created for the language of the document.
+
+The reason that the percolator document isn't created immediately is that there are multiple percolator indices per document type (one for each language) and the number of languages are not known ahead of time. If a document with a new language is indexed while the query is running a new language index is created while the subscription is running.
+
+### Delivery guarantees
+
+We do not have delivery guarantees when it comes to subscriptions. The percolation event tables are unlogged (non-persistent, faster) and are lost on database restart/failover. We won't halt percolation or the indexer in general if document percolation fails, actually indexing the documents is prioritised over percolation. No special care is taken to ensure that no events are missed when switching active indexes (re-indexing). Clients _can_ compensate for this by running comparisons against the event log, but subscriptions are primarily meant for non-critical use-cases like keeping data up-to-date in a UI.
+
+### Flow
+
+Indexers ask the coordinator to percolate the event/document after indexing it to the document index. The coordinator discards percolation requests from all but the active indexer. The coordinator saves the event ID and payload (computed fields + navigadoc) to database and notifies the percolator (pg pubsub) that there's new stuff to percolate (the payload gets cached in-process to cut down on db traffic). The percolator picks up on the notification and percolates events after the last percolated event up until the most recent. The result of the percolation is stored in DB and notifications are emitted. In-flight poll requests from clients react to the notification and responds with the results.
+
+### Future development
+
+Create a language neutral percolation index for each type and allow percolation documents to be created ahead of time for subscriptions that have been marked as language-neutral. This would cut down on the work needed (less stored percolation documents), and move percolation document creation out of the percolation loop (lower percolation latencies). Variant on this idea: subscriptions with a fixed language used to the same effect.
+
+Percolation concurrency - the percolation is currently completely serial and non-batched. In high throughput scenarios this makes it likely to start lagging. One low hanging fruit is batching documents in the percolation calls, another is to allow percolation for different types to run concurrently.
 
 ## Re-indexing
 
