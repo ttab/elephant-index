@@ -569,7 +569,6 @@ func (p *Percolator) handlePercolatorUpdates(ctx context.Context) {
 				"percolator_id", def.ID,
 				elephantine.LogKeyError, err)
 		}
-
 	}
 }
 
