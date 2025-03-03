@@ -116,7 +116,7 @@ func NewPercolator(
 	}
 
 	go p.handlePercolatorUpdates(ctx)
-	go p.percolateEvents(ctx)
+	go p.percolationLoop(ctx)
 	go p.cleanup(ctx)
 
 	return &p, nil
@@ -317,10 +317,44 @@ func (p *Percolator) purgePercolator(
 	})
 }
 
-func (p *Percolator) percolateEvents(ctx context.Context) {
+func (p *Percolator) percolationLoop(ctx context.Context) {
+	for {
+		lock, err := pg.NewJobLock(
+			p.db, p.log, "percolator",
+			pg.JobLockOptions{})
+		if err != nil {
+			p.log.ErrorContext(ctx, "failed to create percolator job lock",
+				elephantine.LogKeyError, err)
+
+			time.Sleep(1 * time.Second)
+
+			continue
+		}
+
+		err = lock.RunWithContext(ctx, p.percolateEvents)
+		if err != nil {
+			p.log.ErrorContext(ctx, "failed to percolate events",
+				elephantine.LogKeyError, err)
+
+			time.Sleep(1 * time.Second)
+
+			continue
+		}
+
+		break
+	}
+}
+
+func (p *Percolator) percolateEvents(ctx context.Context) error {
 	q := postgres.New(p.db)
 
 	for evt := range p.pEvent {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
 		if p.lastEvent >= evt.ID {
 			continue
 		}
@@ -333,9 +367,8 @@ func (p *Percolator) percolateEvents(ctx context.Context) {
 		for id := start; id <= evt.ID; id++ {
 			err := p.handleEventPercolation(ctx, id)
 			if err != nil {
-				p.log.ErrorContext(ctx, "percolation failed",
-					elephantine.LogKeyEventID, id,
-					elephantine.LogKeyError, err)
+				return fmt.Errorf(
+					"percolate event %d: %w", id, err)
 			}
 
 			p.lastEvent = id
@@ -350,11 +383,11 @@ func (p *Percolator) percolateEvents(ctx context.Context) {
 			},
 		})
 		if err != nil {
-			p.log.ErrorContext(ctx, "failed to persist percolator state",
-				elephantine.LogKeyEventID, p.lastEvent,
-				elephantine.LogKeyError, err)
+			return fmt.Errorf("persist percolator state: %w", err)
 		}
 	}
+
+	return nil
 }
 
 func (p *Percolator) handleEventPercolation(ctx context.Context, id int64) error {
@@ -536,6 +569,7 @@ func (p *Percolator) handlePercolatorUpdates(ctx context.Context) {
 				"percolator_id", def.ID,
 				elephantine.LogKeyError, err)
 		}
+
 	}
 }
 
