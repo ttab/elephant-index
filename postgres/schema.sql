@@ -104,7 +104,18 @@ CREATE TABLE public.percolator (
     owner text,
     created timestamp with time zone NOT NULL,
     doc_type text NOT NULL,
-    query jsonb NOT NULL
+    query jsonb NOT NULL,
+    deleted boolean DEFAULT false NOT NULL
+);
+
+
+--
+-- Name: percolator_document_index; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.percolator_document_index (
+    percolator bigint NOT NULL,
+    index text NOT NULL
 );
 
 
@@ -116,6 +127,7 @@ CREATE UNLOGGED TABLE public.percolator_event (
     id bigint NOT NULL,
     document uuid NOT NULL,
     percolator bigint NOT NULL,
+    matched boolean NOT NULL,
     created timestamp with time zone NOT NULL
 );
 
@@ -239,6 +251,14 @@ ALTER TABLE ONLY public.percolator
 
 
 --
+-- Name: percolator_document_index percolator_document_index_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.percolator_document_index
+    ADD CONSTRAINT percolator_document_index_pkey PRIMARY KEY (percolator, index);
+
+
+--
 -- Name: percolator_event_payload percolator_event_payload_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -320,6 +340,14 @@ ALTER TABLE ONLY public.document_index
 
 ALTER TABLE ONLY public.index_set
     ADD CONSTRAINT fk_set_cluster FOREIGN KEY (cluster) REFERENCES public.cluster(name) ON DELETE CASCADE;
+
+
+--
+-- Name: percolator_document_index percolator_document_index_percolator_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.percolator_document_index
+    ADD CONSTRAINT percolator_document_index_percolator_fkey FOREIGN KEY (percolator) REFERENCES public.percolator(id) ON DELETE CASCADE;
 
 
 --

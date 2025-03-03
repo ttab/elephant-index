@@ -29,14 +29,14 @@ func TestSubscriptions(t *testing.T) {
 
 	clients := index.NewOSClientProvider(postgres.New(db))
 
-	index.RunIndex(ctx, index.Parameters{
+	err = index.RunIndex(ctx, index.Parameters{
 		APIServer:          elephantine.NewTestAPIServer(t, logger),
 		Logger:             logger,
 		Database:           db,
 		DefaultCluster:     os.GetEndpoint(),
 		Client:             clients.GetClientForCluster,
 		Documents:          nil,
-		RepositoryEndpoint: "",
+		AnonymousDocuments: nil,
 		Validator:          nil,
 		Metrics:            &index.Metrics{},
 		Languages:          index.LanguageOptions{},
@@ -44,6 +44,7 @@ func TestSubscriptions(t *testing.T) {
 		AuthInfoParser:     nil,
 		Sharding:           index.ShardingPolicy{},
 	})
+	test.Must(t, err, "run index")
 }
 
 var _ repository.Documents = &PercDocs{}
@@ -53,96 +54,134 @@ type PercDocs struct {
 }
 
 // BulkGet implements repository.Documents.
-func (p *PercDocs) BulkGet(context.Context, *repository.BulkGetRequest) (*repository.BulkGetResponse, error) {
+func (p *PercDocs) BulkGet(
+	_ context.Context, _ *repository.BulkGetRequest,
+) (*repository.BulkGetResponse, error) {
 	panic("unimplemented")
 }
 
 // CompactedEventlog implements repository.Documents.
-func (p *PercDocs) CompactedEventlog(context.Context, *repository.GetCompactedEventlogRequest) (*repository.GetCompactedEventlogResponse, error) {
+func (p *PercDocs) CompactedEventlog(
+	_ context.Context, _ *repository.GetCompactedEventlogRequest,
+) (*repository.GetCompactedEventlogResponse, error) {
 	panic("unimplemented")
 }
 
 // Delete implements repository.Documents.
-func (p *PercDocs) Delete(context.Context, *repository.DeleteDocumentRequest) (*repository.DeleteDocumentResponse, error) {
+func (p *PercDocs) Delete(
+	_ context.Context, _ *repository.DeleteDocumentRequest,
+) (*repository.DeleteDocumentResponse, error) {
 	panic("unimplemented")
 }
 
 // Eventlog implements repository.Documents.
-func (p *PercDocs) Eventlog(context.Context, *repository.GetEventlogRequest) (*repository.GetEventlogResponse, error) {
+func (p *PercDocs) Eventlog(
+	_ context.Context, _ *repository.GetEventlogRequest,
+) (*repository.GetEventlogResponse, error) {
 	panic("unimplemented")
 }
 
 // ExtendLock implements repository.Documents.
-func (p *PercDocs) ExtendLock(context.Context, *repository.ExtendLockRequest) (*repository.LockResponse, error) {
+func (p *PercDocs) ExtendLock(
+	_ context.Context, _ *repository.ExtendLockRequest,
+) (*repository.LockResponse, error) {
 	panic("unimplemented")
 }
 
 // Get implements repository.Documents.
-func (p *PercDocs) Get(context.Context, *repository.GetDocumentRequest) (*repository.GetDocumentResponse, error) {
+func (p *PercDocs) Get(
+	_ context.Context, _ *repository.GetDocumentRequest,
+) (*repository.GetDocumentResponse, error) {
 	panic("unimplemented")
 }
 
 // GetHistory implements repository.Documents.
-func (p *PercDocs) GetHistory(context.Context, *repository.GetHistoryRequest) (*repository.GetHistoryResponse, error) {
+func (p *PercDocs) GetHistory(
+	_ context.Context, _ *repository.GetHistoryRequest,
+) (*repository.GetHistoryResponse, error) {
 	panic("unimplemented")
 }
 
 // GetMeta implements repository.Documents.
-func (p *PercDocs) GetMeta(context.Context, *repository.GetMetaRequest) (*repository.GetMetaResponse, error) {
+func (p *PercDocs) GetMeta(
+	_ context.Context, _ *repository.GetMetaRequest,
+) (*repository.GetMetaResponse, error) {
 	panic("unimplemented")
 }
 
 // GetPermissions implements repository.Documents.
-func (p *PercDocs) GetPermissions(context.Context, *repository.GetPermissionsRequest) (*repository.GetPermissionsResponse, error) {
+func (p *PercDocs) GetPermissions(
+	_ context.Context, _ *repository.GetPermissionsRequest,
+) (*repository.GetPermissionsResponse, error) {
 	panic("unimplemented")
 }
 
 // GetStatus implements repository.Documents.
-func (p *PercDocs) GetStatus(context.Context, *repository.GetStatusRequest) (*repository.GetStatusResponse, error) {
+func (p *PercDocs) GetStatus(
+	_ context.Context, _ *repository.GetStatusRequest,
+) (*repository.GetStatusResponse, error) {
 	panic("unimplemented")
 }
 
 // GetStatusHistory implements repository.Documents.
-func (p *PercDocs) GetStatusHistory(context.Context, *repository.GetStatusHistoryRequest) (*repository.GetStatusHistoryReponse, error) {
+func (p *PercDocs) GetStatusHistory(
+	_ context.Context, _ *repository.GetStatusHistoryRequest,
+) (*repository.GetStatusHistoryReponse, error) {
 	panic("unimplemented")
 }
 
 // GetStatusOverview implements repository.Documents.
-func (p *PercDocs) GetStatusOverview(context.Context, *repository.GetStatusOverviewRequest) (*repository.GetStatusOverviewResponse, error) {
+func (p *PercDocs) GetStatusOverview(
+	_ context.Context, _ *repository.GetStatusOverviewRequest,
+) (*repository.GetStatusOverviewResponse, error) {
 	panic("unimplemented")
 }
 
 // ListDeleted implements repository.Documents.
-func (p *PercDocs) ListDeleted(context.Context, *repository.ListDeletedRequest) (*repository.ListDeletedResponse, error) {
+func (p *PercDocs) ListDeleted(
+	_ context.Context, _ *repository.ListDeletedRequest,
+) (*repository.ListDeletedResponse, error) {
 	panic("unimplemented")
 }
 
 // Lock implements repository.Documents.
-func (p *PercDocs) Lock(context.Context, *repository.LockRequest) (*repository.LockResponse, error) {
+func (p *PercDocs) Lock(
+	_ context.Context, _ *repository.LockRequest,
+) (*repository.LockResponse, error) {
 	panic("unimplemented")
 }
 
 // Purge implements repository.Documents.
-func (p *PercDocs) Purge(context.Context, *repository.PurgeRequest) (*repository.PurgeResponse, error) {
+func (p *PercDocs) Purge(
+	_ context.Context, _ *repository.PurgeRequest,
+) (*repository.PurgeResponse, error) {
 	panic("unimplemented")
 }
 
 // Restore implements repository.Documents.
-func (p *PercDocs) Restore(context.Context, *repository.RestoreRequest) (*repository.RestoreResponse, error) {
+func (p *PercDocs) Restore(
+	_ context.Context, _ *repository.RestoreRequest,
+) (*repository.RestoreResponse, error) {
 	panic("unimplemented")
 }
 
 // Unlock implements repository.Documents.
-func (p *PercDocs) Unlock(context.Context, *repository.UnlockRequest) (*repository.UnlockResponse, error) {
+func (p *PercDocs) Unlock(
+	_ context.Context, _ *repository.UnlockRequest,
+) (*repository.UnlockResponse, error) {
 	panic("unimplemented")
 }
 
 // Update implements repository.Documents.
-func (p *PercDocs) Update(context.Context, *repository.UpdateRequest) (*repository.UpdateResponse, error) {
+func (p *PercDocs) Update(
+	_ context.Context, _ *repository.UpdateRequest,
+) (*repository.UpdateResponse, error) {
 	panic("unimplemented")
 }
 
 // Validate implements repository.Documents.
-func (p *PercDocs) Validate(context.Context, *repository.ValidateRequest) (*repository.ValidateResponse, error) {
+func (p *PercDocs) Validate(
+	_ context.Context, _ *repository.ValidateRequest,
+) (*repository.ValidateResponse, error) {
 	panic("unimplemented")
 }

@@ -67,8 +67,6 @@ type OpensearchTokenizer struct {
 	TokenChars []string `json:"token_chars,omitempty"`
 }
 
-var noDefaultRegion = map[string]string{}
-
 func NewLanguageResolver(opts LanguageOptions) *LanguageResolver {
 	if opts.DefaultRegions == nil {
 		opts.DefaultRegions = make(map[string]string)

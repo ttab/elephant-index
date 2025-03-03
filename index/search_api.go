@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gobwas/glob"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/newsdoc"
@@ -189,6 +190,7 @@ func (s *SearchServiceV1) PollSubscription(
 		}
 
 		cursorCollect[def.Percolator] = c
+
 		percSubs[def.Percolator] = append(percSubs[def.Percolator], subID)
 	}
 
@@ -280,7 +282,7 @@ func (s *SearchServiceV1) PollSubscription(
 				// Items are sorted in ascending order by ID so
 				// just set the cursor.
 				r.Subscription.Cursor = item.ID
-				r.Items = append(r.Items, documentToHit(sub, doc))
+				r.Items = append(r.Items, documentToItem(item, sub, doc))
 			}
 		}
 
@@ -341,9 +343,18 @@ func batchWait(ctx context.Context,
 	}
 }
 
-func documentToHit(sub userSub, doc postgres.PercolatorDocument) *index.HitV1 {
-	hit := index.HitV1{
-		Id: doc.Document.UUID,
+func documentToItem(
+	item postgres.FetchPercolatorEventsRow,
+	sub userSub,
+	doc postgres.PercolatorDocument,
+) *index.SubscriptionItem {
+	hit := index.SubscriptionItem{
+		Id:    doc.Document.UUID,
+		Match: item.Matched,
+	}
+
+	if !item.Matched {
+		return &hit
 	}
 
 	if sub.Spec.LoadDocuments {
@@ -372,7 +383,6 @@ func documentToHit(sub userSub, doc postgres.PercolatorDocument) *index.HitV1 {
 				Values: values,
 			}
 		}
-
 	}
 
 	return &hit
@@ -454,7 +464,7 @@ func (s *SearchServiceV1) getSubscriptionsForUser(
 			Client:        client,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("load subscriptions from DB: %v", err)
+			return nil, fmt.Errorf("load subscriptions from DB: %w", err)
 		}
 
 		result := make(map[string]userSub)
@@ -474,7 +484,7 @@ func (s *SearchServiceV1) getSubscriptionsForUser(
 		return result, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, err //nolint: wrapcheck
 	}
 
 	subs := make([]userSub, 0, len(res))
@@ -847,7 +857,7 @@ func (s *SearchServiceV1) Query(
 	return &pRes, nil
 }
 
-// TODO: Move to store layer?
+// TODO: Move to a store layer?
 func (s *SearchServiceV1) createSubscription(
 	ctx context.Context,
 	sub string,
@@ -876,26 +886,52 @@ func (s *SearchServiceV1) createSubscription(
 
 	defer pg.Rollback(tx, &outErr)
 
+	q := postgres.New(tx)
+
 	owner := sub
 	if shared {
 		owner = ""
 	}
 
-	q := postgres.New(s.db)
+	var (
+		percID    int64
+		createErr error
+	)
 
-	perc, err := q.CreatePercolator(ctx, postgres.CreatePercolatorParams{
-		Hash:    percHash[:],
-		Owner:   pg.TextOrNull(owner),
-		Created: pg.Time(time.Now()),
-		DocType: docType,
-		Query:   query,
-	})
-	if err != nil {
-		return 0, 0, fmt.Errorf("register percolator: %w", err)
+	// Might have percolator creation contention, allow for a single retry.
+	for range 2 {
+		percID, err = q.CheckForPercolator(ctx, postgres.CheckForPercolatorParams{
+			Hash:  percHash[:],
+			Owner: pg.TextOrNull(owner),
+		})
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return 0, 0, fmt.Errorf("check for existing percolator: %w", err)
+		}
+
+		if percID == 0 {
+			percID, err = q.CreatePercolator(ctx, postgres.CreatePercolatorParams{
+				Hash:    percHash[:],
+				Owner:   pg.TextOrNull(owner),
+				Created: pg.Time(time.Now()),
+				DocType: docType,
+				Query:   query,
+			})
+			if err != nil {
+				createErr = fmt.Errorf("register percolator: %w", err)
+			}
+		}
+
+		if percID != 0 {
+			break
+		}
+	}
+
+	if percID == 0 && createErr != nil {
+		return 0, 0, createErr
 	}
 
 	subID, err := q.CreateSubscription(ctx, postgres.CreateSubscriptionParams{
-		Percolator: perc.ID,
+		Percolator: percID,
 		Client:     sub,
 		Hash:       subHash[:],
 		Touched:    pg.Time(time.Now()),
@@ -908,7 +944,7 @@ func (s *SearchServiceV1) createSubscription(
 	// TODO: Only publish on initial create. CurrentID == 0 might be good
 	// enough.
 	err = s.percChanges.Publish(ctx, tx, PercolatorUpdate{
-		ID:      perc.ID,
+		ID:      percID,
 		DocType: docType,
 	})
 	if err != nil {

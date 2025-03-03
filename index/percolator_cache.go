@@ -45,7 +45,7 @@ func (pdc *PercolatorDocCache) GetDocument(
 		return res.Data, nil
 	})
 	if err != nil {
-		return postgres.PercolatorDocument{}, err
+		return postgres.PercolatorDocument{}, err //nolint: wrapcheck
 	}
 
 	return doc, nil

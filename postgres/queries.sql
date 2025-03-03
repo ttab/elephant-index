@@ -146,28 +146,31 @@ FOR UPDATE NOWAIT;
 DELETE FROM index_set
 WHERE name = @name AND deleted = true;
 
+-- name: CheckForPercolator :one
+SELECT id FROM percolator
+WHERE hash = @hash AND owner = @owner;
+
 -- name: CreatePercolator :one
 INSERT INTO percolator(hash, owner, created, doc_type, query)
 VALUES(@hash, @owner, @created, @doc_type, @query)
-ON CONFLICT (hash, owner) DO UPDATE
-   SET hash = excluded.hash -- noop, but gets us the id and cursor
-RETURNING id, created != @created AS existed;
+RETURNING id;
 
 -- TODO: add pagination
 -- name: GetPercolators :many
-SELECT id, hash, owner, created, doc_type, query
+SELECT id, hash, owner, created, doc_type, query, deleted
 FROM percolator
 WHERE deleted = false;
 
 -- name: GetPercolator :one
-SELECT id, hash, owner, created, doc_type, query FROM percolator
+SELECT id, hash, owner, created, doc_type, query, deleted FROM percolator
 WHERE id = @id AND deleted = false;
 
 -- name: InsertPercolatorEvents :exec
-INSERT INTO percolator_event(id, document, percolator, created) (
+INSERT INTO percolator_event(id, document, percolator, matched, created) (
        SELECT @id::bigint,
               @document::uuid,
               unnest(@percolators::bigint[]),
+              unnest(@matched::bool[]),
               @created::timestamptz
 ) ON CONFLICT (id, percolator) DO NOTHING;
 
@@ -176,11 +179,11 @@ WITH p AS (
      SELECT unnest(@ids::bigint[]) AS id,
             unnest(@percolators::bigint[]) AS percolator
 )
-SELECT sub.id, sub.percolator FROM (
+SELECT sub.id, sub.percolator, sub.matched FROM (
        -- We're only interested in the latest event for each document and
        -- percolator, so dedupe using window func. This also means that limit is
        -- applied pre-deduplication.
-       SELECT e.id, e.percolator,
+       SELECT e.id, e.percolator, e.matched,
               ROW_NUMBER() OVER (PARTITION BY e.document, e.percolator ORDER BY e.id DESC) AS rownum
        FROM percolator_event AS e
             INNER JOIN p ON e.id > p.id AND e.percolator = p.percolator
@@ -242,16 +245,24 @@ WHERE NOT EXISTS (
       WHERE s.percolator = p.id
 );
 
--- name: DeletePercolators :exec
+-- name: DeletePercolator :exec
 DELETE FROM percolator
-WHERE id = ANY(@ids::bigint[]);
+WHERE id = @id;
 
 -- name: MarkPercolatorsForDeletion :exec
 UPDATE percolator SET deleted = true
 WHERE id = ANY(@ids::bigint[]);
 
--- name: GetPercolatorsMarkedForDeletion :exec
-SELECT id FROM percolator WHERE deleted = true;
+-- name: GetPercolatorsMarkedForDeletion :many
+SELECT id, doc_type FROM percolator WHERE deleted = true;
+
+-- name: RegisterPercolatorDocumentIndex :exec
+INSERT INTO percolator_document_index(percolator, index)
+VALUES(@percolator, @index)
+ON CONFLICT(percolator, index) DO NOTHING;
+
+-- name: GetPercolatorDocumentIndices :many
+SELECT index FROM percolator_document_index WHERE percolator = @percolator;
 
 -- name: SubscriptionsToDelete :many
 SELECT id FROM subscription

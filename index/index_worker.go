@@ -286,7 +286,6 @@ func (iw *indexWorker) Process(
 		changes := mappings.ChangesFrom(iw.knownMappings)
 
 		if changes.HasNew() {
-
 			err := iw.attemptMappingUpdate(ctx, mappings)
 			if err != nil {
 				return err
@@ -313,7 +312,6 @@ func (iw *indexWorker) Process(
 			iw.percolator.PercolateDocument(
 				ctx,
 				iw.idx.name,
-				iw.percolateIndexName,
 				postgres.PercolatorDocument{
 					ID:       job.EventID,
 					Fields:   values,

@@ -14,6 +14,14 @@ CREATE TABLE IF NOT EXISTS percolator(
        CONSTRAINT pcl_unique_hash UNIQUE NULLS NOT DISTINCT(hash, owner)
 );
 
+CREATE TABLE IF NOT EXISTS percolator_document_index(
+       percolator bigint NOT NULL,
+       index text NOT NULL,
+       PRIMARY KEY (percolator, index),
+       FOREIGN KEY (percolator) REFERENCES percolator(id)
+               ON DELETE CASCADE
+);
+
 -- The event table is unlogged, cheaper, but not persistent:
 -- https://www.crunchydata.com/blog/postgresl-unlogged-tables
 CREATE UNLOGGED TABLE IF NOT EXISTS percolator_event(
@@ -21,6 +29,7 @@ CREATE UNLOGGED TABLE IF NOT EXISTS percolator_event(
        id bigint NOT NULL,
        document uuid NOT NULL,
        percolator bigint NOT NULL,
+       matched bool NOT NULL,
        created timestamptz NOT NULL,
        PRIMARY KEY(id, percolator)
 );
@@ -58,6 +67,7 @@ ALTER TABLE index_set
 DROP TABLE IF EXISTS subscription;
 DROP TABLE IF EXISTS percolator_event_payload;
 DROP TABLE IF EXISTS percolator_event;
+DROP TABLE IF EXISTS percolator_document_index;
 DROP TABLE IF EXISTS percolator;
 DROP TABLE IF EXISTS app_state;
 

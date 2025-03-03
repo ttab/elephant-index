@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"strings"
 
@@ -57,7 +58,7 @@ func splitPath(path string) []string {
 
 func (ep *ElasticProxy) searchHandler(
 	w http.ResponseWriter, r *http.Request,
-) error {
+) (outErr error) {
 	ctx := r.Context()
 
 	authorization := r.Header.Get("Authorization")
@@ -181,13 +182,11 @@ func (ep *ElasticProxy) searchHandler(
 			"failed to perform request: %v", err)
 	}
 
-	defer elephantine.SafeClose(ep.logger, "search response", res.Body)
+	defer elephantine.Close("search response", res.Body, &outErr)
 
 	header := w.Header()
 
-	for k, v := range res.Header {
-		header[k] = v
-	}
+	maps.Copy(header, res.Header)
 
 	w.WriteHeader(res.StatusCode)
 

@@ -28,6 +28,10 @@ Indexers ask the coordinator to percolate the event/document after indexing it t
 
 Create a language neutral percolation index for each type and allow percolation documents to be created ahead of time for subscriptions that have been marked as language-neutral. This would cut down on the work needed (less stored percolation documents), and move percolation document creation out of the percolation loop (lower percolation latencies). Variant on this idea: subscriptions with a fixed language used to the same effect.
 
+Stop percolation processing on high throughput, if for example a migration is running for millions of documents it's just a waste of resources.
+
+Use a counting bloom filters (f.ex. https://github.com/tylertreat/BoomFilters/blob/master/counting.go) to decide if to emit a not-matched event, right now we always have to emit not matched. A probalistic best effort of not OK would be better.
+
 Percolation concurrency - the percolation is currently completely serial and non-batched. In high throughput scenarios this makes it likely to start lagging. One low hanging fruit is batching documents in the percolation calls, another is to allow percolation for different types to run concurrently.
 
 ## Re-indexing

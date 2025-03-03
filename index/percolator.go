@@ -112,12 +112,7 @@ func NewPercolator(
 	}
 
 	for _, def := range defs {
-		err := p.registerPercolator(def)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"register percolator %d: %w",
-				def.ID, err)
-		}
+		p.registerPercolator(def)
 	}
 
 	go p.handlePercolatorUpdates(ctx)
@@ -154,9 +149,9 @@ func (p *Percolator) cleanup(ctx context.Context) {
 	q := postgres.New(p.db)
 
 	for {
-		subscriptionCutoff := time.Now().Add(-1 * time.Hour)
-		eventCutoff := time.Now().Add(-90 * time.Minute)
-		eventPayloadCutoff := time.Now().Add(-120 * time.Minute)
+		subscriptionCutoff := time.Now().Add(-30 * time.Minute)
+		eventCutoff := time.Now().Add(-60 * time.Minute)
+		eventPayloadCutoff := time.Now().Add(-90 * time.Minute)
 
 		err := q.DeletePercolatorEvents(ctx, pg.Time(eventCutoff))
 		if err != nil {
@@ -230,18 +225,96 @@ func (p *Percolator) cleanup(ctx context.Context) {
 			return nil
 		})
 		if err != nil {
+			p.log.ErrorContext(ctx, "mark unused percolators for deletion: %w",
+				elephantine.LogKeyError, err)
+		}
+
+		err = func() error {
+			deletePercs, err := q.GetPercolatorsMarkedForDeletion(ctx)
+			if err != nil {
+				return fmt.Errorf("get percolators marked for deletion: %w", err)
+			}
+
+			client, _ := p.index.GetActiveIndex()
+
+			for _, perc := range deletePercs {
+				err := p.purgePercolator(ctx, client, perc.ID, perc.DocType)
+				if err != nil {
+					p.log.ErrorContext(ctx, "purge percolator",
+						"percolator_id", perc.ID,
+						elephantine.LogKeyError, err)
+				}
+			}
+
+			return nil
+		}()
+		if err != nil {
 			p.log.ErrorContext(ctx, "clean up subscriptions",
 				elephantine.LogKeyError, err)
 		}
 
-		err = pg.WithTX(ctx, p.db, func(tx pgx.Tx) error {
-			q := postgres.New(tx)
-
-			deletePercs, err := q.GetPercolatorsMarkedForDeletion(ctx)
-
-			return nil
-		})
+		select {
+		case <-time.After(1 * time.Minute):
+		case <-ctx.Done():
+			return
+		}
 	}
+}
+
+func (p *Percolator) purgePercolator(
+	ctx context.Context, client *opensearch.Client, id int64, docType string,
+) error {
+	return pg.WithTX(ctx, p.db, func(tx pgx.Tx) (outErr error) { //nolint: wrapcheck
+		q := postgres.New(tx)
+
+		var clean flerr.Cleaner
+
+		defer clean.FlushTo(&outErr)
+
+		indices, err := q.GetPercolatorDocumentIndices(ctx, id)
+		if err != nil {
+			return fmt.Errorf("get percolator indices with created documents: %w", err)
+		}
+
+		for _, index := range indices {
+			res, err := client.Delete(index, strconv.FormatInt(id, 10),
+				client.Delete.WithContext(ctx),
+			)
+			if err != nil {
+				return fmt.Errorf("make delete percolator document request: %w", err)
+			}
+
+			clean.Addf(res.Body.Close, "close delete response")
+
+			if res.IsError() && res.StatusCode != http.StatusNotFound {
+				// OS treats DELETE of non-existing doc as a 200
+				// OK, but guarding against the index itself not
+				// existing here.
+				return fmt.Errorf("delete percolator document: %w", ElasticErrorFromResponse(res))
+			}
+
+			err = clean.Flush()
+			if err != nil {
+				return err //nolint: wrapcheck
+			}
+		}
+
+		err = q.DeletePercolator(ctx, id)
+		if err != nil {
+			return fmt.Errorf("delete percolator from DB: %w", err)
+		}
+
+		err = p.percChanges.Publish(ctx, tx, PercolatorUpdate{
+			ID:      id,
+			DocType: docType,
+			Deleted: true,
+		})
+		if err != nil {
+			return fmt.Errorf("publish percolator change: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func (p *Percolator) percolateEvents(ctx context.Context) {
@@ -325,46 +398,23 @@ func (p *Percolator) ensurePercolatorQueries(
 		return nil
 	}
 
-	var (
-		clean   flerr.Cleaner
-		written int64
-	)
+	var written int64
 
-	defer clean.FlushTo(&outErr)
-
-	for _, p := range unseeded {
-		body, err := json.Marshal(map[string]any{
-			"query": p.Query,
-		})
+	for _, perc := range unseeded {
+		err := p.createPercolatorDocument(ctx, client, index, perc)
 		if err != nil {
-			return fmt.Errorf("marshal percolator document: %w", err)
+			p.log.ErrorContext(ctx, "failed to create percolator document",
+				"index", index,
+				"percolator_id", perc.ID,
+				elephantine.LogKeyError, err,
+			)
+
+			continue
 		}
 
-		res, err := client.Create(
-			index,
-			strconv.FormatInt(p.ID, 10),
-			bytes.NewReader(body),
-			client.Create.WithContext(ctx),
-		)
-		if err != nil {
-			return fmt.Errorf("make create request: %w", err)
-		}
-
-		clean.Addf(res.Body.Close, "close response body")
-
-		// Ignore the error reponse if it's caused by the percolator
-		// document already existing, subsciptions are immutable.
-		if res.IsError() && res.StatusCode != http.StatusConflict {
-			return fmt.Errorf(
-				"create query %d in percolator index: %w",
-				p.ID,
-				ElasticErrorFromResponse(res))
-		}
-
-		err = clean.Flush()
-		if err != nil {
-			return err
-		}
+		p.pMutex.Lock()
+		perc.HasDocument[index] = true
+		p.pMutex.Unlock()
 
 		written++
 	}
@@ -378,7 +428,7 @@ func (p *Percolator) ensurePercolatorQueries(
 			client.Indices.Flush.WithWaitIfOngoing(true),
 		)
 
-		clean.Addf(res.Body.Close, "close flush response")
+		defer elephantine.Close("flush response", res.Body, &outErr)
 
 		err = errors.Join(ElasticErrorFromResponse(res), err)
 		if err != nil {
@@ -389,6 +439,57 @@ func (p *Percolator) ensurePercolatorQueries(
 	}
 
 	return nil
+}
+
+func (p *Percolator) createPercolatorDocument(
+	ctx context.Context,
+	client *opensearch.Client,
+	index string,
+	perc *PercolatorReference,
+) error {
+	return pg.WithTX(ctx, p.db, func(tx pgx.Tx) (outErr error) { //nolint: wrapcheck
+		q := postgres.New(tx)
+
+		err := q.RegisterPercolatorDocumentIndex(ctx,
+			postgres.RegisterPercolatorDocumentIndexParams{
+				Percolator: perc.ID,
+				Index:      index,
+			})
+		if err != nil {
+			return fmt.Errorf(
+				"register percolation document in DB: %w", err)
+		}
+
+		body, err := json.Marshal(map[string]any{
+			"query": perc.Query,
+		})
+		if err != nil {
+			return fmt.Errorf("marshal percolator document: %w", err)
+		}
+
+		res, err := client.Create(
+			index,
+			strconv.FormatInt(perc.ID, 10),
+			bytes.NewReader(body),
+			client.Create.WithContext(ctx),
+		)
+		if err != nil {
+			return fmt.Errorf("make create request: %w", err)
+		}
+
+		defer elephantine.Close("close response body", res.Body, &outErr)
+
+		// Ignore the error response if it's caused by the percolator
+		// document already existing, subsciptions are immutable.
+		if res.IsError() && res.StatusCode != http.StatusConflict {
+			return fmt.Errorf(
+				"create query %d in percolator index: %w",
+				perc.ID,
+				ElasticErrorFromResponse(res))
+		}
+
+		return nil
+	})
 }
 
 func (p *Percolator) getUnseededPercolators(
@@ -467,15 +568,12 @@ func (p *Percolator) handleUpdate(
 		return fmt.Errorf("load percolator definition: %w", err)
 	}
 
-	err = p.registerPercolator(def)
-	if err != nil {
-		return err
-	}
+	p.registerPercolator(def)
 
 	return nil
 }
 
-func (p *Percolator) registerPercolator(def postgres.Percolator) error {
+func (p *Percolator) registerPercolator(def postgres.Percolator) {
 	m, ok := p.percolators[def.DocType]
 	if !ok {
 		m = make(map[int64]*PercolatorReference)
@@ -489,8 +587,6 @@ func (p *Percolator) registerPercolator(def postgres.Percolator) error {
 	}
 
 	m[def.ID] = &ref
-
-	return nil
 }
 
 func (p *Percolator) percolateDocument(
@@ -506,7 +602,7 @@ func (p *Percolator) percolateDocument(
 		}),
 	})
 	if err != nil {
-		return
+		return fmt.Errorf("marshal percolate document: %w", err)
 	}
 
 	res, err := client.Search(
@@ -514,6 +610,9 @@ func (p *Percolator) percolateDocument(
 		client.Search.WithIndex(index),
 		client.Search.WithBody(bytes.NewReader(payload)),
 	)
+	if err != nil {
+		return fmt.Errorf("run percolator query: %w", err)
+	}
 
 	defer elephantine.Close("response body: %w", res.Body, &outErr)
 
@@ -540,11 +639,17 @@ func (p *Percolator) percolateDocument(
 		return fmt.Errorf("unmarshal opensearch response: %w", err)
 	}
 
-	if len(response.Hits.Hits) == 0 {
-		return nil
+	p.pMutex.RLock()
+	// We want to collect all IDs of the
+	allPercs := make(map[int64]bool, len(p.percolators[doc.Document.Type]))
+	for k := range p.percolators[doc.Document.Type] {
+		allPercs[k] = false
 	}
+	p.pMutex.RUnlock()
 
-	percolators := make([]int64, 0, len(response.Hits.Hits))
+	// Bulk insert arrays.
+	percolators := make([]int64, 0, len(allPercs))
+	matches := make([]bool, 0, len(allPercs))
 
 	for _, item := range response.Hits.Hits {
 		id, err := strconv.ParseInt(item.ID, 10, 64)
@@ -553,6 +658,26 @@ func (p *Percolator) percolateDocument(
 		}
 
 		percolators = append(percolators, id)
+		matches = append(matches, true)
+
+		allPercs[id] = true
+	}
+
+	for id, match := range allPercs {
+		// Matches have already been added to the insert arrays.
+		if match {
+			continue
+		}
+
+		// TODO: This is where we could use a counting bloom filter to
+		// only (probably) emit non-matches when we've had a previous
+		// match.
+		percolators = append(percolators, id)
+		matches = append(matches, false)
+	}
+
+	if len(percolators) == 0 {
+		return nil
 	}
 
 	err = pg.WithTX(ctx, p.db, func(tx pgx.Tx) error {
@@ -562,6 +687,7 @@ func (p *Percolator) percolateDocument(
 
 		err = q.InsertPercolatorEvents(ctx, postgres.InsertPercolatorEventsParams{
 			Percolators: percolators,
+			Matched:     matches,
 			ID:          doc.ID,
 			Document:    docUUID,
 			Created:     pg.Time(time.Now()),
@@ -581,7 +707,7 @@ func (p *Percolator) percolateDocument(
 		return nil
 	})
 	if err != nil {
-		return err
+		return err //nolint: wrapcheck
 	}
 
 	return nil

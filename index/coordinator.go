@@ -31,7 +31,7 @@ const (
 	ChanPercolated        string = "percolation_event"
 )
 
-type IndexStatusChange struct {
+type IndexStatusChange struct { //nolint: revive
 	Name string
 }
 
@@ -517,7 +517,6 @@ func (c *Coordinator) ensureActiveClient(set postgres.IndexSet) error {
 func (c *Coordinator) PercolateDocument(
 	ctx context.Context,
 	setName string,
-	index string,
 	doc postgres.PercolatorDocument,
 ) {
 	c.activeMut.RLock()

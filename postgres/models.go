@@ -60,12 +60,19 @@ type Percolator struct {
 	Created pgtype.Timestamptz
 	DocType string
 	Query   map[string]any
+	Deleted bool
+}
+
+type PercolatorDocumentIndex struct {
+	Percolator int64
+	Index      string
 }
 
 type PercolatorEvent struct {
 	ID         int64
 	Document   uuid.UUID
 	Percolator int64
+	Matched    bool
 	Created    pgtype.Timestamptz
 }
 

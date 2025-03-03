@@ -32,7 +32,6 @@ type PercolatorWorker interface {
 	PercolateDocument(
 		ctx context.Context,
 		setName string,
-		index string,
 		doc postgres.PercolatorDocument,
 	)
 }
@@ -299,6 +298,7 @@ func (idx *Indexer) loopIteration(
 		}
 
 		docUUID := item.Uuid
+
 		language, err := idx.lang.GetLanguageInfo(item.Language)
 		if err != nil {
 			return fmt.Errorf(
@@ -536,7 +536,7 @@ func (idx *Indexer) ensureAlias(index string, alias string) (outErr error) {
 	return nil
 }
 
-type IndexType string
+type IndexType string //nolint: revive
 
 const (
 	IndexTypeDocuments IndexType = "documents"
@@ -562,7 +562,7 @@ func NewIndexName(
 	}
 }
 
-type IndexName struct {
+type IndexName struct { //nolint: revive
 	// Root of the index name, f.ex. "documents-setname-core_article"
 	Root string
 	// Language is the type and language name part of the index name, f.ex. "core_article-sv-se"
