@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"runtime/debug"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -148,10 +151,7 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("invalid sharding policy: %w", err)
 	}
 
-	_, err = index.GetIndexConfig(defaultLanguage, "", nil)
-	if err != nil {
-		return fmt.Errorf("create index config: %w", err)
-	}
+	langOpts := index.StandardLanguageOptions(defaultLanguage)
 
 	paramSource, err := elephantine.GetParameterSource(paramSourceName)
 	if err != nil {
@@ -187,8 +187,22 @@ func runIndexer(c *cli.Context) error {
 
 	authClient := oauth2.NewClient(c.Context, auth.TokenSource)
 
-	documents := repository.NewDocumentsProtobufClient(
+	authDocuments := repository.NewDocumentsProtobufClient(
 		repositoryEndpoint, authClient)
+
+	client := http.Client{
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
+
+	anonymousDocuments := repository.NewDocumentsProtobufClient(repositoryEndpoint, &client)
 
 	schemas := repository.NewSchemasProtobufClient(
 		repositoryEndpoint, authClient)
@@ -206,9 +220,10 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("set up metrics: %w", err)
 	}
 
+	server := elephantine.NewAPIServer(logger, addr, profileAddr)
+
 	err = index.RunIndex(c.Context, index.Parameters{
-		Addr:           addr,
-		ProfileAddr:    profileAddr,
+		APIServer:      server,
 		Logger:         logger,
 		Database:       dbpool,
 		Client:         clients.GetClientForCluster,
@@ -216,11 +231,11 @@ func runIndexer(c *cli.Context) error {
 		ClusterAuth: index.ClusterAuth{
 			IAM: managedOS,
 		},
-		Documents:          documents,
-		RepositoryEndpoint: repositoryEndpoint,
+		Documents:          authDocuments,
+		AnonymousDocuments: anonymousDocuments,
 		Validator:          loader,
 		Metrics:            metrics,
-		DefaultLanguage:    defaultLanguage,
+		Languages:          langOpts,
 		NoIndexer:          noIndexer,
 		AuthInfoParser:     auth.AuthParser,
 		Sharding:           sharding,

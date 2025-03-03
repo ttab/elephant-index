@@ -25,7 +25,7 @@ const (
 
 func BuildDocument(
 	validator *revisor.Validator, state *DocumentState,
-	language OpenSearchIndexConfig, featureFlags map[string]bool,
+	conf OpenSearchIndexConfig, featureFlags map[string]bool,
 ) (*Document, error) {
 	d := NewDocument()
 
@@ -42,7 +42,7 @@ func BuildDocument(
 
 	if featureFlags[FeatureSortable] {
 		titleField.AddSubField("sort",
-			collatedKeywordOptions(language, nil))
+			collatedKeywordOptions(conf.Language, nil))
 	}
 
 	if featureFlags[FeaturePrefix] {
@@ -51,7 +51,7 @@ func BuildDocument(
 
 	keywordOptions := FieldOptions{Type: TypeKeyword}
 	if featureFlags[FeatureOnlyICU] {
-		keywordOptions = collatedKeywordOptions(language, nil)
+		keywordOptions = collatedKeywordOptions(conf.Language, nil)
 	}
 
 	// TODO: I'ts a bit awkward that we pre-declare these before running
@@ -136,7 +136,7 @@ func BuildDocument(
 	})
 
 	err := collectDocumentFields(
-		d, "document.", doc, validator, language, featureFlags, policy)
+		d, "document.", doc, validator, conf.Language, featureFlags, policy)
 	if err != nil {
 		return nil, fmt.Errorf("main document: %w", err)
 	}
@@ -144,7 +144,7 @@ func BuildDocument(
 	if state.MetaDocument != nil {
 		err := collectDocumentFields(
 			d, "meta.", state.MetaDocument, validator,
-			language, featureFlags, policy,
+			conf.Language, featureFlags, policy,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("meta document: %w", err)
@@ -157,7 +157,7 @@ func BuildDocument(
 func collectDocumentFields(
 	d *Document, prefix string, doc *newsdoc.Document,
 	validator *revisor.Validator,
-	language OpenSearchIndexConfig, featureFlags map[string]bool, policy *bluemonday.Policy,
+	language LanguageInfo, featureFlags map[string]bool, policy *bluemonday.Policy,
 ) error {
 	coll := NewValueCollector()
 
@@ -306,7 +306,7 @@ func prefixFieldOptions() FieldOptions {
 }
 
 func collatedKeywordOptions(
-	language OpenSearchIndexConfig, labels []string,
+	language LanguageInfo, labels []string,
 ) FieldOptions {
 	var variant string
 

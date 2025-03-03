@@ -24,7 +24,7 @@ func newIndexWorker(
 	ctx context.Context, idx *Indexer,
 	name, percolateIndex, contentType string,
 	idxConf OpenSearchIndexConfig,
-	concurrency int,
+	concurrency int, percolator PercolatorWorker,
 ) (*indexWorker, error) {
 	iw := indexWorker{
 		idx: idx,
@@ -38,6 +38,7 @@ func newIndexWorker(
 		jobQueue:           make(chan *enrichJob, concurrency),
 		featureFlags:       make(map[string]bool),
 		config:             idxConf,
+		percolator:         percolator,
 	}
 
 	conf, err := idx.q.GetIndexConfiguration(ctx, name)
@@ -85,7 +86,7 @@ func newIndexWorker(
 			"unmarshal current index mappings: %w", err)
 	}
 
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		go iw.loop(ctx)
 	}
 
@@ -103,6 +104,7 @@ type indexWorker struct {
 
 	featureFlags  map[string]bool
 	knownMappings Mappings
+	percolator    PercolatorWorker
 }
 
 func (iw *indexWorker) loop(ctx context.Context) {
@@ -133,6 +135,21 @@ func (iw *indexWorker) enrich(
 
 	ctx, cancel := context.WithTimeout(job.ctx, 5*time.Second)
 	defer cancel()
+
+	docRes, err := iw.idx.documents.Get(ctx,
+		&repository.GetDocumentRequest{
+			Uuid:         job.UUID,
+			MetaDocument: repository.GetMetaDoc_META_INCLUDE,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("get document: %w", err)
+	}
+
+	job.doc = docRes.Document
+
+	if docRes.Meta != nil {
+		job.metadoc = docRes.Meta.Document
+	}
 
 	metaRes, err := iw.idx.documents.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: job.UUID,
@@ -199,7 +216,7 @@ func (iw *indexWorker) enrich(
 // Process indexes the documents in a batch, and should only return an error if
 // we get an indication that indexing in ES/OS has become impossible.
 func (iw *indexWorker) Process(
-	ctx context.Context, documents []*enrichJob,
+	ctx context.Context, documents []*enrichJob, caughtUp bool,
 ) error {
 	go func() {
 		for _, job := range documents {
@@ -229,11 +246,6 @@ func (iw *indexWorker) Process(
 
 		var twErr twirp.Error
 		if errors.As(job.err, &twErr) && twErr.Code() == twirp.NotFound {
-			iw.logger.DebugContext(ctx,
-				"the document has been deleted, removing from index",
-				elephantine.LogKeyDocumentUUID, job.UUID,
-				elephantine.LogKeyError, job.err)
-
 			job.Operation = opDelete
 			job.err = nil
 		} else if job.err != nil {
@@ -294,12 +306,26 @@ func (iw *indexWorker) Process(
 			).Add(1)
 		}
 
+		values := idxDoc.Values()
+
+		if iw.idx.enablePercolation && caughtUp {
+			iw.percolator.PercolateDocument(
+				ctx,
+				iw.idx.name,
+				postgres.PercolatorDocument{
+					ID:       job.EventID,
+					Fields:   values,
+					Document: &job.State.Document,
+				},
+			)
+		}
+
 		err = errors.Join(
 			enc.Encode(bulkHeader{Index: &bulkOperation{
 				Index: iw.indexName,
 				ID:    job.UUID,
 			}}),
-			enc.Encode(idxDoc.Values()),
+			enc.Encode(values),
 		)
 		if err != nil {
 			return fmt.Errorf("marshal document index instruction: %w", err)

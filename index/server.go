@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/repository"
-	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/twitchtv/twirp"
@@ -19,18 +18,17 @@ import (
 )
 
 type Parameters struct {
-	Addr               string
-	ProfileAddr        string
+	APIServer          *elephantine.APIServer
 	Logger             *slog.Logger
 	Database           *pgxpool.Pool
 	DefaultCluster     string
 	ClusterAuth        ClusterAuth
 	Client             OpenSearchClientFunc
 	Documents          repository.Documents
-	RepositoryEndpoint string
+	AnonymousDocuments repository.Documents
 	Validator          ValidatorSource
 	Metrics            *Metrics
-	DefaultLanguage    string
+	Languages          LanguageOptions
 	NoIndexer          bool
 	AuthInfoParser     elephantine.AuthInfoParser
 	Sharding           ShardingPolicy
@@ -38,16 +36,27 @@ type Parameters struct {
 
 func RunIndex(ctx context.Context, p Parameters) error {
 	logger := p.Logger
+	server := p.APIServer
+
+	opts, err := elephantine.NewDefaultServiceOptions(
+		p.Logger, p.AuthInfoParser, p.Metrics.Registerer,
+		elephantine.ServiceAuthRequired)
+	if err != nil {
+		return fmt.Errorf("set up service config: %w", err)
+	}
+
+	percDocs := NewPercolatorDocCache(p.Database)
 
 	coord, err := NewCoordinator(p.Database, CoordinatorOptions{
 		Logger:          logger,
 		Metrics:         p.Metrics,
-		DefaultLanguage: p.DefaultLanguage,
+		Languages:       p.Languages,
 		ClientGetter:    p.Client,
 		Documents:       p.Documents,
 		Validator:       p.Validator,
 		Sharding:        p.Sharding,
 		NoIndexing:      p.NoIndexer,
+		PercolatorCache: percDocs,
 	})
 	if err != nil {
 		return fmt.Errorf("create coordinator: %w", err)
@@ -61,15 +70,8 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	}
 
 	grace := elephantine.NewGracefulShutdown(logger, 10*time.Second)
-	ctx = grace.CancelOnStop(ctx)
 
-	healthServer := elephantine.NewHealthServer(logger, p.ProfileAddr)
-	router := http.NewServeMux()
-	serverGroup, gCtx := errgroup.WithContext(ctx)
-
-	var opts ServerOptions
-
-	opts.SetJWTValidation(p.AuthInfoParser)
+	serverGroup, gCtx := errgroup.WithContext(grace.CancelOnQuit(ctx))
 
 	service, err := NewManagementService(logger, p.Database)
 	if err != nil {
@@ -82,19 +84,22 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		twirp.WithServerHooks(opts.Hooks),
 	)
 
-	registerAPI(router, opts, api)
+	server.RegisterAPI(api, opts)
 
 	searchAPI := index.NewSearchV1Server(
 		NewSearchServiceV1(
+			logger, p.Database,
 			NewPostgresMappingSource(postgres.New(p.Database)),
-			coord, p.RepositoryEndpoint,
+			coord, p.AnonymousDocuments,
+			coord.percolatorUpdate, coord.eventPercolated, percDocs,
 		),
 		twirp.WithServerJSONSkipDefaults(true),
 		twirp.WithServerHooks(opts.Hooks),
 	)
 
-	registerAPI(router, opts, searchAPI)
+	server.RegisterAPI(searchAPI, opts)
 
+	// TODO: retire the proxy.
 	proxy := NewElasticProxy(logger, coord, p.AuthInfoParser)
 
 	proxyHandler := elephantine.CORSMiddleware(elephantine.CORSOptions{
@@ -105,26 +110,9 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		AllowedHeaders:         []string{"Authorization", "Content-Type"},
 	}, proxy)
 
-	router.Handle("/", proxyHandler)
+	server.Mux.Handle("/", proxyHandler)
 
-	router.Handle("/health/alive", http.HandlerFunc(func(
-		w http.ResponseWriter, _ *http.Request,
-	) {
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-
-		_, _ = fmt.Fprintln(w, "I AM ALIVE!")
-	}))
-
-	aliveEndpoint := fmt.Sprintf(
-		"http://localhost%s/health/alive",
-		p.Addr,
-	)
-
-	healthServer.AddReadyFunction("api_liveness",
-		elephantine.LivenessReadyCheck(aliveEndpoint))
-
-	healthServer.AddReadyFunction("postgres", func(ctx context.Context) error {
+	server.Health.AddReadyFunction("postgres", func(ctx context.Context) error {
 		q := postgres.New(p.Database)
 
 		_, err := q.ListIndexSets(ctx)
@@ -135,7 +123,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		return nil
 	})
 
-	healthServer.AddReadyFunction("opensearch", func(ctx context.Context) error {
+	server.Health.AddReadyFunction("opensearch", func(ctx context.Context) error {
 		q := postgres.New(p.Database)
 
 		active, err := q.GetActiveIndexSet(ctx)
@@ -166,139 +154,31 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	})
 
 	serverGroup.Go(func() error {
-		err := coord.Run(gCtx)
+		ctx := grace.CancelOnStop(gCtx)
+
+		err := coord.Run(ctx)
 		if err != nil {
 			return fmt.Errorf("coordinator error: %w", err)
-		}
-
-		return errors.New("coordinator stopped")
-	})
-
-	serverGroup.Go(func() error {
-		logger.Debug("starting health server")
-
-		err := healthServer.ListenAndServe(gCtx)
-		if err != nil {
-			return fmt.Errorf("health server error: %w", err)
 		}
 
 		return nil
 	})
 
 	serverGroup.Go(func() error {
-		// TODO: Configurable hosts
-		corsHandler := elephantine.CORSMiddleware(elephantine.CORSOptions{
-			AllowInsecure:          false,
-			AllowInsecureLocalhost: true,
-			Hosts:                  []string{"localhost", "tt.se"},
-			AllowedMethods:         []string{"GET", "POST"},
-			AllowedHeaders:         []string{"Authorization", "Content-Type"},
-		}, router)
-
-		server := http.Server{
-			Addr:              p.Addr,
-			Handler:           corsHandler,
-			ReadHeaderTimeout: 5 * time.Second,
-		}
-
-		err := elephantine.ListenAndServeContext(
-			gCtx, &server, 10*time.Second,
-		)
-		if err != nil {
-			return fmt.Errorf("API server error: %w", err)
+		err := server.ListenAndServe(gCtx)
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		} else if err != nil {
+			return fmt.Errorf("run server: %w", err)
 		}
 
 		return nil
 	})
 
 	err = serverGroup.Wait()
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("server failed to start: %w", err)
+	if err != nil {
+		return fmt.Errorf("service failed to start: %w", err)
 	}
 
 	return nil
-}
-
-func ListenAndServe(ctx context.Context, addr string, h http.Handler) error {
-	var handler http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
-		ctx := elephantine.WithLogMetadata(r.Context())
-
-		h.ServeHTTP(w, r.WithContext(ctx))
-	}
-
-	server := http.Server{
-		Addr:              addr,
-		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
-	//nolint:wrapcheck
-	return elephantine.ListenAndServeContext(ctx, &server, 10*time.Second)
-}
-
-type ServerOptions struct {
-	Hooks          *twirp.ServerHooks
-	AuthMiddleware func(
-		w http.ResponseWriter, r *http.Request, next http.Handler,
-	) error
-}
-
-func (so *ServerOptions) SetJWTValidation(parser elephantine.AuthInfoParser) {
-	// TODO: This feels like an initial sketch that should be further
-	// developed to address the JWT cacheing.
-	so.AuthMiddleware = func(
-		w http.ResponseWriter, r *http.Request, next http.Handler,
-	) error {
-		auth, err := parser.AuthInfoFromHeader(r.Header.Get("Authorization"))
-		if err != nil && !errors.Is(err, elephantine.ErrNoAuthorization) {
-			// TODO: Move the response part to a hook instead?
-			return elephantine.HTTPErrorf(http.StatusUnauthorized,
-				"invalid authorization method: %v", err)
-		}
-
-		if auth != nil {
-			ctx := elephantine.SetAuthInfo(r.Context(), auth)
-
-			elephantine.SetLogMetadata(ctx,
-				elephantine.LogKeySubject, auth.Claims.Subject,
-			)
-
-			r = r.WithContext(ctx)
-		}
-
-		next.ServeHTTP(w, r)
-
-		return nil
-	}
-}
-
-type apiServerForRouter interface {
-	http.Handler
-
-	PathPrefix() string
-}
-
-func registerAPI(
-	router *http.ServeMux, opt ServerOptions,
-	api apiServerForRouter,
-) {
-	router.Handle(api.PathPrefix(), internal.RHandleFunc(func(
-		w http.ResponseWriter, r *http.Request,
-	) error {
-		if r.Method != http.MethodPost {
-			return elephantine.HTTPErrorf(
-				http.StatusMethodNotAllowed,
-				"the API only accepts POST requests")
-		}
-
-		if opt.AuthMiddleware != nil {
-			return opt.AuthMiddleware(w, r, api)
-		}
-
-		api.ServeHTTP(w, r)
-
-		return nil
-	}))
 }

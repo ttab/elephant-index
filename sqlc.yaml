@@ -1,4 +1,5 @@
 version: "2"
+overrides:
 sql:
 - schema: "postgres/schema.sql"
   queries: "postgres/queries.sql"
@@ -12,3 +13,16 @@ sql:
       overrides:
         - db_type: "uuid"
           go_type: "github.com/google/uuid.UUID"
+        - column: "percolator_event_payload.data"
+          go_type:
+            type: "PercolatorDocument"
+        - column: "percolator.query"
+          go_type:
+            type: "map[string]any"
+        - column: "app_state.data"
+          go_type:
+            type: "AppStateData"
+        - column: "subscription.spec"
+          go_type:
+            type: "SubscriptionSpec"
+        

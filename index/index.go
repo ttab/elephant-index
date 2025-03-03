@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -19,8 +18,8 @@ import (
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/koonkie"
 	"github.com/ttab/revisor"
-	"github.com/twitchtv/twirp"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -28,6 +27,14 @@ const (
 	LogKeyIndexOperation = "index_operation"
 	LogKeyResponseStatus = "response_status"
 )
+
+type PercolatorWorker interface {
+	PercolateDocument(
+		ctx context.Context,
+		setName string,
+		doc postgres.PercolatorDocument,
+	)
+}
 
 type ValidatorSource interface {
 	GetValidator() *revisor.Validator
@@ -41,9 +48,9 @@ type IndexerOptions struct {
 	Documents         repository.Documents
 	Validator         ValidatorSource
 	Metrics           *Metrics
-	DefaultLanguage   string
-	DefaultRegions    map[string]string
+	Language          *LanguageResolver
 	EnablePercolation bool
+	Percolator        PercolatorWorker
 	Sharding          ShardingPolicy
 }
 
@@ -58,10 +65,10 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 		vSource:           opts.Validator,
 		q:                 postgres.New(opts.Database),
 		indexes:           make(map[string]*indexWorker),
-		defaultLanguage:   opts.DefaultLanguage,
-		defaultRegions:    opts.DefaultRegions,
+		lang:              opts.Language,
 		sharding:          opts.Sharding,
 		enablePercolation: opts.EnablePercolation,
+		percolator:        opts.Percolator,
 		stop:              make(chan struct{}),
 		stopped:           make(chan struct{}),
 	}
@@ -82,16 +89,17 @@ func NewIndexer(ctx context.Context, opts IndexerOptions) (*Indexer, error) {
 
 // Indexer takes care of indexing to a named set of indexes in a cluster.
 type Indexer struct {
-	logger            *slog.Logger
-	metrics           *Metrics
-	name              string
-	defaultLanguage   string
-	defaultRegions    map[string]string
-	sharding          ShardingPolicy
-	database          *pgxpool.Pool
-	documents         repository.Documents
-	vSource           ValidatorSource
-	client            *opensearch.Client
+	logger    *slog.Logger
+	metrics   *Metrics
+	name      string
+	lang      *LanguageResolver
+	sharding  ShardingPolicy
+	database  *pgxpool.Pool
+	documents repository.Documents
+	vSource   ValidatorSource
+	client    *opensearch.Client
+
+	percolator        PercolatorWorker
 	enablePercolation bool
 
 	q *postgres.Queries
@@ -178,11 +186,17 @@ type enrichJob struct {
 	done  chan struct{}
 	err   error
 
-	UUID      string
-	Operation int
-	State     *DocumentState
-	doc       *newsdoc.Document
-	metadoc   *newsdoc.Document
+	EventID int64
+	// SideEffect enrich jobs are generated as side-effects of an event and
+	// dont represent the event as such. A language change would have a
+	// primary job that creates the new document for a language, and a side
+	// effect that deletes the old language document.
+	SideEffect bool
+	UUID       string
+	Operation  int
+	State      *DocumentState
+	doc        *newsdoc.Document
+	metadoc    *newsdoc.Document
 }
 
 func (ij *enrichJob) Finish(state *DocumentState, err error) {
@@ -192,10 +206,20 @@ func (ij *enrichJob) Finish(state *DocumentState, err error) {
 }
 
 func (idx *Indexer) indexerLoop(ctx context.Context) error {
-	pos, err := idx.q.GetIndexSetPosition(ctx, idx.name)
+	state, err := idx.q.GetIndexSetPosition(ctx, idx.name)
 	if err != nil {
 		return fmt.Errorf("fetching current index set position: %w", err)
 	}
+
+	pos := state.Position
+	posMetric := idx.metrics.logPos.WithName(idx.name)
+
+	follower := koonkie.NewLogFollower(idx.documents, koonkie.FollowerOptions{
+		StartAfter:   state.Position,
+		CaughtUp:     state.CaughtUp,
+		Metrics:      posMetric,
+		WaitDuration: 10 * time.Second,
+	})
 
 	idx.logger.DebugContext(ctx, "starting from",
 		elephantine.LogKeyEventID, pos)
@@ -205,13 +229,15 @@ func (idx *Indexer) indexerLoop(ctx context.Context) error {
 			return nil
 		}
 
-		newPos, err := idx.loopIteration(ctx, pos)
+		startPos, caughtUp := follower.GetState()
+
+		err := idx.loopIteration(ctx, follower)
 		if err != nil {
 			idx.metrics.indexerFailures.WithLabelValues(idx.name).Inc()
 
 			idx.logger.ErrorContext(ctx, "indexer failure",
 				elephantine.LogKeyError, err,
-				elephantine.LogKeyEventID, pos)
+				elephantine.LogKeyEventID, startPos)
 
 			select {
 			case <-time.After(5 * time.Second):
@@ -219,23 +245,23 @@ func (idx *Indexer) indexerLoop(ctx context.Context) error {
 				return nil
 			}
 
+			// Rewind follower state.
+			follower.SetState(startPos, caughtUp)
+
 			continue
 		}
 
-		if newPos != pos {
+		newPos, caughtUp := follower.GetState()
+
+		if newPos != startPos {
 			err = idx.q.UpdateSetPosition(ctx, postgres.UpdateSetPositionParams{
 				Name:     idx.name,
 				Position: newPos,
+				CaughtUp: caughtUp,
 			})
 			if err != nil {
 				return fmt.Errorf("update the position to %d: %w", newPos, err)
 			}
-
-			pos = newPos
-
-			idx.metrics.logPos.WithLabelValues(idx.name).Set(float64(pos))
-		} else {
-			time.Sleep(1 * time.Second)
 		}
 
 		select {
@@ -248,79 +274,66 @@ func (idx *Indexer) indexerLoop(ctx context.Context) error {
 
 const (
 	DocumentEvent = "document"
-	DeleteEvent   = "document_delete"
+	DeleteEvent   = "delete_document"
 	ACLEvent      = "acl"
 	StatusEvent   = "status"
 	WorkflowEvent = "workflow"
 )
 
 func (idx *Indexer) loopIteration(
-	ctx context.Context, pos int64,
-) (int64, error) {
-	log, err := idx.documents.CompactedEventlog(ctx,
-		&repository.GetCompactedEventlogRequest{
-			After: pos,
-			Limit: 500,
-		})
+	ctx context.Context, follower *koonkie.LogFollower,
+) error {
+	items, err := follower.GetNext(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("get eventlog entries: %w", err)
+		return fmt.Errorf("get eventlog entries: %w", err)
 	}
+
+	_, caughtUp := follower.GetState()
 
 	changes := make(map[string]map[string]map[string]*enrichJob)
 
-	for _, item := range log.Items {
+	for _, item := range items {
 		if item.Type == "" {
-			pos = item.Id
-
 			continue
 		}
 
-		var doc, metaDoc *newsdoc.Document
-
 		docUUID := item.Uuid
-		language := strings.ToLower(item.Language)
+
+		language, err := idx.lang.GetLanguageInfo(item.Language)
+		if err != nil {
+			return fmt.Errorf(
+				"get language information for event %d: %w",
+				item.Id, err)
+		}
+
+		var oldLanguage *LanguageInfo
+
+		if item.OldLanguage != "" {
+			ol, err := idx.lang.GetLanguageInfo(item.OldLanguage)
+			if err != nil {
+				return fmt.Errorf(
+					"get old language information for event %d: %w",
+					item.Id, err)
+			}
+
+			oldLanguage = &ol
+		}
 
 		// Switch to main document on meta doc updates.
 		if item.MainDocument != "" {
+			// Ignore meta doc events from before repo v0.10.0.
+			if item.MainDocumentType == "" {
+				continue
+			}
+
 			docUUID = item.MainDocument
+			item.Uuid = docUUID
+			item.Type = item.MainDocumentType
 
 			// Treat deleted meta documents as document update
 			// events.
 			if item.Event == DeleteEvent {
 				item.Event = DocumentEvent
-			}
-		}
-
-		// Load document early so that we can pivot to a delete if the
-		// document has been deleted. But only try to fetch it if we
-		// don't already know that it has been deleted.
-		if item.Event != DeleteEvent { //nolint: nestif
-			docRes, err := idx.documents.Get(ctx,
-				&repository.GetDocumentRequest{
-					Uuid:         docUUID,
-					MetaDocument: repository.GetMetaDoc_META_INCLUDE,
-				})
-			if elephantine.IsTwirpErrorCode(err, twirp.NotFound) {
-				// TODO: we need to blanket delete the ID in all indexes
-				// here. Resorting to doing a delete for default
-				// language at the moment.
-				item.Event = DeleteEvent
-			} else if err != nil {
-				return 0, fmt.Errorf("get document: %w", err)
-			}
-
-			if docRes != nil {
-				doc = docRes.Document
-
-				if docRes.Meta != nil {
-					metaDoc = docRes.Meta.Document
-				}
-
-				// TODO: include main document type in the
-				// eventlog?
-				item.Type = doc.Type
-				// Normalize to lowercase
-				language = strings.ToLower(doc.Language)
 			}
 		}
 
@@ -330,61 +343,66 @@ func (idx *Indexer) loopIteration(
 			changes[item.Type] = byType
 		}
 
-		byLang, ok := byType[language]
+		byLang, ok := byType[language.Code]
 		if !ok {
 			byLang = make(map[string]*enrichJob)
-			byType[language] = byLang
+			byType[language.Code] = byLang
 		}
 
 		switch item.Event {
 		case DeleteEvent:
 			byLang[docUUID] = &enrichJob{
+				EventID:   item.Id,
 				UUID:      docUUID,
 				Operation: opDelete,
-				doc:       doc,
 			}
 		case DocumentEvent, ACLEvent, StatusEvent, WorkflowEvent:
-			if item.OldLanguage != "" && item.Language != item.OldLanguage {
-				byObLang, ok := byType[item.OldLanguage]
+			if oldLanguage != nil && language.Code != oldLanguage.Code {
+				byObLang, ok := byType[oldLanguage.Code]
 				if !ok {
 					byObLang = make(map[string]*enrichJob)
-					byType[item.OldLanguage] = byObLang
+					byType[oldLanguage.Code] = byObLang
 				}
 
 				byObLang[docUUID] = &enrichJob{
-					UUID:      docUUID,
-					Operation: opDelete,
+					EventID:    item.Id,
+					SideEffect: true,
+					UUID:       docUUID,
+					Operation:  opDelete,
 				}
 			}
 
 			byLang[docUUID] = &enrichJob{
+				EventID:   item.Id,
 				UUID:      docUUID,
 				Operation: opUpdate,
-				doc:       doc,
-				metadoc:   metaDoc,
 			}
 		default:
 			idx.metrics.unknownEvents.WithLabelValues(item.Event).Inc()
 		}
-
-		pos = item.Id
 	}
 
 	group, gCtx := errgroup.WithContext(ctx)
 
 	for docType := range changes {
 		for lang := range changes[docType] {
-			key := fmt.Sprintf("%s-%s", docType, lang)
+			// Get canonical language with defaults applied.
+			language, err := idx.lang.GetLanguageInfo(lang)
+			if err != nil {
+				return fmt.Errorf("get language information for %q: %w", lang, err)
+			}
 
-			index, ok := idx.indexes[key]
+			name := NewIndexName(IndexTypeDocuments, idx.name, docType, language)
+
+			index, ok := idx.indexes[name.Full]
 			if !ok {
-				worker, err := idx.createIndexWorker(ctx, docType, lang)
+				worker, err := idx.createIndexWorker(ctx, docType, language)
 				if err != nil {
-					return 0, err
+					return err
 				}
 
 				index = worker
-				idx.indexes[key] = worker
+				idx.indexes[name.Full] = worker
 			}
 
 			var jobs []*enrichJob
@@ -397,30 +415,25 @@ func (idx *Indexer) loopIteration(
 			}
 
 			group.Go(func() error {
-				return index.Process(gCtx, jobs)
+				return index.Process(gCtx, jobs, caughtUp)
 			})
 		}
 	}
 
 	err = group.Wait()
 	if err != nil {
-		return 0, fmt.Errorf("index all types: %w", err)
+		return fmt.Errorf("index all types: %w", err)
 	}
 
-	return pos, nil
+	return nil
 }
 
 func (idx *Indexer) createIndexWorker(
 	ctx context.Context,
 	docType string,
-	lang string,
+	lang LanguageInfo,
 ) (*indexWorker, error) {
-	conf, err := GetIndexConfig(
-		lang, idx.defaultLanguage, idx.defaultRegions)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"could not get language config: %w", err)
-	}
+	conf := GetIndexConfig(lang)
 
 	name, err := idx.ensureIndex(
 		ctx, "documents", docType, conf)
@@ -445,7 +458,7 @@ func (idx *Indexer) createIndexWorker(
 	}
 
 	index, err := newIndexWorker(ctx, idx,
-		name, percolateName, docType, conf, 8)
+		name, percolateName, docType, conf, 8, idx.percolator)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"create index worker: %w", err)
@@ -455,20 +468,18 @@ func (idx *Indexer) createIndexWorker(
 }
 
 func (idx *Indexer) ensureIndex(
-	ctx context.Context, indexType string, docType string, config OpenSearchIndexConfig,
-) (string, error) {
-	indexTypeName := idx.getIndexName(docType)
-	indexTypeRoot := idx.getQualifiedIndexName(indexType, indexTypeName)
-	indexLanguageName := fmt.Sprintf("%s-%s", indexTypeName, config.NameSuffix)
+	ctx context.Context, indexType IndexType, docType string, config OpenSearchIndexConfig,
+) (_ string, outErr error) {
+	name := NewIndexName(indexType, idx.name, docType, config.Language)
 
-	index := fmt.Sprintf("%s-%s", indexTypeRoot, config.NameSuffix)
+	index := name.Full
 	aliases := []string{
-		indexTypeRoot,
-		fmt.Sprintf("%s-%s", indexTypeRoot, config.Language),
+		name.Root,
+		fmt.Sprintf("%s-%s", name.Root, config.Language.Language),
 	}
 
 	createReq := config.Settings
-	createReq.Settings.Index = idx.sharding.GetSettings(indexLanguageName)
+	createReq.Settings.Index = idx.sharding.GetSettings(name.Language)
 
 	settingsData, err := json.Marshal(createReq)
 	if err != nil {
@@ -481,7 +492,7 @@ func (idx *Indexer) ensureIndex(
 		return "", fmt.Errorf("check if index exists: %w", err)
 	}
 
-	defer elephantine.SafeClose(idx.logger, "index exists", existRes.Body)
+	defer elephantine.Close("index exists", existRes.Body, &outErr)
 
 	if existRes.StatusCode != http.StatusOK {
 		res, err := idx.client.Indices.Create(index,
@@ -491,7 +502,7 @@ func (idx *Indexer) ensureIndex(
 			return "", fmt.Errorf("create index %q: %w", index, err)
 		}
 
-		defer elephantine.SafeClose(idx.logger, "index create", res.Body)
+		defer elephantine.Close("index create", res.Body, &outErr)
 
 		if res.StatusCode != http.StatusOK {
 			return "", fmt.Errorf("server response: %s", res.String())
@@ -510,25 +521,52 @@ func (idx *Indexer) ensureIndex(
 	return index, nil
 }
 
-func (idx *Indexer) getIndexName(docType string) string {
-	return nonAlphaNum.ReplaceAllString(docType, "_")
-}
-
-func (idx *Indexer) getQualifiedIndexName(indexType, name string) string {
-	return fmt.Sprintf("%s-%s-%s", indexType, idx.name, name)
-}
-
-func (idx *Indexer) ensureAlias(index string, alias string) error {
+func (idx *Indexer) ensureAlias(index string, alias string) (outErr error) {
 	res, err := idx.client.Indices.PutAlias([]string{index}, alias)
 	if err != nil {
 		return fmt.Errorf("could not create alias %s for index %s: %w", alias, index, err)
 	}
 
-	defer elephantine.SafeClose(idx.logger, "put alias", res.Body)
+	defer elephantine.Close("put alias", res.Body, &outErr)
 
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("put alias status code: %s", res.Status())
 	}
 
 	return nil
+}
+
+type IndexType string //nolint: revive
+
+const (
+	IndexTypeDocuments IndexType = "documents"
+	IndexTypePercolate IndexType = "percolate"
+)
+
+func NewIndexName(
+	t IndexType,
+	setName string,
+	docType string,
+	language LanguageInfo,
+) IndexName {
+	indexTypeName := nonAlphaNum.ReplaceAllString(docType, "_")
+	root := fmt.Sprintf("%s-%s-%s", t, setName, indexTypeName)
+	localeSuffix := fmt.Sprintf("%s-%s", language.Language, language.RegionSuffix)
+	languageName := fmt.Sprintf("%s-%s", indexTypeName, localeSuffix)
+	full := fmt.Sprintf("%s-%s", root, localeSuffix)
+
+	return IndexName{
+		Root:     root,
+		Language: languageName,
+		Full:     full,
+	}
+}
+
+type IndexName struct { //nolint: revive
+	// Root of the index name, f.ex. "documents-setname-core_article"
+	Root string
+	// Language is the type and language name part of the index name, f.ex. "core_article-sv-se"
+	Language string
+	// Full is the full name of the index, f.ex.  "documents-setname-core_article-sv-se"
+	Full string
 }
