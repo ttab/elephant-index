@@ -29,7 +29,8 @@ func (q *Queries) AddCluster(ctx context.Context, arg AddClusterParams) error {
 
 const checkForPercolator = `-- name: CheckForPercolator :one
 SELECT id FROM percolator
-WHERE hash = $1 AND owner = $2
+WHERE hash = $1 AND (
+      owner = $2 OR ($2 IS NULL AND owner IS NULL))
 `
 
 type CheckForPercolatorParams struct {

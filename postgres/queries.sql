@@ -148,7 +148,8 @@ WHERE name = @name AND deleted = true;
 
 -- name: CheckForPercolator :one
 SELECT id FROM percolator
-WHERE hash = @hash AND owner = @owner;
+WHERE hash = @hash AND (
+      owner = @owner OR (@owner IS NULL AND owner IS NULL));
 
 -- name: CreatePercolator :one
 INSERT INTO percolator(hash, owner, created, doc_type, query)

@@ -877,15 +877,6 @@ func (s *SearchServiceV1) createSubscription(
 	percHash := sha256.Sum256(queryJSON)
 	subHash := sha256.Sum256(specJSON)
 
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return 0, 0, fmt.Errorf("begin transaction: %w", err)
-	}
-
-	defer pg.Rollback(tx, &outErr)
-
-	q := postgres.New(tx)
-
 	owner := sub
 	if shared {
 		owner = ""
@@ -898,6 +889,8 @@ func (s *SearchServiceV1) createSubscription(
 
 	// Might have percolator creation contention, allow for a single retry.
 	for range 2 {
+		q := postgres.New(s.db)
+
 		percID, err = q.CheckForPercolator(ctx, postgres.CheckForPercolatorParams{
 			Hash:  percHash[:],
 			Owner: pg.TextOrNull(owner),
@@ -927,6 +920,15 @@ func (s *SearchServiceV1) createSubscription(
 	if percID == 0 && createErr != nil {
 		return 0, 0, createErr
 	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("begin transaction: %w", err)
+	}
+
+	defer pg.Rollback(tx, &outErr)
+
+	q := postgres.New(tx)
 
 	subID, err := q.CreateSubscription(ctx, postgres.CreateSubscriptionParams{
 		Percolator: percID,
