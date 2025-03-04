@@ -657,7 +657,8 @@ func (s *SearchServiceV1) Query(
 
 	var readers []string
 
-	if !auth.Claims.HasScope("doc_admin") {
+	// Shared queries do not allow for doc_admin permissions bypass.
+	if shared || !auth.Claims.HasScope("doc_admin") {
 		if !req.Shared {
 			readers = append(readers, auth.Claims.Subject)
 		}
@@ -667,9 +668,6 @@ func (s *SearchServiceV1) Query(
 		boolQuery.Filter = append(
 			boolQuery.Filter,
 			termsQueryV1("readers", readers, 0, false))
-	} else {
-		// Always treat doc admin searches and subscriptions as private.
-		shared = false
 	}
 
 	osReq := searchRequestV1{
