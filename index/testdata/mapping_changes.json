@@ -1,4 +1,10 @@
 {
+  "creator_uri": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "comparison": "superset"
+  },
   "document.content.core_text.data.text": {
     "type": "text",
     "comparison": "superset"
@@ -168,6 +174,12 @@
   "slug": {
     "type": "alias",
     "path": "document.meta.tt_slugline.value",
+    "comparison": "superset"
+  },
+  "updater_uri": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
     "comparison": "superset"
   }
 }

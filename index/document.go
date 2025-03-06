@@ -11,7 +11,9 @@ import (
 // DocumentState is the full state that we want to index.
 type DocumentState struct {
 	Created            time.Time         `json:"created"`
+	Creator            string            `json:"creator"`
 	Modified           time.Time         `json:"modified"`
+	Updater            string            `json:"updater"`
 	CurrentVersion     int64             `json:"current_version"`
 	ACL                []ACLEntry        `json:"acl"`
 	Heads              map[string]Status `json:"heads"`

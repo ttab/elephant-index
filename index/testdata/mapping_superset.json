@@ -3,6 +3,11 @@
     "created": {
       "type": "date"
     },
+    "creator_uri": {
+      "type": "icu_collation_keyword",
+      "language": "sv",
+      "country": "se"
+    },
     "current_version": {
       "type": "long"
     },
@@ -174,6 +179,11 @@
     },
     "text": {
       "type": "text"
+    },
+    "updater_uri": {
+      "type": "icu_collation_keyword",
+      "language": "sv",
+      "country": "se"
     }
   }
 }

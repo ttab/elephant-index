@@ -74,6 +74,16 @@ func BuildDocument(
 	d.AddTime("created", state.Created)
 	d.AddTime("modified", state.Modified)
 
+	d.AddField("creator_uri", Field{
+		FieldOptions: keywordOptions,
+		Values:       []string{state.Creator},
+	})
+
+	d.AddField("updater_uri", Field{
+		FieldOptions: keywordOptions,
+		Values:       []string{state.Updater},
+	})
+
 	if state.WorkflowState != "" {
 		d.AddField("workflow_state", Field{
 			FieldOptions: keywordOptions,

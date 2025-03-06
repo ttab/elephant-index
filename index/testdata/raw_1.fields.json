@@ -5,6 +5,14 @@
       "2023-04-02T01:04:49Z"
     ]
   },
+  "creator_uri": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "values": [
+      "core://user/1"
+    ]
+  },
   "current_version": {
     "type": "long",
     "values": [
@@ -328,6 +336,14 @@
       "I Belvidere, Illinois, längre norrut i USA slog en tornado till mot teatern Apollo där en hårdrocksfestival pågick. En man omkom när delar av taket rasade in och ytterligare ett 30-tal skadades under konserten.",
       "Det vidsträckta stormsystemets vindar fick också bränder till skogs och på slätterna att ta fart. I Oklahoma skadades minst 32 personer och mer än 40 hem förstördes, i över 100 rapporterade bränder.",
       "Uppdaterat dödstal, samt stycke om bränder."
+    ]
+  },
+  "updater_uri": {
+    "type": "icu_collation_keyword",
+    "language": "sv",
+    "country": "se",
+    "values": [
+      "core://user/2"
     ]
   }
 }

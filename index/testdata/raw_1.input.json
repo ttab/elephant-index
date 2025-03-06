@@ -1,6 +1,8 @@
 {
   "created": "2023-04-02T01:04:49Z",
   "modified": "2023-04-02T03:18:54Z",
+  "creator": "core://user/1",
+  "updater": "core://user/2",
   "heads": {
     "approved": {
       "id": 4,

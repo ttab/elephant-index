@@ -175,7 +175,9 @@ func (iw *indexWorker) enrich(
 	}
 
 	state.Created = created
+	state.Creator = metaRes.Meta.CreatorUri
 	state.Modified = modified
+	state.Updater = metaRes.Meta.UpdaterUri
 
 	for _, v := range metaRes.Meta.Acl {
 		state.ACL = append(state.ACL, ACLEntry{
