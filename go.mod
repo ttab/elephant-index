@@ -14,7 +14,7 @@ require (
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/prometheus/client_golang v1.21.1
 	github.com/ttab/elephant-api v0.17.14
-	github.com/ttab/elephantine v0.17.5
+	github.com/ttab/elephantine v0.17.6
 	github.com/ttab/eltest v0.1.0
 	github.com/ttab/flerr v0.1.0
 	github.com/ttab/koonkie v0.1.3
