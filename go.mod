@@ -1,6 +1,7 @@
 module github.com/ttab/elephant-index
 
 go 1.24.1
+toolchain go1.24.1
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.9
@@ -14,7 +15,7 @@ require (
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/prometheus/client_golang v1.21.1
 	github.com/ttab/elephant-api v0.17.14
-	github.com/ttab/elephantine v0.17.5
+	github.com/ttab/elephantine v0.17.9
 	github.com/ttab/eltest v0.1.0
 	github.com/ttab/flerr v0.1.0
 	github.com/ttab/koonkie v0.1.3
