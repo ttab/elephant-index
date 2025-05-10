@@ -93,6 +93,11 @@ func main() {
 				Name:    "sharding-policy",
 				EnvVars: []string{"SHARDING_POLICY"},
 			},
+			&cli.StringSliceFlag{
+				Name:    "cors-host",
+				Usage:   "CORS hosts to allow, supports wildcards",
+				EnvVars: []string{"CORS_HOSTS"},
+			},
 		},
 	}
 
@@ -127,6 +132,7 @@ func runIndexer(c *cli.Context) error {
 		managedOS          = c.Bool("managed-opensearch")
 		noIndexer          = c.Bool("no-indexer")
 		shardingPolicy     = c.String("sharding-policy")
+		corsHosts          = c.StringSlice("cors-host")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -220,7 +226,9 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("set up metrics: %w", err)
 	}
 
-	server := elephantine.NewAPIServer(logger, addr, profileAddr)
+	server := elephantine.NewAPIServer(logger, addr, profileAddr,
+		elephantine.APIServerCORSHosts(corsHosts...),
+	)
 
 	err = index.RunIndex(c.Context, index.Parameters{
 		APIServer:      server,

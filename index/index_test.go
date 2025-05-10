@@ -77,7 +77,7 @@ func TestInterpretBulkResponse(t *testing.T) {
 
 	for name, tCase := range cases {
 		t.Run(name, func(t *testing.T) {
-			ctx := test.Context(t)
+			ctx := t.Context()
 			log := slog.New(test.NewLogHandler(t, slog.LevelDebug))
 
 			got, err := index.InterpretBulkResponse(

@@ -110,7 +110,7 @@ const (
 )
 
 func (m Mapping) Compare(other Mapping) MappingComparison {
-	equal := m.FieldOptions.Equal(other.FieldOptions) && other.Path == m.Path
+	equal := m.Equal(other.FieldOptions) && other.Path == m.Path
 	if !equal {
 		return MappingBreaking
 	}
