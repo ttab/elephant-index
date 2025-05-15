@@ -81,6 +81,9 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		Name: "elephant_indexer_percolator_position",
 		Help: "The position last processed by the percolator",
 	})
+	if err := reg.Register(percolatorPosition); err != nil {
+		return nil, fmt.Errorf("register percolator position metric: %w", err)
+	}
 
 	indexedDocument := prometheus.NewCounterVec(
 		prometheus.CounterOpts{

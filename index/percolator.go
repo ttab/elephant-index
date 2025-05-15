@@ -371,16 +371,16 @@ func (p *Percolator) percolateEvents(ctx context.Context) error {
 			start = p.lastEvent
 		}
 
-		p.metrics.percolationEvent.WithLabelValues(
-			"percolate-event", "percolator",
-		).Inc()
-
 		for id := start; id <= evt.ID; id++ {
 			err := p.handleEventPercolation(ctx, id)
 			if err != nil {
 				return fmt.Errorf(
 					"percolate event %d: %w", id, err)
 			}
+
+			p.metrics.percolationEvent.WithLabelValues(
+				"percolate-event", "percolator",
+			).Inc()
 
 			p.lastEvent = id
 		}
