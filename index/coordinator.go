@@ -156,15 +156,6 @@ func NewCoordinator(
 		stopped:          make(chan struct{}),
 	}
 
-	percolator, err := NewPercolator(
-		gCtx, logger, db, &c, lang, opt.PercolatorCache,
-		c.percolatorUpdate, c.percolateEvent, c.eventPercolated)
-	if err != nil {
-		return nil, fmt.Errorf("create percolator: %w", err)
-	}
-
-	c.percolator = percolator
-
 	return &c, nil
 }
 
@@ -217,7 +208,7 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	lang := NewLanguageResolver(c.opt.Languages)
 
 	perc, err := NewPercolator(
-		stopCtx, c.logger, c.db, c, lang, NewPercolatorDocCache(c.db),
+		stopCtx, c.logger, c.opt.Metrics, c.db, c, lang, NewPercolatorDocCache(c.db),
 		c.percolatorUpdate, c.percolateEvent, c.eventPercolated)
 	if err != nil {
 		c.stopOnce.Do(func() {
@@ -523,6 +514,10 @@ func (c *Coordinator) PercolateDocument(
 	defer c.activeMut.RUnlock()
 
 	if setName != c.activeSet {
+		c.opt.Metrics.percolationEvent.WithLabelValues(
+			"inactive_set", setName,
+		).Inc()
+
 		return
 	}
 
@@ -547,9 +542,17 @@ func (c *Coordinator) PercolateDocument(
 			return fmt.Errorf("send percolate event: %w", err)
 		}
 
+		c.opt.Metrics.percolationEvent.WithLabelValues(
+			"queued", setName,
+		).Inc()
+
 		return nil
 	})
 	if err != nil {
+		c.opt.Metrics.percolationEvent.WithLabelValues(
+			"queue_failed", setName,
+		).Inc()
+
 		c.logger.ErrorContext(ctx, "failed to queue event for percolation",
 			elephantine.LogKeyEventID, doc.ID,
 			elephantine.LogKeyError, err,

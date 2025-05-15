@@ -320,6 +320,10 @@ func (iw *indexWorker) Process(
 					Document: &job.State.Document,
 				},
 			)
+
+			iw.idx.metrics.percolationEvent.WithLabelValues(
+				"requested", iw.indexName,
+			).Inc()
 		}
 
 		err = errors.Join(

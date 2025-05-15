@@ -60,6 +60,7 @@ type PercolatorDocumentGetter interface {
 func NewPercolator(
 	ctx context.Context,
 	logger *slog.Logger,
+	metrics *Metrics,
 	db *pgxpool.Pool,
 	index ActiveIndexGetter,
 	lang *LanguageResolver,
@@ -84,6 +85,7 @@ func NewPercolator(
 
 	p := Percolator{
 		log:             logger,
+		metrics:         metrics,
 		db:              db,
 		index:           index,
 		lang:            lang,
@@ -115,8 +117,12 @@ func NewPercolator(
 		p.registerPercolator(def)
 	}
 
+	// Get notified when percolators are created or deleted.
 	go p.handlePercolatorUpdates(ctx)
+
 	go p.percolationLoop(ctx)
+
+	// Remove old percolation data.
 	go p.cleanup(ctx)
 
 	return &p, nil
@@ -125,11 +131,12 @@ func NewPercolator(
 // Percolator percolates documents for a single index set. This will become a
 // bottleneck for indexing unless we add some concurrency.
 type Percolator struct {
-	log   *slog.Logger
-	db    *pgxpool.Pool
-	index ActiveIndexGetter
-	lang  *LanguageResolver
-	docs  PercolatorDocumentGetter
+	log     *slog.Logger
+	metrics *Metrics
+	db      *pgxpool.Pool
+	index   ActiveIndexGetter
+	lang    *LanguageResolver
+	docs    PercolatorDocumentGetter
 
 	pUpdate chan PercolatorUpdate
 	pEvent  chan PercolateEvent
@@ -373,6 +380,8 @@ func (p *Percolator) percolateEvents(ctx context.Context) error {
 
 			p.lastEvent = id
 		}
+
+		p.metrics.percolatorPos.Set(float64(p.lastEvent))
 
 		err := q.SetAppState(ctx, postgres.SetAppStateParams{
 			Name: "percolator",

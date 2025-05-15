@@ -8,13 +8,15 @@ import (
 )
 
 type Metrics struct {
-	indexerFailures *prometheus.CounterVec
-	unknownEvents   *prometheus.CounterVec
-	mappingUpdate   *prometheus.CounterVec
-	ignoredMapping  *prometheus.CounterVec
-	indexedDocument *prometheus.CounterVec
-	enrichErrors    *prometheus.CounterVec
-	logPos          *koonkie.PrometheusFollowerMetrics
+	indexerFailures  *prometheus.CounterVec
+	unknownEvents    *prometheus.CounterVec
+	mappingUpdate    *prometheus.CounterVec
+	ignoredMapping   *prometheus.CounterVec
+	percolationEvent *prometheus.CounterVec
+	percolatorPos    prometheus.Gauge
+	indexedDocument  *prometheus.CounterVec
+	enrichErrors     *prometheus.CounterVec
+	logPos           *koonkie.PrometheusFollowerMetrics
 
 	Registerer prometheus.Registerer
 }
@@ -64,6 +66,22 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		return nil, fmt.Errorf("register ignored mappings metric: %w", err)
 	}
 
+	percolationEvent := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "elephant_indexer_percolation_total",
+			Help: "Percolation events.",
+		},
+		[]string{"event", "location"},
+	)
+	if err := reg.Register(percolationEvent); err != nil {
+		return nil, fmt.Errorf("register ignored mappings metric: %w", err)
+	}
+
+	percolatorPosition := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "elephant_indexer_percolator_position",
+		Help: "The position last processed by the percolator",
+	})
+
 	indexedDocument := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "elephant_indexer_doc_total",
@@ -92,14 +110,16 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 	}
 
 	m := Metrics{
-		indexerFailures: indexerFailures,
-		unknownEvents:   unknownEvents,
-		logPos:          logPos,
-		mappingUpdate:   mappingUpdate,
-		ignoredMapping:  ignoredMapping,
-		indexedDocument: indexedDocument,
-		enrichErrors:    enrichErrors,
-		Registerer:      reg,
+		indexerFailures:  indexerFailures,
+		unknownEvents:    unknownEvents,
+		logPos:           logPos,
+		mappingUpdate:    mappingUpdate,
+		ignoredMapping:   ignoredMapping,
+		percolationEvent: percolationEvent,
+		percolatorPos:    percolatorPosition,
+		indexedDocument:  indexedDocument,
+		enrichErrors:     enrichErrors,
+		Registerer:       reg,
 	}
 
 	return &m, nil
