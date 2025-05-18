@@ -493,6 +493,8 @@ func (p *Percolator) ensurePercolatorQueries(
 		perc.HasDocument[index] = true
 		p.pMutex.Unlock()
 
+		p.metrics.percolatorLife.WithLabelValues("query-doc").Inc()
+
 		written++
 	}
 

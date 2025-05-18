@@ -29,17 +29,20 @@ func (q *Queries) AddCluster(ctx context.Context, arg AddClusterParams) error {
 
 const checkForPercolator = `-- name: CheckForPercolator :one
 SELECT id FROM percolator
-WHERE hash = $1 AND (
-      owner = $2 OR ($2 IS NULL AND owner IS NULL))
+WHERE doc_type = $1
+      AND hash = $2
+      AND (
+          owner = $3 OR ($3 IS NULL AND owner IS NULL))
 `
 
 type CheckForPercolatorParams struct {
-	Hash  []byte
-	Owner pgtype.Text
+	DocType string
+	Hash    []byte
+	Owner   pgtype.Text
 }
 
 func (q *Queries) CheckForPercolator(ctx context.Context, arg CheckForPercolatorParams) (int64, error) {
-	row := q.db.QueryRow(ctx, checkForPercolator, arg.Hash, arg.Owner)
+	row := q.db.QueryRow(ctx, checkForPercolator, arg.DocType, arg.Hash, arg.Owner)
 	var id int64
 	err := row.Scan(&id)
 	return id, err

@@ -897,8 +897,9 @@ func (s *SearchServiceV1) createSubscription(
 		q := postgres.New(s.db)
 
 		percID, err = q.CheckForPercolator(ctx, postgres.CheckForPercolatorParams{
-			Hash:  percHash[:],
-			Owner: pg.TextOrNull(owner),
+			DocType: docType,
+			Hash:    percHash[:],
+			Owner:   pg.TextOrNull(owner),
 		})
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return 0, 0, fmt.Errorf("check for existing percolator: %w", err)
