@@ -14,6 +14,7 @@ type Metrics struct {
 	ignoredMapping   *prometheus.CounterVec
 	percolationEvent *prometheus.CounterVec
 	percolatorPos    prometheus.Gauge
+	percolatorLife   *prometheus.CounterVec
 	indexedDocument  *prometheus.CounterVec
 	enrichErrors     *prometheus.CounterVec
 	logPos           *koonkie.PrometheusFollowerMetrics
@@ -66,6 +67,17 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		return nil, fmt.Errorf("register ignored mappings metric: %w", err)
 	}
 
+	percolatorLifecycle := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "elephant_indexer_percolator_lifecycle_total",
+			Help: "Percolation lifecycle events.",
+		},
+		[]string{"event"},
+	)
+	if err := reg.Register(percolatorLifecycle); err != nil {
+		return nil, fmt.Errorf("register percolator lifecycle metric: %w", err)
+	}
+
 	percolationEvent := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "elephant_indexer_percolation_total",
@@ -74,7 +86,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		[]string{"event", "location"},
 	)
 	if err := reg.Register(percolationEvent); err != nil {
-		return nil, fmt.Errorf("register ignored mappings metric: %w", err)
+		return nil, fmt.Errorf("register percolation event metric: %w", err)
 	}
 
 	percolatorPosition := prometheus.NewGauge(prometheus.GaugeOpts{
@@ -120,6 +132,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		ignoredMapping:   ignoredMapping,
 		percolationEvent: percolationEvent,
 		percolatorPos:    percolatorPosition,
+		percolatorLife:   percolatorLifecycle,
 		indexedDocument:  indexedDocument,
 		enrichErrors:     enrichErrors,
 		Registerer:       reg,

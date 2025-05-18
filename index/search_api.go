@@ -194,19 +194,19 @@ func (s *SearchServiceV1) PollSubscription(
 		percSubs[def.Percolator] = append(percSubs[def.Percolator], subID)
 	}
 
+	// All subscriptions were unknown.
+	if len(cursorCollect) == 0 {
+		return &index.PollSubscriptionResponse{
+			UnknownSubscriptions: unknownSubs,
+		}, nil
+	}
+
 	err = q.TouchSubscriptions(ctx, postgres.TouchSubscriptionsParams{
 		Touched: pg.Time(time.Now()),
 		Ids:     knownSubs,
 	})
 	if err != nil {
 		return nil, twirp.InternalErrorf("failed to set subscriptions as touched: %v", err)
-	}
-
-	// All subscriptions were unknown.
-	if len(cursorCollect) == 0 {
-		return &index.PollSubscriptionResponse{
-			UnknownSubscriptions: unknownSubs,
-		}, nil
 	}
 
 	deadline := time.Now().Add(maxWait)
@@ -241,6 +241,10 @@ func (s *SearchServiceV1) PollSubscription(
 	// Collect the poll result by subscription id.
 	p := make(map[int64]*index.SubscriptionPollResult)
 
+	// Do the long poll as a loop with two iterations where we return after
+	// fetching events if we get hits (or if it's the second
+	// iteration. Otherwise we wait for an event percolated event, time out,
+	// or get cancelled.
 	for i := range 2 {
 		items, err := q.FetchPercolatorEvents(ctx,
 			postgres.FetchPercolatorEventsParams{
@@ -321,6 +325,7 @@ func batchWait(ctx context.Context,
 		case <-batchDone:
 			return true
 		case <-events:
+			// For the first event we get...
 			if got == 0 {
 				// Force finish batch after batch duration or
 				// just before we hit the request deadline.

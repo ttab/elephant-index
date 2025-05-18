@@ -326,6 +326,8 @@ func (p *Percolator) purgePercolator(
 
 func (p *Percolator) percolationLoop(ctx context.Context) {
 	for {
+		p.metrics.percolatorLife.WithLabelValues("acquire-lock").Inc()
+
 		lock, err := pg.NewJobLock(
 			p.db, p.log, "percolator",
 			pg.JobLockOptions{})
@@ -352,26 +354,55 @@ func (p *Percolator) percolationLoop(ctx context.Context) {
 	}
 }
 
+const minPercolateInterval = 5 * time.Second
+
 func (p *Percolator) percolateEvents(ctx context.Context) error {
+	p.metrics.percolatorLife.WithLabelValues("start").Inc()
+
+	defer p.metrics.percolatorLife.WithLabelValues("stop").Inc()
+
 	q := postgres.New(p.db)
 
-	for evt := range p.pEvent {
+	timer := time.NewTicker(minPercolateInterval)
+
+	// We get events from the fanout when something is queued for
+	// percolation.
+	for {
+		var evt PercolateEvent
+
+		timer.Reset(minPercolateInterval)
+
+		// Wait for notification, the minimum poll interval or context
+		// cancel.
 		select {
+		case evt = <-p.pEvent:
+			p.metrics.percolatorLife.WithLabelValues("triggered").Inc()
+		case <-timer.C:
+			p.metrics.percolatorLife.WithLabelValues("poll").Inc()
 		case <-ctx.Done():
 			return nil
-		default:
 		}
 
-		if p.lastEvent >= evt.ID {
-			continue
-		}
-
+		// We don't have delivery guarantees for the events, so start at
+		// the last event if we have a position.
 		start := evt.ID
 		if p.lastEvent != 0 {
 			start = p.lastEvent
 		}
 
-		for id := start; id <= evt.ID; id++ {
+		// Same deal here, process to the last known event.
+		end, err := q.GetLastPercolatorEventID(ctx)
+		if err != nil {
+			return fmt.Errorf("get last event ID: %w", err)
+		}
+
+		if end <= p.lastEvent {
+			p.metrics.percolatorLife.WithLabelValues("no-work").Inc()
+
+			continue
+		}
+
+		for id := start; id <= end; id++ {
 			err := p.handleEventPercolation(ctx, id)
 			if err != nil {
 				return fmt.Errorf(
@@ -387,7 +418,7 @@ func (p *Percolator) percolateEvents(ctx context.Context) error {
 
 		p.metrics.percolatorPos.Set(float64(p.lastEvent))
 
-		err := q.SetAppState(ctx, postgres.SetAppStateParams{
+		err = q.SetAppState(ctx, postgres.SetAppStateParams{
 			Name: "percolator",
 			Data: postgres.AppStateData{
 				Percolator: &postgres.PercolatorState{
@@ -398,9 +429,9 @@ func (p *Percolator) percolateEvents(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("persist percolator state: %w", err)
 		}
-	}
 
-	return nil
+		p.metrics.percolatorLife.WithLabelValues("end-iteration").Inc()
+	}
 }
 
 func (p *Percolator) handleEventPercolation(ctx context.Context, id int64) error {
