@@ -486,6 +486,8 @@ func (p *Percolator) ensurePercolatorQueries(
 				elephantine.LogKeyError, err,
 			)
 
+			p.metrics.percolatorLife.WithLabelValues("query-doc-error").Inc()
+
 			continue
 		}
 
