@@ -270,6 +270,8 @@ func (s *SearchServiceV1) PollSubscription(
 						"failed to load document for poll result",
 						elephantine.LogKeyEventID, item.ID,
 						elephantine.LogKeyError, err)
+
+					continue
 				}
 
 				r, ok := p[subID]
