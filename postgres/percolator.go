@@ -3,7 +3,7 @@ package postgres
 import "github.com/ttab/newsdoc"
 
 type PercolatorDocument struct {
-	ID       int64
+	EventID  int64
 	Fields   map[string][]string
 	Document *newsdoc.Document
 }

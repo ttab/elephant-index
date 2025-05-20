@@ -29,7 +29,7 @@ const (
 )
 
 type PercolatorWorker interface {
-	PercolateDocument(
+	RequestDocumentPercolation(
 		ctx context.Context,
 		setName string,
 		doc postgres.PercolatorDocument,

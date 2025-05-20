@@ -310,12 +310,18 @@ func (iw *indexWorker) Process(
 
 		values := idxDoc.Values()
 
+		// Percolation only makes sense when we're tailing the log, as
+		// it's used to detect what's currently happening.
 		if iw.idx.enablePercolation && caughtUp {
-			iw.percolator.PercolateDocument(
+			// Requesting percolation doesn't mean that we actually
+			// percolate the document. For that to happen the index
+			// worker needs to belong to the currently active index
+			// set.
+			iw.percolator.RequestDocumentPercolation(
 				ctx,
 				iw.idx.name,
 				postgres.PercolatorDocument{
-					ID:       job.EventID,
+					EventID:  job.EventID,
 					Fields:   values,
 					Document: &job.State.Document,
 				},

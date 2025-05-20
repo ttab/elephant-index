@@ -503,9 +503,9 @@ func (c *Coordinator) ensureActiveClient(set postgres.IndexSet) error {
 	return nil
 }
 
-// PercolateDocument acts as a filter that only runs percolation for the
-// currently active indexer.
-func (c *Coordinator) PercolateDocument(
+// RequestDocumentPercolation acts as a filter that only runs percolation for
+// the currently active indexer.
+func (c *Coordinator) RequestDocumentPercolation(
 	ctx context.Context,
 	setName string,
 	doc postgres.PercolatorDocument,
@@ -527,7 +527,7 @@ func (c *Coordinator) PercolateDocument(
 		q := postgres.New(tx)
 
 		err := q.InsertPercolatorEventPayload(ctx, postgres.InsertPercolatorEventPayloadParams{
-			ID:      doc.ID,
+			ID:      doc.EventID,
 			Created: pg.Time(time.Now()),
 			Data:    doc,
 		})
@@ -536,7 +536,7 @@ func (c *Coordinator) PercolateDocument(
 		}
 
 		err = c.percolateEvent.Publish(ctx, tx, PercolateEvent{
-			ID: doc.ID,
+			ID: doc.EventID,
 		})
 		if err != nil {
 			return fmt.Errorf("send percolate event: %w", err)
@@ -554,7 +554,7 @@ func (c *Coordinator) PercolateDocument(
 		).Inc()
 
 		c.logger.ErrorContext(ctx, "failed to queue event for percolation",
-			elephantine.LogKeyEventID, doc.ID,
+			elephantine.LogKeyEventID, doc.EventID,
 			elephantine.LogKeyError, err,
 		)
 	}

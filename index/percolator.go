@@ -156,6 +156,9 @@ func (p *Percolator) cleanup(ctx context.Context) {
 	q := postgres.New(p.db)
 
 	for {
+		// Subscriptions, events, and event payloads are expired by
+		// age. Percolators are removed when they no longer have any
+		// associated subscriptions.
 		subscriptionCutoff := time.Now().Add(-30 * time.Minute)
 		eventCutoff := time.Now().Add(-60 * time.Minute)
 		eventPayloadCutoff := time.Now().Add(-90 * time.Minute)
@@ -236,6 +239,8 @@ func (p *Percolator) cleanup(ctx context.Context) {
 				elephantine.LogKeyError, err)
 		}
 
+		// This construct is a bit odd, but i's here to get a context
+		// that we can return out of.
 		err = func() error {
 			deletePercs, err := q.GetPercolatorsMarkedForDeletion(ctx)
 			if err != nil {
@@ -256,7 +261,7 @@ func (p *Percolator) cleanup(ctx context.Context) {
 			return nil
 		}()
 		if err != nil {
-			p.log.ErrorContext(ctx, "clean up subscriptions",
+			p.log.ErrorContext(ctx, "clean up unused percolators",
 				elephantine.LogKeyError, err)
 		}
 
@@ -294,9 +299,9 @@ func (p *Percolator) purgePercolator(
 			clean.Addf(res.Body.Close, "close delete response")
 
 			if res.IsError() && res.StatusCode != http.StatusNotFound {
-				// OS treats DELETE of non-existing doc as a 200
-				// OK, but guarding against the index itself not
-				// existing here.
+				// OpenSearch treats DELETE of non-existing doc
+				// as a 200 OK, but we're guarding against the
+				// possibility index itself not existing here.
 				return fmt.Errorf("delete percolator document: %w", ElasticErrorFromResponse(res))
 			}
 
@@ -769,7 +774,7 @@ func (p *Percolator) percolateDocument(
 		err = q.InsertPercolatorEvents(ctx, postgres.InsertPercolatorEventsParams{
 			Percolators: percolators,
 			Matched:     matches,
-			ID:          doc.ID,
+			ID:          doc.EventID,
 			Document:    docUUID,
 			Created:     pg.Time(time.Now()),
 		})
@@ -778,7 +783,7 @@ func (p *Percolator) percolateDocument(
 		}
 
 		err = p.eventPercolated.Publish(ctx, tx, EventPercolated{
-			ID:          doc.ID,
+			ID:          doc.EventID,
 			Percolators: percolators,
 		})
 		if err != nil {

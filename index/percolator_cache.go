@@ -26,7 +26,7 @@ type PercolatorDocCache struct {
 }
 
 func (pdc *PercolatorDocCache) CacheDocument(d postgres.PercolatorDocument) {
-	pdc.cache.Set(strconv.FormatInt(d.ID, 10), d)
+	pdc.cache.Set(strconv.FormatInt(d.EventID, 10), d)
 }
 
 func (pdc *PercolatorDocCache) GetDocument(
