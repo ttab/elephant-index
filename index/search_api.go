@@ -661,12 +661,18 @@ func (s *SearchServiceV1) Query(
 
 	// Whether a query is shared primarily affects subscriptions.
 	shared := req.Shared
+	// Whether the client has the necesary scopes to bypass ACL access
+	// checks.
+	readAll := auth.Claims.HasAnyScope("doc_admin", "doc_read_all")
 
-	var readers []string
+	// Add read restrictions if the client isn't allowed to read all
+	// documents, or if shared was requested, as shared queries do not allow
+	// for ACL bypass.
+	if !readAll || shared {
+		var readers []string
 
-	// Shared queries do not allow for doc_admin permissions bypass.
-	if shared || !auth.Claims.HasScope("doc_admin") {
-		if !req.Shared {
+		// Only add the subject to readers if
+		if !shared {
 			readers = append(readers, auth.Claims.Subject)
 		}
 
