@@ -661,7 +661,7 @@ func (s *SearchServiceV1) Query(
 
 	// Whether a query is shared primarily affects subscriptions.
 	shared := req.Shared
-	// Whether the client has the necesary scopes to bypass ACL access
+	// Whether the client has the necessary scopes to bypass ACL access
 	// checks.
 	readAll := auth.Claims.HasAnyScope("doc_admin", "doc_read_all")
 
