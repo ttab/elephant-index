@@ -608,6 +608,201 @@ func (s *SearchServiceV1) Query(
 		return nil, err
 	}
 
+	client, indexSet := s.active.GetActiveIndex()
+
+	osReq, err := newSearchRequest(auth, req)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"create search request: %w", err)
+	}
+
+	queryPayload, err := json.Marshal(osReq)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"marshal opensearch query: %w", err)
+	}
+
+	res, err := client.Search(
+		client.Search.WithContext(ctx),
+		client.Search.WithIndex(indexPattern(indexSet, req)),
+		client.Search.WithBody(bytes.NewReader(queryPayload)))
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"perform opensearch search request: %w", err)
+	}
+
+	defer func() {
+		err := res.Body.Close()
+		if err != nil {
+			outErr = errors.Join(outErr, fmt.Errorf(
+				"close opensearch response body: %w", err))
+		}
+	}()
+
+	dec := json.NewDecoder(res.Body)
+
+	if res.IsError() {
+		var elasticErr ElasticErrorResponse
+
+		err := dec.Decode(&elasticErr)
+		if err != nil {
+			return nil, errors.Join(
+				fmt.Errorf("opensearch responded with: %s", res.Status()),
+				fmt.Errorf("decoded error response: %w", err),
+			)
+		}
+
+		return nil, twirp.InternalErrorf(
+			"error response from opensearch: %s", res.Status())
+	}
+
+	var response searchResponse
+
+	err = dec.Decode(&response)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"unmarshal opensearch response: %w", err)
+	}
+
+	pRes, err := s.processSearchResponse(ctx, auth, req, osReq, &response)
+	if err != nil {
+		return nil, fmt.Errorf("create search response: %w", err)
+	}
+
+	return pRes, nil
+}
+
+func (s *SearchServiceV1) MultiSearch(
+	ctx context.Context, req *index.MultiSearchRequest,
+) (_ *index.MultiSearchResponse, outErr error) {
+	auth, err := RequireAnyScope(ctx, ScopeSearch, ScopeIndexAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	client, indexSet := s.active.GetActiveIndex()
+
+	requests := make([]*searchRequestV1, len(req.Queries))
+
+	var body bytes.Buffer
+
+	for i, q := range req.Queries {
+		metadata, err := json.Marshal(msearchMetadata{
+			Index: indexPattern(indexSet, q),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("marshal metadata: %w", err)
+		}
+
+		body.Write(metadata)
+		body.WriteString("\n")
+
+		osReq, err := newSearchRequest(auth, q)
+		if err != nil {
+			return nil, fmt.Errorf("create query: %w", err)
+		}
+
+		requests[i] = osReq
+
+		queryPayload, err := json.Marshal(osReq)
+		if err != nil {
+			return nil, fmt.Errorf("marshal query: %w", err)
+		}
+
+		body.Write(queryPayload)
+		body.WriteString("\n")
+	}
+
+	res, err := client.Msearch(bytes.NewReader(body.Bytes()),
+		client.Msearch.WithContext(ctx),
+	)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"perform opensearch msearch request: %w", err)
+	}
+
+	defer func() {
+		err := res.Body.Close()
+		if err != nil {
+			outErr = errors.Join(outErr, fmt.Errorf(
+				"close opensearch response body: %w", err))
+		}
+	}()
+
+	dec := json.NewDecoder(res.Body)
+
+	if res.IsError() {
+		var elasticErr ElasticErrorResponse
+
+		err := dec.Decode(&elasticErr)
+		if err != nil {
+			return nil, errors.Join(
+				fmt.Errorf("opensearch responded with: %s", res.Status()),
+				fmt.Errorf("decoded error response: %w", err),
+			)
+		}
+
+		return nil, twirp.InternalErrorf(
+			"error response from opensearch: %s", res.Status())
+	}
+
+	var mresponse msearchResponse
+
+	err = dec.Decode(&mresponse)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"unmarshal opensearch msearch response: %w", err)
+	}
+
+	mRes := index.MultiSearchResponse{
+		Results: make([]*index.QueryResponseV1, len(mresponse.Responses)),
+	}
+
+	for i, response := range mresponse.Responses {
+		r, err := s.processSearchResponse(
+			ctx,
+			auth,
+			req.Queries[i],
+			requests[i],
+			&response)
+		if err != nil {
+			return nil, fmt.Errorf("search response error: %w", err)
+		}
+
+		mRes.Results[i] = r
+	}
+
+	return &mRes, nil
+}
+
+func indexPattern(
+	indexSet string, req *index.QueryRequestV1,
+) (indexPattern string) {
+	indexPattern = "documents-" + indexSet
+
+	if req.DocumentType != "" {
+		indexPattern += "-" + nonAlphaNum.ReplaceAllString(req.DocumentType, "_")
+	} else {
+		indexPattern += "-*"
+	}
+
+	if req.Language != "" {
+		indexPattern += "-" + req.Language
+
+		// Add a tailing wildcard if no language region has been specified.
+		if !strings.ContainsRune(req.Language, '-') {
+			indexPattern += "-*"
+		}
+	} else {
+		indexPattern += "-*"
+	}
+
+	return
+}
+
+func newSearchRequest(
+	auth *elephantine.AuthInfo, req *index.QueryRequestV1,
+) (*searchRequestV1, error) {
 	if req.Size == 0 {
 		req.Size = DefaultSearchSize
 	}
@@ -627,27 +822,6 @@ func (s *SearchServiceV1) Query(
 	if req.Subscribe && req.DocumentType == "" {
 		return nil, twirp.InvalidArgumentError("subscribe",
 			"document type is required for subscriptions")
-	}
-
-	client, indexSet := s.active.GetActiveIndex()
-
-	indexPattern := "documents-" + indexSet
-
-	if req.DocumentType != "" {
-		indexPattern += "-" + nonAlphaNum.ReplaceAllString(req.DocumentType, "_")
-	} else {
-		indexPattern += "-*"
-	}
-
-	if req.Language != "" {
-		indexPattern += "-" + req.Language
-
-		// Add a tailing wildcard if no language region has been specified.
-		if !strings.ContainsRune(req.Language, '-') {
-			indexPattern += "-*"
-		}
-	} else {
-		indexPattern += "-*"
 	}
 
 	var boolQuery boolConditionsV1
@@ -692,65 +866,27 @@ func (s *SearchServiceV1) Query(
 		SearchAfter: req.SearchAfter,
 	}
 
-	for _, s := range req.Sort {
+	for _, o := range req.Sort {
 		order := "asc"
-		if s.Desc {
+		if o.Desc {
 			order = "desc"
 		}
 
 		osReq.Sort = append(osReq.Sort, map[string]string{
-			s.Field: order,
+			o.Field: order,
 		})
 	}
 
-	queryPayload, err := json.Marshal(osReq)
-	if err != nil {
-		return nil, twirp.InternalErrorf(
-			"marshal opensearch query: %w", err)
-	}
+	return &osReq, nil
+}
 
-	res, err := client.Search(
-		client.Search.WithContext(ctx),
-		client.Search.WithIndex(indexPattern),
-		client.Search.WithBody(bytes.NewReader(queryPayload)))
-	if err != nil {
-		return nil, twirp.InternalErrorf(
-			"perform opensearch search request: %w", err)
-	}
-
-	defer func() {
-		err := res.Body.Close()
-		if err != nil {
-			outErr = errors.Join(outErr, fmt.Errorf(
-				"close opensearch response body: %w", err))
-		}
-	}()
-
-	dec := json.NewDecoder(res.Body)
-
-	if res.IsError() {
-		var elasticErr ElasticErrorResponse
-
-		err := dec.Decode(&elasticErr)
-		if err != nil {
-			return nil, errors.Join(
-				fmt.Errorf("opensearch responded with: %s", res.Status()),
-				fmt.Errorf("decoded error response: %w", err),
-			)
-		}
-
-		return nil, twirp.InternalErrorf(
-			"error response from opensearch: %s", res.Status())
-	}
-
-	var response searchResponse
-
-	err = dec.Decode(&response)
-	if err != nil {
-		return nil, twirp.InternalErrorf(
-			"unmarshal opensearch response: %w", err)
-	}
-
+func (s *SearchServiceV1) processSearchResponse(
+	ctx context.Context,
+	auth *elephantine.AuthInfo,
+	req *index.QueryRequestV1,
+	request *searchRequestV1,
+	response *searchResponse,
+) (*index.QueryResponseV1, error) {
 	pRes := index.QueryResponseV1{
 		Took:     response.Took,
 		TimedOut: response.TimedOut,
@@ -843,9 +979,9 @@ func (s *SearchServiceV1) Query(
 		subID, cursor, err := s.createSubscription(
 			ctx,
 			auth.Claims.Subject,
-			shared,
+			req.Shared,
 			req.DocumentType,
-			boolQueryV1(boolQuery),
+			request.Query,
 			postgres.SubscriptionSpec{
 				Source:        req.Source,
 				LoadDocuments: req.LoadDocument,
@@ -1046,6 +1182,15 @@ type searchRequestV1 struct {
 	From        int64               `json:"from,omitempty"`
 	Size        int64               `json:"size,omitempty"`
 	SearchAfter []string            `json:"search_after,omitempty"`
+}
+
+type msearchMetadata struct {
+	Index string `json:"index"`
+}
+
+type msearchResponse struct {
+	Took      int64            `json:"took"`
+	Responses []searchResponse `json:"responses"`
 }
 
 func protoToQuery(p *index.QueryV1) (map[string]any, error) {
