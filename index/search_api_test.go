@@ -1,31 +1,32 @@
-package index
+package index_test
 
 import (
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ttab/elephant-api/index"
+	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
 )
 
 func TestIndexPattern(t *testing.T) {
 	test.Equal(t, "documents-foo-*-*",
-		indexPattern("foo", &index.QueryRequestV1{}),
+		internal.IndexPattern("foo", &index.QueryRequestV1{}),
 		"index pattern")
 	test.Equal(t, "documents-foo-text-*",
-		indexPattern("foo", &index.QueryRequestV1{
+		internal.IndexPattern("foo", &index.QueryRequestV1{
 			DocumentType: "text",
 		}),
 		"index pattern with text")
 	test.Equal(t, "documents-foo-text-sv-*",
-		indexPattern("foo", &index.QueryRequestV1{
+		internal.IndexPattern("foo", &index.QueryRequestV1{
 			DocumentType: "text",
 			Language:     "sv",
 		}),
 		"index pattern with text and language")
 	test.Equal(t, "documents-foo-text-sv-se",
-		indexPattern("foo", &index.QueryRequestV1{
+		internal.IndexPattern("foo", &index.QueryRequestV1{
 			DocumentType: "text",
 			Language:     "sv-se",
 		}),
@@ -33,7 +34,7 @@ func TestIndexPattern(t *testing.T) {
 }
 
 func TestLoadDocumentHasSizeCap(t *testing.T) {
-	_, err := newSearchRequest(
+	_, err := internal.NewSearchRequest(
 		&elephantine.AuthInfo{},
 		&index.QueryRequestV1{
 			LoadDocument: true,
@@ -49,7 +50,7 @@ func TestLoadDocumentHasSizeCap(t *testing.T) {
 }
 
 func TestSubscriptionsCannotBePaginated(t *testing.T) {
-	_, err := newSearchRequest(
+	_, err := internal.NewSearchRequest(
 		&elephantine.AuthInfo{},
 		&index.QueryRequestV1{
 			Subscribe:    true,
@@ -66,7 +67,7 @@ func TestSubscriptionsCannotBePaginated(t *testing.T) {
 }
 
 func TestRequireDocumentTypeForSubscription(t *testing.T) {
-	_, err := newSearchRequest(
+	_, err := internal.NewSearchRequest(
 		&elephantine.AuthInfo{},
 		&index.QueryRequestV1{
 			Subscribe:    true,
@@ -82,7 +83,7 @@ func TestRequireDocumentTypeForSubscription(t *testing.T) {
 }
 
 func TestNewSearchRequest(t *testing.T) {
-	req, err := newSearchRequest(
+	req, err := internal.NewSearchRequest(
 		&elephantine.AuthInfo{
 			Claims: elephantine.JWTClaims{
 				RegisteredClaims: jwt.RegisteredClaims{
@@ -123,10 +124,10 @@ func TestNewSearchRequest(t *testing.T) {
 	)
 	test.Must(t, err, "new search request")
 	test.Equal(t,
-		&searchRequestV1{
-			Size: DefaultSearchSize,
+		&internal.SearchRequestV1{
+			Size: internal.DefaultSearchSize,
 			Query: map[string]any{
-				"bool": boolConditionsV1{
+				"bool": internal.BoolConditionsV1{
 					Must: []map[string]any{{"term": map[string]any{
 						"id": map[string]string{"value": "foo"},
 					}}},
@@ -150,7 +151,7 @@ func TestNewSearchRequest(t *testing.T) {
 }
 
 func TestNewSearchRequestAsDocAdmin(t *testing.T) {
-	req, err := newSearchRequest(
+	req, err := internal.NewSearchRequest(
 		&elephantine.AuthInfo{
 			Claims: elephantine.JWTClaims{
 				RegisteredClaims: jwt.RegisteredClaims{
@@ -191,10 +192,10 @@ func TestNewSearchRequestAsDocAdmin(t *testing.T) {
 	)
 	test.Must(t, err, "new search request")
 	test.Equal(t,
-		&searchRequestV1{
-			Size: DefaultSearchSize,
+		&internal.SearchRequestV1{
+			Size: internal.DefaultSearchSize,
 			Query: map[string]any{
-				"bool": boolConditionsV1{
+				"bool": internal.BoolConditionsV1{
 					Must: []map[string]any{{"term": map[string]any{
 						"id": map[string]string{"value": "foo"},
 					}}},

@@ -15,6 +15,7 @@ import (
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
@@ -549,7 +550,7 @@ func NewIndexName(
 	docType string,
 	language LanguageInfo,
 ) IndexName {
-	indexTypeName := nonAlphaNum.ReplaceAllString(docType, "_")
+	indexTypeName := internal.NonAlphaNum.ReplaceAllString(docType, "_")
 	root := fmt.Sprintf("%s-%s-%s", t, setName, indexTypeName)
 	localeSuffix := fmt.Sprintf("%s-%s", language.Language, language.RegionSuffix)
 	languageName := fmt.Sprintf("%s-%s", indexTypeName, localeSuffix)
