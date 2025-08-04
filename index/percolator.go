@@ -498,7 +498,9 @@ func (p *Percolator) ensurePercolatorQueries(
 		}
 
 		p.pMutex.Lock()
+
 		perc.HasDocument[index] = true
+
 		p.pMutex.Unlock()
 
 		p.metrics.percolatorLife.WithLabelValues("query-doc").Inc()
@@ -732,6 +734,7 @@ func (p *Percolator) percolateDocument(
 	for k := range p.percolators[doc.Document.Type] {
 		allPercs[k] = false
 	}
+
 	p.pMutex.RUnlock()
 
 	// Bulk insert arrays.
