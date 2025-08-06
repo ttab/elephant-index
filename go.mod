@@ -5,6 +5,7 @@ go 1.24.4
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.17
 	github.com/gobwas/glob v0.2.3
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.5
@@ -13,7 +14,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/prometheus/client_golang v1.22.0
-	github.com/ttab/elephant-api v0.17.22
+	github.com/ttab/elephant-api v0.17.23
 	github.com/ttab/elephantine v0.19.2
 	github.com/ttab/eltest v0.1.0
 	github.com/ttab/flerr v0.1.0
@@ -70,7 +71,6 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.0 // indirect
 	github.com/goccy/go-json v0.10.4 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect

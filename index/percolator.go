@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/opensearch-project/opensearch-go/v2"
+	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
@@ -497,7 +498,9 @@ func (p *Percolator) ensurePercolatorQueries(
 		}
 
 		p.pMutex.Lock()
+
 		perc.HasDocument[index] = true
+
 		p.pMutex.Unlock()
 
 		p.metrics.percolatorLife.WithLabelValues("query-doc").Inc()
@@ -681,8 +684,8 @@ func (p *Percolator) percolateDocument(
 	index string,
 	doc postgres.PercolatorDocument,
 ) (outErr error) {
-	payload, err := json.Marshal(searchRequestV1{
-		Query: qWrap("percolate", percolateQuery{
+	payload, err := json.Marshal(internal.SearchRequestV1{
+		Query: internal.QWrap("percolate", percolateQuery{
 			Field:    "query",
 			Document: doc.Fields,
 		}),
@@ -731,6 +734,7 @@ func (p *Percolator) percolateDocument(
 	for k := range p.percolators[doc.Document.Type] {
 		allPercs[k] = false
 	}
+
 	p.pMutex.RUnlock()
 
 	// Bulk insert arrays.

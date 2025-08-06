@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/microcosm-cc/bluemonday"
+	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"golang.org/x/exp/slices"
@@ -365,8 +365,6 @@ func isKind(r revisor.EntityRef, kind ...revisor.BlockKind) bool {
 	return false
 }
 
-var nonAlphaNum = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
-
 func entityRefsToPath(doc *newsdoc.Document, refs []revisor.EntityRef) string {
 	r := make([]string, len(refs))
 
@@ -384,13 +382,13 @@ func entityRefsToPath(doc *newsdoc.Document, refs []revisor.EntityRef) string {
 
 			switch v.BlockKind {
 			case revisor.BlockKindLink:
-				key := nonAlphaNum.ReplaceAllString(block.Rel, "_")
+				key := internal.NonAlphaNum.ReplaceAllString(block.Rel, "_")
 				r[i] = "rel." + key
 			case revisor.BlockKindMeta:
-				key := nonAlphaNum.ReplaceAllString(block.Type, "_")
+				key := internal.NonAlphaNum.ReplaceAllString(block.Type, "_")
 				r[i] = "meta." + key
 			case revisor.BlockKindContent:
-				key := nonAlphaNum.ReplaceAllString(block.Type, "_")
+				key := internal.NonAlphaNum.ReplaceAllString(block.Type, "_")
 				r[i] = "content." + key
 			}
 
