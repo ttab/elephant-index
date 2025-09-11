@@ -100,7 +100,7 @@ func testingAPIServer(
 			APIServer: server,
 			Logger:    logger,
 			Database:  dbpool,
-			Client: func(ctx context.Context, cluster string) (*opensearch.Client, error) {
+			Client: func(_ context.Context, _ string) (*opensearch.Client, error) {
 				searchClient, err := opensearch.NewClient(opensearch.Config{
 					Addresses: []string{env.OpenSearchURI},
 				})
@@ -148,7 +148,7 @@ func testingAPIServer(
 		case <-time.After(100 * time.Millisecond):
 		}
 
-		res, err := http.Get(readyEndpoint)
+		res, err := http.Get(readyEndpoint) //nolint: gosec
 		if err != nil {
 			continue
 		}

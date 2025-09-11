@@ -72,7 +72,7 @@ func (r *Repository) SetUp(pool *dockertest.Pool, network *dockertest.Network) e
 		readyEndpoint := fmt.Sprintf("http://%s:1081/health/ready",
 			res.GetIPInNetwork(network))
 
-		res, err := http.Get(readyEndpoint)
+		res, err := http.Get(readyEndpoint) //nolint: gosec
 		if err != nil {
 			return fmt.Errorf("do readyness check: %w", err)
 		}

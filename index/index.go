@@ -420,7 +420,7 @@ func (idx *Indexer) loopIteration(
 			}
 
 			group.Go(func() error {
-				err := index.Process(gCtx, jobs, caughtUp)
+				err := index.Process(gCtx, jobs)
 				if err != nil {
 					return fmt.Errorf("process %q: %w", index.indexName, err)
 				}

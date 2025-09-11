@@ -2,11 +2,13 @@ package index_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -163,6 +165,7 @@ func runElsinod(t T) string {
 	keyStore := elsinod.NewStaticKeyStore("k1", signingKey)
 
 	els, err := elsinod.New(ctx, keyStore, elsinodPubURL, "pass", "pass", "example")
+	test.Must(t, err, "create elsinod")
 
 	elsinodMux := http.NewServeMux()
 	pageMux := howdah.NewPageMux(nil, elsinodMux)
@@ -170,7 +173,8 @@ func runElsinod(t T) string {
 	els.RegisterRoutes(pageMux)
 
 	elsServer := http.Server{
-		Handler: elsinodMux,
+		Handler:           elsinodMux,
+		ReadHeaderTimeout: 1 * time.Second,
 	}
 
 	go func() {
@@ -182,7 +186,7 @@ func runElsinod(t T) string {
 		})
 
 		err := elsServer.Serve(elsinodListener)
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			_ = elsinodListener.Close()
 
 			t.Fatalf("start elsinod server: %v", err)

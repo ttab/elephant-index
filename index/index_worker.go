@@ -218,7 +218,7 @@ func (iw *indexWorker) enrich(
 // Process indexes the documents in a batch, and should only return an error if
 // we get an indication that indexing in ES/OS has become impossible.
 func (iw *indexWorker) Process(
-	ctx context.Context, documents []*enrichJob, caughtUp bool,
+	ctx context.Context, documents []*enrichJob,
 ) error {
 	go func() {
 		for _, job := range documents {
