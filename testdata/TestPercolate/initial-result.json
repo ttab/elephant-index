@@ -1,0 +1,24 @@
+{
+  "total":  {
+    "value":  "1",
+    "relation":  "eq"
+  },
+  "hits":  [
+    {
+      "id":  "f5d2e4c5-01ba-4dae-9f09-a86701e06ecd",
+      "score":  1,
+      "fields":  {
+        "document.meta.core_planning_item.data.start_date":  {
+          "values":  [
+            "2025-08-29T00:00:00.000Z"
+          ]
+        },
+        "document.title":  {
+          "values":  [
+            "Rysslands ambassadör kallas upp"
+          ]
+        }
+      }
+    }
+  ]
+}

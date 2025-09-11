@@ -204,7 +204,7 @@ INSERT INTO percolator_event_payload(
 ON CONFLICT (id) DO NOTHING;
 
 -- name: GetLastPercolatorEventID :one
-SELECT MAX(id)::bigint FROM percolator_event_payload;
+SELECT COALESCE(MAX(id), 0)::bigint FROM percolator_event_payload;
 
 -- name: GetPercolatorEventPayload :one
 SELECT id, created, data

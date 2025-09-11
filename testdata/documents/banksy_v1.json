@@ -1,0 +1,77 @@
+{
+  "uuid": "13749cfe-5cea-4231-b396-91123d3d5be0",
+  "type": "core/article",
+  "uri": "core://article/13749cfe-5cea-4231-b396-91123d3d5be0",
+  "title": "Efter helgens protester – nytt verk av Banksy ",
+  "content": [
+    {
+      "id": "7c5d0f32-7be6-4138-beed-0983fd90d8e5",
+      "type": "core/text",
+      "data": {
+        "text": "Efter helgens protester – nytt verk av Banksy "
+      },
+      "role": "heading-1"
+    },
+    {
+      "id": "cffc3c92-ec65-4e6f-8c7e-6641cc140710",
+      "type": "core/text",
+      "data": {
+        "text": "Ett nytt konstverk av gatukonstnären Banksy dök på måndagen upp på väggen till en kulturminnesmärkt byggnad vid Högsta domstolen i London."
+      },
+      "role": "preamble"
+    },
+    {
+      "id": "6f760fba-4c3d-4c26-8c22-d57af5d41ae6",
+      "type": "core/text",
+      "data": {
+        "text": "Väggmålningen visar en domare i traditionell peruk som med sin klubba slår en demonstrant med ett blodigt plakat. "
+      }
+    },
+    {
+      "id": "2b943255-68f8-4a2b-a33a-eeb7b5a5ffcd",
+      "type": "core/text",
+      "data": {
+        "text": "Målningen, som ses som en reaktion på gripandet i lördags av flera hundra demonstranter som stöder den förbjudna gruppen Palestine Act, täcktes snabbt över med svart plast och metallbarriärer. Den bevakades under dagen av säkerhetsvakter, skriver brittiska medier."
+      }
+    },
+    {
+      "id": "d702761b-4d27-452f-8e29-3cd74972e89f",
+      "type": "core/text",
+      "data": {
+        "text": "Banksy delade samtidigt ett foto av väggkonsten på sitt Instagramkonto med bildtexten &quot;Royal Courts Of Justice. London.&quot;"
+      }
+    },
+    {
+      "id": "2276e97b-1320-49fc-b18a-fc960f2dba18",
+      "type": "core/text",
+      "data": {
+        "text": "Den brittiska regeringen förbjöd nyligen Palestine Act enligt antiterrorlagstiftningen."
+      }
+    }
+  ],
+  "meta": [
+    {
+      "type": "tt/slugline",
+      "value": "banksy"
+    },
+    {
+      "type": "core/newsvalue",
+      "value": "3"
+    }
+  ],
+  "links": [
+    {
+      "uuid": "1c275798-70d5-4bd4-8f7a-18be4aa74f72",
+      "type": "core/section",
+      "title": "Kultur och nöje",
+      "rel": "section"
+    },
+    {
+      "uri": "tt://content-source/tt",
+      "type": "core/content-source",
+      "title": "TT",
+      "rel": "source"
+    }
+  ],
+  "language": "sv-se"
+}

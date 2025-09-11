@@ -123,10 +123,10 @@ var Scopes = []string{"eventlog_read", "doc_read_all", "schema_read"}
 func runIndexer(c *cli.Context) error {
 	var (
 		addr               = c.String("addr")
-		paramSourceName    = c.String("parameter-source")
 		profileAddr        = c.String("profile-addr")
 		logLevel           = c.String("log-level")
 		defaultLanguage    = c.String("default-language")
+		connString         = c.String("db")
 		opensearchEndpoint = c.String("opensearch-endpoint")
 		repositoryEndpoint = c.String("repository-endpoint")
 		managedOS          = c.Bool("managed-opensearch")
@@ -159,17 +159,6 @@ func runIndexer(c *cli.Context) error {
 
 	langOpts := index.StandardLanguageOptions(defaultLanguage)
 
-	paramSource, err := elephantine.GetParameterSource(paramSourceName)
-	if err != nil {
-		return fmt.Errorf("get parameter source: %w", err)
-	}
-
-	connString, err := elephantine.ResolveParameter(
-		c.Context, c, paramSource, "db")
-	if err != nil {
-		return fmt.Errorf("resolve db parameter: %w", err)
-	}
-
 	dbpool, err := pgxpool.New(c.Context, connString)
 	if err != nil {
 		return fmt.Errorf("create connection pool: %w", err)
@@ -185,8 +174,7 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("connect to database: %w", err)
 	}
 
-	auth, err := elephantine.AuthenticationConfigFromCLI(
-		c, paramSource, Scopes)
+	auth, err := elephantine.AuthenticationConfigFromCLI(c, Scopes)
 	if err != nil {
 		return fmt.Errorf("set up authentication: %w", err)
 	}

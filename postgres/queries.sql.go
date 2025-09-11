@@ -608,7 +608,7 @@ func (q *Queries) GetIndexSets(ctx context.Context) ([]IndexSet, error) {
 }
 
 const getLastPercolatorEventID = `-- name: GetLastPercolatorEventID :one
-SELECT MAX(id)::bigint FROM percolator_event_payload
+SELECT COALESCE(MAX(id), 0)::bigint FROM percolator_event_payload
 `
 
 func (q *Queries) GetLastPercolatorEventID(ctx context.Context) (int64, error) {

@@ -1,0 +1,62 @@
+{
+  "uuid": "7bf0c4e7-aff7-4ddd-97b0-e4d5aca7d3eb",
+  "type": "core/planning-item",
+  "uri": "core://newscoverage/7bf0c4e7-aff7-4ddd-97b0-e4d5aca7d3eb",
+  "title": "Lejonen var riktiga",
+  "meta": [
+    {
+      "type": "core/planning-item",
+      "data": {
+        "end_date": "2025-09-01",
+        "public": "true",
+        "start_date": "2025-09-01",
+        "tentative": "false"
+      }
+    },
+    {
+      "type": "core/newsvalue",
+      "value": "3"
+    },
+    {
+      "id": "8de91dd0-7541-44ba-a2af-383945dcf9e2",
+      "type": "core/assignment",
+      "title": "notis",
+      "data": {
+        "end_date": "2025-09-01",
+        "full_day": "false",
+        "public": "true",
+        "start": "2025-09-01T05:01:53.579Z",
+        "start_date": "2025-09-01"
+      },
+      "links": [
+        {
+          "uuid": "ff5a4498-9c1e-4de9-9d4c-b269f9ceafd2",
+          "type": "core/author",
+          "title": "Tobias",
+          "rel": "assignee",
+          "role": "primary"
+        },
+        {
+          "uuid": "b9400cd3-d648-4b54-9a7c-ceff237f7ca7",
+          "type": "core/article",
+          "rel": "deliverable"
+        }
+      ],
+      "meta": [
+        {
+          "type": "core/assignment-type",
+          "value": "text"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "uuid": "956636ed-2687-4bc3-a45a-7e09d98c6eeb",
+      "type": "core/section",
+      "title": "Inrikes",
+      "rel": "section"
+    }
+  ],
+  "language": "sv-se"
+}

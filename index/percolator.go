@@ -393,7 +393,7 @@ func (p *Percolator) percolateEvents(ctx context.Context) error {
 		// the last event if we have a position.
 		start := evt.ID
 		if p.lastEvent != 0 {
-			start = p.lastEvent
+			start = p.lastEvent + 1
 		}
 
 		// Same deal here, process to the last known event.
@@ -729,7 +729,9 @@ func (p *Percolator) percolateDocument(
 	}
 
 	p.pMutex.RLock()
-	// We want to collect all IDs of the
+
+	// We want to collect all IDs of the percolators so that we know which
+	// didn't match the query.
 	allPercs := make(map[int64]bool, len(p.percolators[doc.Document.Type]))
 	for k := range p.percolators[doc.Document.Type] {
 		allPercs[k] = false

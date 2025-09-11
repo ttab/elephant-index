@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -33,7 +34,7 @@ type PercolatorWorker interface {
 	RequestDocumentPercolation(
 		ctx context.Context,
 		setName string,
-		doc postgres.PercolatorDocument,
+		documents []postgres.PercolatorDocument,
 	)
 }
 
@@ -198,6 +199,7 @@ type enrichJob struct {
 	State      *DocumentState
 	doc        *newsdoc.Document
 	metadoc    *newsdoc.Document
+	fields     map[string][]string
 }
 
 func (ij *enrichJob) Finish(state *DocumentState, err error) {
@@ -399,7 +401,9 @@ func (idx *Indexer) loopIteration(
 			if !ok {
 				worker, err := idx.createIndexWorker(ctx, docType, language)
 				if err != nil {
-					return err
+					return fmt.Errorf(
+						"create index worker for %q %s: %w",
+						docType, language.Code, err)
 				}
 
 				index = worker
@@ -416,7 +420,12 @@ func (idx *Indexer) loopIteration(
 			}
 
 			group.Go(func() error {
-				return index.Process(gCtx, jobs, caughtUp)
+				err := index.Process(gCtx, jobs, caughtUp)
+				if err != nil {
+					return fmt.Errorf("process %q: %w", index.indexName, err)
+				}
+
+				return nil
 			})
 		}
 	}
@@ -424,6 +433,43 @@ func (idx *Indexer) loopIteration(
 	err = group.Wait()
 	if err != nil {
 		return fmt.Errorf("index all types: %w", err)
+	}
+
+	// Percolation only makes sense when we're tailing the log, as
+	// it's used to detect what's currently happening.
+	if idx.enablePercolation && caughtUp {
+		var docs []postgres.PercolatorDocument
+
+		// Reconstuct the sequence of events from change maps.
+		for _, ofType := range changes {
+			for _, ofLang := range ofType {
+				for _, job := range ofLang {
+					docs = append(docs, postgres.PercolatorDocument{
+						EventID:  job.EventID,
+						Fields:   job.fields,
+						Document: &job.State.Document,
+					})
+				}
+			}
+		}
+
+		slices.SortFunc(docs, func(a, b postgres.PercolatorDocument) int {
+			return int(a.EventID - b.EventID)
+		})
+
+		// Requesting percolation doesn't mean that we actually
+		// percolate the document. For that to happen the index
+		// worker needs to belong to the currently active index
+		// set.
+		idx.percolator.RequestDocumentPercolation(
+			ctx,
+			idx.name,
+			docs,
+		)
+
+		idx.metrics.percolationEvent.WithLabelValues(
+			"requested", idx.name,
+		).Inc()
 	}
 
 	return nil

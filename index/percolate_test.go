@@ -1,0 +1,185 @@
+package index_test
+
+import (
+	"log/slog"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/ttab/elephant-api/index"
+	"github.com/ttab/elephant-api/newsdoc"
+	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephantine/test"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+)
+
+func TestPercolate(t *testing.T) {
+	ctx := t.Context()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelWarn))
+
+	tc := testingAPIServer(t, logger)
+
+	documents := repository.NewDocumentsProtobufClient(
+		tc.Env.Repository.GetAPIEndpoint(),
+		tc.AuthenticatedClient(t, "doc_read", "doc_write"))
+
+	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
+		tc.AuthenticatedClient(t, "doc_read", "search"))
+
+	testDataDir := filepath.Join("..", "testdata", t.Name())
+	docDataDir := filepath.Join("..", "testdata", "documents")
+
+	// Seed the repo with documents that correspond to the types that we
+	// want indexes for.
+	loadDocuments(t, documents, docDataDir,
+		"russia_v1.json", "cyber_v1.json")
+
+	deadline := time.After(3 * time.Second)
+
+	var found bool
+
+	for !found {
+		select {
+		case <-ctx.Done():
+			t.Fatal("cancelled while waiting for documents to become searchable")
+		case <-deadline:
+			t.Fatal("timed out waiting for documents to become searchable")
+		case <-time.After(200 * time.Millisecond):
+		}
+
+		res, err := search.Query(ctx, &index.QueryRequestV1{
+			DocumentType: "core/planning-item",
+			Language:     "sv-se",
+			Fields: []string{
+				"document.title",
+				"document.meta.core_planning_item.data.start_date",
+			},
+			Query: index.RangeQuery(&index.RangeQueryV1{
+				Field: "document.meta.core_planning_item.data.start_date",
+				Gte:   "2025-08-29T00:00:00.000Z",
+				Lte:   "2025-08-29T23:59:59.999Z",
+			}),
+		})
+		test.Must(t, err, "perform search")
+
+		if len(res.Hits.Hits) == 0 {
+			continue
+		}
+
+		test.TestMessageAgainstGolden(t, regenerateTestFixtures(), res.Hits,
+			filepath.Join(testDataDir, "initial-result.json"))
+
+		break
+	}
+
+	qRes, err := search.Query(ctx, &index.QueryRequestV1{
+		DocumentType: "core/planning-item",
+		Language:     "sv-se",
+		Subscribe:    true,
+		Fields:       []string{"document.title"},
+		Query: index.RangeQuery(&index.RangeQueryV1{
+			Field: "document.meta.core_planning_item.data.start_date",
+			Gte:   "2025-09-01T00:00:00.000Z",
+			Lte:   "2025-09-01T23:59:59.999Z",
+		}),
+	})
+	test.Must(t, err, "do initial subscription search")
+
+	test.Equal(t, 0, len(qRes.Hits.Hits), "no initial hits expected")
+
+	subPos := qRes.Subscription
+	gotFirstBatch := make(chan struct{})
+
+	closeOnce := sync.OnceFunc(func() {
+		close(gotFirstBatch)
+	})
+
+	defer closeOnce()
+
+	go func() {
+		loadDocuments(t, documents, docDataDir,
+			"russia_v2.json",
+			"lions_v1.json",
+			"ericsson_v1.json",
+		)
+
+		<-gotFirstBatch
+
+		loadDocuments(t, documents, docDataDir,
+			"lions_v2.json")
+	}()
+
+	items := index.SubscriptionPollResult{
+		Subscription: subPos,
+	}
+
+	pollDeadline := time.Now().Add(10 * time.Second)
+
+	for time.Until(pollDeadline) > 0 {
+		time.Sleep(100 * time.Millisecond)
+
+		pollRes, err := search.PollSubscription(ctx,
+			&index.PollSubscriptionRequest{
+				Subscriptions: []*index.SubscriptionReference{
+					subPos,
+				},
+				MaxWaitMs: 3000,
+			})
+		test.Must(t, err, "poll subscription")
+
+		for _, sub := range pollRes.Result {
+			if subPos.Id != qRes.Subscription.Id {
+				t.Fatal("unexpected subscription ID")
+			}
+
+			items.Items = append(items.Items, sub.Items...)
+
+			subPos.Cursor = sub.Subscription.Cursor
+		}
+
+		if len(items.Items) >= 3 {
+			closeOnce()
+		}
+
+		if len(items.Items) >= 4 {
+			break
+		}
+	}
+
+	test.TestMessageAgainstGolden(t, regenerateTestFixtures(), &items,
+		filepath.Join(testDataDir, "poll-result.json"))
+}
+
+func loadDocuments(
+	t *testing.T,
+	documents repository.Documents,
+	dir string,
+	names ...string,
+) {
+	t.Helper()
+
+	for _, name := range names {
+		var doc newsdoc.Document
+
+		unmarshalMessage(t, filepath.Join(dir, name), &doc)
+
+		_, err := documents.Update(t.Context(), &repository.UpdateRequest{
+			Uuid:     doc.Uuid,
+			Document: &doc,
+		})
+		test.Must(t, err, "write document %q (%s)", name, doc.Uuid)
+	}
+}
+
+func unmarshalMessage(t *testing.T, path string, msg proto.Message) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	test.Must(t, err, "read proto json file")
+
+	err = protojson.Unmarshal(data, msg)
+	test.Must(t, err, "unmarshal %q proto json file", path)
+}
