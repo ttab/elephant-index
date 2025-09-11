@@ -1003,7 +1003,7 @@ func (s *SearchServiceV1) createSubscription(
 		return 0, 0, fmt.Errorf("commit changes: %w", err)
 	}
 
-	return subID, cursor + 1, nil
+	return subID, cursor, nil
 }
 
 type EventPayload struct {

@@ -1,44 +1,68 @@
 {
-  "subscription":  {
-    "id":  "1",
-    "cursor":  "10"
+  "subscription": {
+    "id": "1",
+    "cursor": "12"
   },
-  "items":  [
+  "items": [
     {
-      "id":  "f5d2e4c5-01ba-4dae-9f09-a86701e06ecd",
-      "match":  true,
-      "fields":  {
-        "document.title":  {
-          "values":  [
+      "id": "f5d2e4c5-01ba-4dae-9f09-a86701e06ecd"
+    },
+    {
+      "id": "9b774de2-9d16-4b9d-91e1-a598ad675455"
+    },
+    {
+      "id": "f5d2e4c5-01ba-4dae-9f09-a86701e06ecd",
+      "match": true,
+      "fields": {
+        "current_version": {
+          "values": [
+            "2"
+          ]
+        },
+        "document.title": {
+          "values": [
             "Rysslands ambassadör kallas upp"
           ]
         }
       }
     },
     {
-      "id":  "7bf0c4e7-aff7-4ddd-97b0-e4d5aca7d3eb",
-      "match":  true,
-      "fields":  {
-        "document.title":  {
-          "values":  [
+      "id": "7bf0c4e7-aff7-4ddd-97b0-e4d5aca7d3eb",
+      "match": true,
+      "fields": {
+        "current_version": {
+          "values": [
+            "1"
+          ]
+        },
+        "document.title": {
+          "values": [
             "Falska sms om lejon på rymmen"
           ]
         }
       }
     },
     {
-      "id":  "9b774de2-9d16-4b9d-91e1-a598ad675455"
+      "id": "9b774de2-9d16-4b9d-91e1-a598ad675455"
     },
     {
-      "id":  "7bf0c4e7-aff7-4ddd-97b0-e4d5aca7d3eb",
-      "match":  true,
-      "fields":  {
-        "document.title":  {
-          "values":  [
+      "id": "7bf0c4e7-aff7-4ddd-97b0-e4d5aca7d3eb",
+      "match": true,
+      "fields": {
+        "current_version": {
+          "values": [
+            "2"
+          ]
+        },
+        "document.title": {
+          "values": [
             "Lejonen var riktiga"
           ]
         }
       }
+    },
+    {
+      "id": "9b774de2-9d16-4b9d-91e1-a598ad675455"
     }
   ]
 }

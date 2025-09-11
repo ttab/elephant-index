@@ -79,7 +79,7 @@ func TestPercolate(t *testing.T) {
 		DocumentType: "core/planning-item",
 		Language:     "sv-se",
 		Subscribe:    true,
-		Fields:       []string{"document.title"},
+		Fields:       []string{"document.title", "current_version"},
 		Query: index.RangeQuery(&index.RangeQueryV1{
 			Field: "document.meta.core_planning_item.data.start_date",
 			Gte:   "2025-09-01T00:00:00.000Z",
@@ -91,25 +91,33 @@ func TestPercolate(t *testing.T) {
 	test.Equal(t, 0, len(qRes.Hits.Hits), "no initial hits expected")
 
 	subPos := qRes.Subscription
-	gotFirstBatch := make(chan struct{})
+	gotBatch := make(chan struct{}, 1)
 
 	closeOnce := sync.OnceFunc(func() {
-		close(gotFirstBatch)
+		close(gotBatch)
 	})
 
 	defer closeOnce()
 
 	go func() {
 		loadDocuments(t, documents, docDataDir,
+			"ericsson_v1.json",
+		)
+
+		<-gotBatch
+
+		loadDocuments(t, documents, docDataDir,
 			"russia_v2.json",
 			"lions_v1.json",
 			"ericsson_v1.json",
 		)
 
-		<-gotFirstBatch
+		<-gotBatch
 
 		loadDocuments(t, documents, docDataDir,
-			"lions_v2.json")
+			"lions_v2.json",
+			"ericsson_v1.json",
+		)
 	}()
 
 	items := index.SubscriptionPollResult{
@@ -117,6 +125,8 @@ func TestPercolate(t *testing.T) {
 	}
 
 	pollDeadline := time.Now().Add(10 * time.Second)
+
+	var batchCount int
 
 	for time.Until(pollDeadline) > 0 {
 		time.Sleep(100 * time.Millisecond)
@@ -135,16 +145,19 @@ func TestPercolate(t *testing.T) {
 				t.Fatal("unexpected subscription ID")
 			}
 
+			for _, it := range sub.Items {
+				if it.Id == "9b774de2-9d16-4b9d-91e1-a598ad675455" {
+					batchCount++
+					gotBatch <- struct{}{}
+				}
+			}
+
 			items.Items = append(items.Items, sub.Items...)
 
 			subPos.Cursor = sub.Subscription.Cursor
 		}
 
-		if len(items.Items) >= 3 {
-			closeOnce()
-		}
-
-		if len(items.Items) >= 4 {
+		if batchCount == 3 {
 			break
 		}
 	}
