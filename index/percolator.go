@@ -701,8 +701,6 @@ func (p *Percolator) handleUpdate(
 		return fmt.Errorf("load percolator definition: %w", err)
 	}
 
-	// p.registerPercolator(def)
-
 	ref := p.registerPercolator(def)
 
 	err = p.preseedQuery(ctx, def, ref)
