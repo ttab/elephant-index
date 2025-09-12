@@ -29,6 +29,7 @@ type TestContext struct {
 	Auth          *elephantine.AuthenticationConfig
 	IndexEndpoint string
 	Server        *elephantine.APIServer
+	IndexDB       *pgxpool.Pool
 }
 
 func (tc *TestContext) AuthenticatedClient(t T, scopes ...string) *http.Client {
@@ -167,5 +168,6 @@ func testingAPIServer(
 		Auth:          auth,
 		Server:        server,
 		IndexEndpoint: "http://" + server.Addr(),
+		IndexDB:       dbpool,
 	}
 }

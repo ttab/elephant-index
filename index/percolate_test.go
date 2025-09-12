@@ -4,13 +4,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine/test"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -24,7 +24,7 @@ func TestPercolate(t *testing.T) {
 
 	documents := repository.NewDocumentsProtobufClient(
 		tc.Env.Repository.GetAPIEndpoint(),
-		tc.AuthenticatedClient(t, "doc_read", "doc_write"))
+		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"))
 
 	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
 		tc.AuthenticatedClient(t, "doc_read", "search"))
@@ -75,6 +75,37 @@ func TestPercolate(t *testing.T) {
 		break
 	}
 
+	// Get latest event from repo.
+	evtLogRes, err := documents.Eventlog(ctx, &repository.GetEventlogRequest{
+		After: -1,
+	})
+	test.Must(t, err, "get last event from repo")
+
+	test.Equal(t, 1, len(evtLogRes.Items), "get one event from the repo")
+
+	lastEvent := evtLogRes.Items[0].Id
+
+	// Accessing internal state, but it's just to get a consistent starting
+	// point from which we start the actual percolation test.
+	q := postgres.New(tc.IndexDB)
+
+	pSyncDeadline := time.After(3 * time.Second)
+
+	for {
+		select {
+		case <-pSyncDeadline:
+			t.Fatal("timed out waiting for percolator to catch up")
+		case <-time.After(100 * time.Millisecond):
+		}
+
+		pEvt, err := q.GetLastPercolatorEventID(ctx)
+		test.Must(t, err, "get last percolator event ID")
+
+		if pEvt == lastEvent {
+			break
+		}
+	}
+
 	qRes, err := search.Query(ctx, &index.QueryRequestV1{
 		DocumentType: "core/planning-item",
 		Language:     "sv-se",
@@ -88,18 +119,21 @@ func TestPercolate(t *testing.T) {
 	})
 	test.Must(t, err, "do initial subscription search")
 
+	t.Logf("initial subscription position: %d", qRes.Subscription.Cursor)
+
 	test.Equal(t, 0, len(qRes.Hits.Hits), "no initial hits expected")
 
 	subPos := qRes.Subscription
 	gotBatch := make(chan struct{}, 1)
 
-	closeOnce := sync.OnceFunc(func() {
-		close(gotBatch)
-	})
-
-	defer closeOnce()
+	defer close(gotBatch)
 
 	go func() {
+		// Just make sure that we have our percolator registered
+		// properly before we start writing.
+		time.Sleep(100 * time.Millisecond)
+
+		// Using the ericsson article as a batch marker.
 		loadDocuments(t, documents, docDataDir,
 			"ericsson_v1.json",
 		)
@@ -118,6 +152,10 @@ func TestPercolate(t *testing.T) {
 			"lions_v2.json",
 			"ericsson_v1.json",
 		)
+
+		// Always drain got batch until its closed.
+		for range gotBatch {
+		}
 	}()
 
 	items := index.SubscriptionPollResult{
@@ -129,8 +167,6 @@ func TestPercolate(t *testing.T) {
 	var batchCount int
 
 	for time.Until(pollDeadline) > 0 {
-		time.Sleep(100 * time.Millisecond)
-
 		pollRes, err := search.PollSubscription(ctx,
 			&index.PollSubscriptionRequest{
 				Subscriptions: []*index.SubscriptionReference{
@@ -138,7 +174,7 @@ func TestPercolate(t *testing.T) {
 				},
 				MaxWaitMs: 3000,
 			})
-		test.Must(t, err, "poll subscription")
+		test.Must(t, err, "poll subscription from %d", subPos.Cursor)
 
 		for _, sub := range pollRes.Result {
 			if subPos.Id != qRes.Subscription.Id {
@@ -148,6 +184,7 @@ func TestPercolate(t *testing.T) {
 			for _, it := range sub.Items {
 				if it.Id == "9b774de2-9d16-4b9d-91e1-a598ad675455" {
 					batchCount++
+
 					gotBatch <- struct{}{}
 				}
 			}
