@@ -30,19 +30,26 @@ func (q *Queries) AddCluster(ctx context.Context, arg AddClusterParams) error {
 const checkForPercolator = `-- name: CheckForPercolator :one
 SELECT id FROM percolator
 WHERE doc_type = $1
-      AND hash = $2
+      AND language = $2
+      AND hash = $3
       AND (
-          owner = $3 OR ($3 IS NULL AND owner IS NULL))
+          owner = $4 OR ($4 IS NULL AND owner IS NULL))
 `
 
 type CheckForPercolatorParams struct {
-	DocType string
-	Hash    []byte
-	Owner   pgtype.Text
+	DocType  string
+	Language string
+	Hash     []byte
+	Owner    pgtype.Text
 }
 
 func (q *Queries) CheckForPercolator(ctx context.Context, arg CheckForPercolatorParams) (int64, error) {
-	row := q.db.QueryRow(ctx, checkForPercolator, arg.DocType, arg.Hash, arg.Owner)
+	row := q.db.QueryRow(ctx, checkForPercolator,
+		arg.DocType,
+		arg.Language,
+		arg.Hash,
+		arg.Owner,
+	)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -122,17 +129,18 @@ func (q *Queries) CreateIndexSet(ctx context.Context, arg CreateIndexSetParams) 
 }
 
 const createPercolator = `-- name: CreatePercolator :one
-INSERT INTO percolator(hash, owner, created, doc_type, query)
-VALUES($1, $2, $3, $4, $5)
+INSERT INTO percolator(hash, owner, created, doc_type, language, query)
+VALUES($1, $2, $3, $4, $5, $6)
 RETURNING id
 `
 
 type CreatePercolatorParams struct {
-	Hash    []byte
-	Owner   pgtype.Text
-	Created pgtype.Timestamptz
-	DocType string
-	Query   map[string]any
+	Hash     []byte
+	Owner    pgtype.Text
+	Created  pgtype.Timestamptz
+	DocType  string
+	Language string
+	Query    map[string]any
 }
 
 func (q *Queries) CreatePercolator(ctx context.Context, arg CreatePercolatorParams) (int64, error) {
@@ -141,6 +149,7 @@ func (q *Queries) CreatePercolator(ctx context.Context, arg CreatePercolatorPara
 		arg.Owner,
 		arg.Created,
 		arg.DocType,
+		arg.Language,
 		arg.Query,
 	)
 	var id int64
@@ -608,7 +617,7 @@ func (q *Queries) GetIndexSets(ctx context.Context) ([]IndexSet, error) {
 }
 
 const getLastPercolatorEventID = `-- name: GetLastPercolatorEventID :one
-SELECT MAX(id)::bigint FROM percolator_event_payload
+SELECT COALESCE(MAX(id), 0)::bigint FROM percolator_event_payload
 `
 
 func (q *Queries) GetLastPercolatorEventID(ctx context.Context) (int64, error) {
@@ -656,7 +665,7 @@ func (q *Queries) GetMappingsForType(ctx context.Context, arg GetMappingsForType
 }
 
 const getPercolator = `-- name: GetPercolator :one
-SELECT id, hash, owner, created, doc_type, query, deleted FROM percolator
+SELECT id, hash, owner, created, doc_type, query, deleted, language FROM percolator
 WHERE id = $1 AND deleted = false
 `
 
@@ -671,6 +680,7 @@ func (q *Queries) GetPercolator(ctx context.Context, id int64) (Percolator, erro
 		&i.DocType,
 		&i.Query,
 		&i.Deleted,
+		&i.Language,
 	)
 	return i, err
 }
@@ -713,7 +723,7 @@ func (q *Queries) GetPercolatorEventPayload(ctx context.Context, id int64) (Perc
 }
 
 const getPercolators = `-- name: GetPercolators :many
-SELECT id, hash, owner, created, doc_type, query, deleted
+SELECT id, hash, owner, created, doc_type, query, deleted, language
 FROM percolator
 WHERE deleted = false
 `
@@ -736,6 +746,7 @@ func (q *Queries) GetPercolators(ctx context.Context) ([]Percolator, error) {
 			&i.DocType,
 			&i.Query,
 			&i.Deleted,
+			&i.Language,
 		); err != nil {
 			return nil, err
 		}

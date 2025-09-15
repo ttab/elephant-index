@@ -54,13 +54,14 @@ type JobLock struct {
 }
 
 type Percolator struct {
-	ID      int64
-	Hash    []byte
-	Owner   pgtype.Text
-	Created pgtype.Timestamptz
-	DocType string
-	Query   map[string]any
-	Deleted bool
+	ID       int64
+	Hash     []byte
+	Owner    pgtype.Text
+	Created  pgtype.Timestamptz
+	DocType  string
+	Query    map[string]any
+	Deleted  bool
+	Language string
 }
 
 type PercolatorDocumentIndex struct {

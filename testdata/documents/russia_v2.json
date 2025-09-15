@@ -1,0 +1,30 @@
+{
+  "uuid": "f5d2e4c5-01ba-4dae-9f09-a86701e06ecd",
+  "type": "core/planning-item",
+  "uri": "core://newscoverage/f5d2e4c5-01ba-4dae-9f09-a86701e06ecd",
+  "title": "Rysslands ambassadör kallas upp",
+  "meta": [
+    {
+      "type": "core/planning-item",
+      "data": {
+        "end_date": "2025-09-01",
+        "public": "true",
+        "start_date": "2025-09-01",
+        "tentative": "false"
+      }
+    },
+    {
+      "type": "core/newsvalue",
+      "value": "4"
+    }
+  ],
+  "links": [
+    {
+      "uuid": "956636ed-2687-4bc3-a45a-7e09d98c6eeb",
+      "type": "core/section",
+      "title": "Inrikes",
+      "rel": "section"
+    }
+  ],
+  "language": "sv-se"
+}

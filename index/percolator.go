@@ -47,6 +47,8 @@ type PercolatorUpdate struct {
 
 type PercolatorReference struct {
 	ID          int64
+	DocType     string
+	Language    string
 	Query       map[string]any
 	HasDocument map[string]bool
 }
@@ -393,7 +395,7 @@ func (p *Percolator) percolateEvents(ctx context.Context) error {
 		// the last event if we have a position.
 		start := evt.ID
 		if p.lastEvent != 0 {
-			start = p.lastEvent
+			start = p.lastEvent + 1
 		}
 
 		// Same deal here, process to the last known event.
@@ -470,6 +472,37 @@ func (p *Percolator) handleEventPercolation(ctx context.Context, id int64) error
 	return nil
 }
 
+func (p *Percolator) preseedQuery(
+	ctx context.Context,
+	percolator postgres.Percolator,
+	ref *PercolatorReference,
+) error {
+	// Only preseed for defined languages.
+	if percolator.Language == "" {
+		return nil
+	}
+
+	language, err := p.lang.GetLanguageInfo(percolator.Language)
+	if err != nil {
+		return fmt.Errorf("invalid document language: %w", err)
+	}
+
+	client, set := p.index.GetActiveIndex()
+
+	index := NewIndexName(IndexTypePercolate, set, percolator.DocType, language)
+
+	err = p.createPercolatorDocument(ctx, client, index.Full, ref)
+	if err != nil {
+		return err
+	}
+
+	ref.HasDocument[index.Full] = true
+
+	p.metrics.percolatorLife.WithLabelValues("query-doc-preseed").Inc()
+
+	return nil
+}
+
 func (p *Percolator) ensurePercolatorQueries(
 	ctx context.Context,
 	client *opensearch.Client,
@@ -509,22 +542,33 @@ func (p *Percolator) ensurePercolatorQueries(
 	}
 
 	if written > 0 {
-		// Flush the index so that we're guaranteed that the written
-		// queries are evaluated.
-		res, err := client.Indices.Flush(
-			client.Indices.Flush.WithContext(ctx),
-			client.Indices.Flush.WithIndex(index),
-			client.Indices.Flush.WithWaitIfOngoing(true),
-		)
-
-		defer elephantine.Close("flush response", res.Body, &outErr)
-
-		err = errors.Join(ElasticErrorFromResponse(res), err)
+		err := p.flushIndex(ctx, client, index)
 		if err != nil {
-			p.log.Error(
-				"failed to flush indices after percolator update",
-				elephantine.LogKeyError, err)
+			return fmt.Errorf("flush index: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func (p *Percolator) flushIndex(
+	ctx context.Context, client *opensearch.Client, index string,
+) (outErr error) {
+	// Flush the index so that we're guaranteed that the written
+	// queries are evaluated.
+	res, err := client.Indices.Flush(
+		client.Indices.Flush.WithContext(ctx),
+		client.Indices.Flush.WithIndex(index),
+		client.Indices.Flush.WithWaitIfOngoing(true),
+	)
+
+	defer elephantine.Close("flush response", res.Body, &outErr)
+
+	err = errors.Join(ElasticErrorFromResponse(res), err)
+	if err != nil {
+		p.log.Error(
+			"failed to flush indices after percolator update",
+			elephantine.LogKeyError, err)
 	}
 
 	return nil
@@ -657,12 +701,17 @@ func (p *Percolator) handleUpdate(
 		return fmt.Errorf("load percolator definition: %w", err)
 	}
 
-	p.registerPercolator(def)
+	ref := p.registerPercolator(def)
+
+	err = p.preseedQuery(ctx, def, ref)
+	if err != nil {
+		return fmt.Errorf("preseed percolator document: %w", err)
+	}
 
 	return nil
 }
 
-func (p *Percolator) registerPercolator(def postgres.Percolator) {
+func (p *Percolator) registerPercolator(def postgres.Percolator) *PercolatorReference {
 	m, ok := p.percolators[def.DocType]
 	if !ok {
 		m = make(map[int64]*PercolatorReference)
@@ -671,11 +720,15 @@ func (p *Percolator) registerPercolator(def postgres.Percolator) {
 
 	ref := PercolatorReference{
 		ID:          def.ID,
+		DocType:     def.DocType,
+		Language:    def.Language,
 		Query:       def.Query,
 		HasDocument: make(map[string]bool),
 	}
 
 	m[def.ID] = &ref
+
+	return &ref
 }
 
 func (p *Percolator) percolateDocument(
@@ -729,7 +782,9 @@ func (p *Percolator) percolateDocument(
 	}
 
 	p.pMutex.RLock()
-	// We want to collect all IDs of the
+
+	// We want to collect all IDs of the percolators so that we know which
+	// didn't match the query.
 	allPercs := make(map[int64]bool, len(p.percolators[doc.Document.Type]))
 	for k := range p.percolators[doc.Document.Type] {
 		allPercs[k] = false

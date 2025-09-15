@@ -1,0 +1,70 @@
+{
+  "uuid": "9b774de2-9d16-4b9d-91e1-a598ad675455",
+  "type": "core/planning-item",
+  "uri": "core://newscoverage/9b774de2-9d16-4b9d-91e1-a598ad675455",
+  "title": "Ericsson delår",
+  "meta": [
+    {
+      "type": "core/planning-item",
+      "data": {
+        "end_date": "2025-10-14",
+        "public": "true",
+        "start_date": "2025-10-14",
+        "tentative": "false"
+      }
+    },
+    {
+      "type": "core/newsvalue",
+      "value": "4"
+    },
+    {
+      "type": "core/description",
+      "data": {
+        "text": "Ericsson publicerar delårsrapport, kl 7. "
+      },
+      "role": "public"
+    },
+    {
+      "id": "f6755d80-0743-4889-91b8-b886f5bbe84d",
+      "type": "core/assignment",
+      "title": "Nyhetsbevakning från kl 7",
+      "data": {
+        "end_date": "2025-10-14",
+        "full_day": "false",
+        "public": "true",
+        "start": "2025-10-14T07:04:44.778Z",
+        "start_date": "2025-10-14"
+      },
+      "links": [
+        {
+          "uuid": "ee834491-1d09-4e29-8eb2-78422453bc40",
+          "type": "core/author",
+          "title": "Elisabeth Modig-Blåder",
+          "rel": "assignee",
+          "role": "primary"
+        }
+      ],
+      "meta": [
+        {
+          "type": "core/assignment-type",
+          "value": "text"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "uuid": "0c1f5311-18fb-4479-bcf1-88ddc5ab6d6f",
+      "type": "core/event",
+      "title": "Ericsson delår",
+      "rel": "event"
+    },
+    {
+      "uuid": "c3e9fe11-6d84-4926-b0d2-8048fe163145",
+      "type": "core/section",
+      "title": "Ekonomi",
+      "rel": "section"
+    }
+  ],
+  "language": "sv-se"
+}

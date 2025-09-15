@@ -218,7 +218,7 @@ func (iw *indexWorker) enrich(
 // Process indexes the documents in a batch, and should only return an error if
 // we get an indication that indexing in ES/OS has become impossible.
 func (iw *indexWorker) Process(
-	ctx context.Context, documents []*enrichJob, caughtUp bool,
+	ctx context.Context, documents []*enrichJob,
 ) error {
 	go func() {
 		for _, job := range documents {
@@ -290,7 +290,8 @@ func (iw *indexWorker) Process(
 		if changes.HasNew() {
 			err := iw.attemptMappingUpdate(ctx, mappings)
 			if err != nil {
-				return err
+				return fmt.Errorf(
+					"update mappings for new fields: %w", err)
 			}
 		}
 
@@ -310,27 +311,7 @@ func (iw *indexWorker) Process(
 
 		values := idxDoc.Values()
 
-		// Percolation only makes sense when we're tailing the log, as
-		// it's used to detect what's currently happening.
-		if iw.idx.enablePercolation && caughtUp {
-			// Requesting percolation doesn't mean that we actually
-			// percolate the document. For that to happen the index
-			// worker needs to belong to the currently active index
-			// set.
-			iw.percolator.RequestDocumentPercolation(
-				ctx,
-				iw.idx.name,
-				postgres.PercolatorDocument{
-					EventID:  job.EventID,
-					Fields:   values,
-					Document: &job.State.Document,
-				},
-			)
-
-			iw.idx.metrics.percolationEvent.WithLabelValues(
-				"requested", iw.indexName,
-			).Inc()
-		}
+		job.fields = values
 
 		err = errors.Join(
 			enc.Encode(bulkHeader{Index: &bulkOperation{

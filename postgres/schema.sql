@@ -106,7 +106,8 @@ CREATE TABLE public.percolator (
     created timestamp with time zone NOT NULL,
     doc_type text NOT NULL,
     query jsonb NOT NULL,
-    deleted boolean DEFAULT false NOT NULL
+    deleted boolean DEFAULT false NOT NULL,
+    language text DEFAULT ''::text NOT NULL
 );
 
 
@@ -248,7 +249,7 @@ ALTER TABLE ONLY public.job_lock
 --
 
 ALTER TABLE ONLY public.percolator
-    ADD CONSTRAINT pcl_unique_hash UNIQUE NULLS NOT DISTINCT (hash, owner);
+    ADD CONSTRAINT pcl_unique_hash UNIQUE NULLS NOT DISTINCT (doc_type, language, hash, owner);
 
 
 --

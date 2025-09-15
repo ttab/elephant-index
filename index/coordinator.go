@@ -508,8 +508,12 @@ func (c *Coordinator) ensureActiveClient(set postgres.IndexSet) error {
 func (c *Coordinator) RequestDocumentPercolation(
 	ctx context.Context,
 	setName string,
-	doc postgres.PercolatorDocument,
+	documents []postgres.PercolatorDocument,
 ) {
+	if len(documents) == 0 {
+		return
+	}
+
 	c.activeMut.RLock()
 	defer c.activeMut.RUnlock()
 
@@ -521,22 +525,28 @@ func (c *Coordinator) RequestDocumentPercolation(
 		return
 	}
 
-	c.percDocs.CacheDocument(doc)
+	for _, doc := range documents {
+		c.percDocs.CacheDocument(doc)
+	}
 
 	err := pg.WithTX(ctx, c.db, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
-		err := q.InsertPercolatorEventPayload(ctx, postgres.InsertPercolatorEventPayloadParams{
-			ID:      doc.EventID,
-			Created: pg.Time(time.Now()),
-			Data:    doc,
-		})
-		if err != nil {
-			return fmt.Errorf("store percolator document: %w", err)
+		for _, doc := range documents {
+			err := q.InsertPercolatorEventPayload(ctx, postgres.InsertPercolatorEventPayloadParams{
+				ID:      doc.EventID,
+				Created: pg.Time(time.Now()),
+				Data:    doc,
+			})
+			if err != nil {
+				return fmt.Errorf("store percolator document: %w", err)
+			}
 		}
 
-		err = c.percolateEvent.Publish(ctx, tx, PercolateEvent{
-			ID: doc.EventID,
+		lastID := documents[len(documents)-1].EventID
+
+		err := c.percolateEvent.Publish(ctx, tx, PercolateEvent{
+			ID: lastID,
 		})
 		if err != nil {
 			return fmt.Errorf("send percolate event: %w", err)
@@ -553,8 +563,8 @@ func (c *Coordinator) RequestDocumentPercolation(
 			"queue_failed", setName,
 		).Inc()
 
-		c.logger.ErrorContext(ctx, "failed to queue event for percolation",
-			elephantine.LogKeyEventID, doc.EventID,
+		c.logger.ErrorContext(ctx, "failed to queue documents for percolation",
+			elephantine.LogKeyEventID, documents[0].EventID,
 			elephantine.LogKeyError, err,
 		)
 	}

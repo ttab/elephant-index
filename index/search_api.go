@@ -873,6 +873,7 @@ func (s *SearchServiceV1) processSearchResponse(
 			auth.Claims.Subject,
 			req.Shared,
 			req.DocumentType,
+			req.Language,
 			request.Query,
 			postgres.SubscriptionSpec{
 				Source:        req.Source,
@@ -902,6 +903,7 @@ func (s *SearchServiceV1) createSubscription(
 	sub string,
 	shared bool,
 	docType string,
+	language string,
 	query map[string]any,
 	spec postgres.SubscriptionSpec,
 ) (_ int64, _ int64, outErr error) {
@@ -933,9 +935,10 @@ func (s *SearchServiceV1) createSubscription(
 		q := postgres.New(s.db)
 
 		percID, err = q.CheckForPercolator(ctx, postgres.CheckForPercolatorParams{
-			DocType: docType,
-			Hash:    percHash[:],
-			Owner:   pg.TextOrNull(owner),
+			DocType:  docType,
+			Language: language,
+			Hash:     percHash[:],
+			Owner:    pg.TextOrNull(owner),
 		})
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return 0, 0, fmt.Errorf("check for existing percolator: %w", err)
@@ -943,11 +946,12 @@ func (s *SearchServiceV1) createSubscription(
 
 		if percID == 0 {
 			percID, err = q.CreatePercolator(ctx, postgres.CreatePercolatorParams{
-				Hash:    percHash[:],
-				Owner:   pg.TextOrNull(owner),
-				Created: pg.Time(time.Now()),
-				DocType: docType,
-				Query:   query,
+				Hash:     percHash[:],
+				Owner:    pg.TextOrNull(owner),
+				Created:  pg.Time(time.Now()),
+				DocType:  docType,
+				Language: language,
+				Query:    query,
 			})
 			if err != nil {
 				createErr = fmt.Errorf("register percolator: %w", err)

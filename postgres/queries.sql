@@ -149,23 +149,24 @@ WHERE name = @name AND deleted = true;
 -- name: CheckForPercolator :one
 SELECT id FROM percolator
 WHERE doc_type = @doc_type
+      AND language = @language
       AND hash = @hash
       AND (
           owner = @owner OR (@owner IS NULL AND owner IS NULL));
 
 -- name: CreatePercolator :one
-INSERT INTO percolator(hash, owner, created, doc_type, query)
-VALUES(@hash, @owner, @created, @doc_type, @query)
+INSERT INTO percolator(hash, owner, created, doc_type, language, query)
+VALUES(@hash, @owner, @created, @doc_type, @language, @query)
 RETURNING id;
 
 -- TODO: add pagination
 -- name: GetPercolators :many
-SELECT id, hash, owner, created, doc_type, query, deleted
+SELECT id, hash, owner, created, doc_type, query, deleted, language
 FROM percolator
 WHERE deleted = false;
 
 -- name: GetPercolator :one
-SELECT id, hash, owner, created, doc_type, query, deleted FROM percolator
+SELECT id, hash, owner, created, doc_type, query, deleted, language FROM percolator
 WHERE id = @id AND deleted = false;
 
 -- name: InsertPercolatorEvents :exec
@@ -204,7 +205,7 @@ INSERT INTO percolator_event_payload(
 ON CONFLICT (id) DO NOTHING;
 
 -- name: GetLastPercolatorEventID :one
-SELECT MAX(id)::bigint FROM percolator_event_payload;
+SELECT COALESCE(MAX(id), 0)::bigint FROM percolator_event_payload;
 
 -- name: GetPercolatorEventPayload :one
 SELECT id, created, data

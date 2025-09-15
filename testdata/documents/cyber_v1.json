@@ -1,0 +1,87 @@
+{
+  "uuid": "b3a96437-4f79-4cc4-84c2-5c659a00e428",
+  "type": "core/article",
+  "uri": "core://article/b3a96437-4f79-4cc4-84c2-5c659a00e428",
+  "title": "Miljardsatsning på cybersäkerhet",
+  "content": [
+    {
+      "id": "cb91e958-015d-472e-8bc5-6dfd6e5256c8",
+      "type": "core/text",
+      "data": {
+        "text": "Miljardsatsning på cybersäkerhet"
+      },
+      "role": "heading-1"
+    },
+    {
+      "id": "7babbebc-72ae-41fe-8cbb-eb486632df6c",
+      "type": "core/text",
+      "data": {
+        "text": "Drygt en miljard kronor i en satsning på nationell cybersäkerhet. Det föreslår regeringen i den kommande budgeten. "
+      },
+      "role": "preamble"
+    },
+    {
+      "id": "662319be-bd88-4734-8060-68740b64437a",
+      "type": "core/text",
+      "data": {
+        "text": "Ministern för civilt försvar, Carl-Oskar Bohlin (M) kallar det hela för ”cybermiljarden”. Totalt rör det sig om 300 miljoner kronor 2026 och 350 respektive 400 miljoner kronor de två nästföljande åren. Pengarna ska fördelas mellan det nationella cybersäkerhetscentret (NCSC) och  landets kommuner och regioner."
+      }
+    },
+    {
+      "id": "661330ef-982d-4e61-b87a-b3eb159a06b7",
+      "type": "core/text",
+      "data": {
+        "text": "– Det finns tyvärr ett antal händelser som aktualiserar varför det här är viktigt. Vi vill ju att våra myndigheter som ägnar sig åt samhällsviktig verksamhet ska hantera sin cybersäkerhet på ett sådant sätt att man inte drabbas av den här typen av attacker, säger Carl-Oskar Bohlin till TT."
+      }
+    },
+    {
+      "id": "d2c21a03-27f6-445b-b1e6-2fde2040b50e",
+      "type": "core/text",
+      "data": {
+        "text": "En av dessa var förra årets angrepp på it-bolaget Tietoevrys datacenter vilket drabbade en lång rad bolag och myndigheter. Dessutom fick flera regioner gå upp i stabsläge. Då uppgavs det att en rysk hackergrupp låg bakom. Carl-Oskar Bohlin vill dock inte säga att det enbart handlar om hot från ryskt håll:"
+      }
+    },
+    {
+      "id": "d8febf67-dce3-4c7d-9d94-54feae5c9cb6",
+      "type": "core/text",
+      "data": {
+        "text": "–- Det är klart att det finns kvalificerade cyberhot som kommer från ryskt håll men också från andra stater. Sedan finns det en större bredd av mindre kvalificerade cybersäkerhetsattacker, så det är inte så enkelt att det går att peka ut ett enskilt land. "
+      }
+    },
+    {
+      "id": "40984ba8-91da-4a42-b8bd-86c12d97299f",
+      "type": "core/text",
+      "data": {
+        "text": "Sveriges kommuner kommer nu få ta del av 200 miljoner kronor årligen, medan det för regionerna handlar om 50 miljoner.  "
+      }
+    }
+  ],
+  "meta": [
+    {
+      "type": "core/newsvalue",
+      "value": "3"
+    },
+    {
+      "type": "core/note",
+      "data": {
+        "text": "Avtalat att vi får ge ut kl 5. Pressmeddelande skickas ut kl 6. "
+      },
+      "role": "internal"
+    }
+  ],
+  "links": [
+    {
+      "uuid": "956636ed-2687-4bc3-a45a-7e09d98c6eeb",
+      "type": "core/section",
+      "title": "Inrikes",
+      "rel": "section"
+    },
+    {
+      "uri": "tt://content-source/tt",
+      "type": "core/content-source",
+      "title": "TT",
+      "rel": "source"
+    }
+  ],
+  "language": "sv-se"
+}
