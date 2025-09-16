@@ -6,6 +6,10 @@ Before indexing, documents are flattened to a [flat property structure](index/te
 
 The indexer will add to the index mappings as needed, and no new properties will be indexed without first creating a mapping for it. A separate index is created for each document type and language. This lets us avoid conflicts between mappings of separate document types, and allows us to use language specific analyzers for better multilingual support.
 
+## Upgrading OpenSearch
+
+We observed a loss of documents/indexes in the cluster when doing a blue/green upgrade from v2.5 to v2.19 in our stage environment. The exact cause is not known, but it's likely to be caused by the on-demand creation of indexes. Best practice for now is to always create a new cluster with the new version, re-index into that cluster, and then switch over when the new index set has caught up. That has the added benefit of being a reversible operation, so that we can switch back to the old cluster if we experience issues.
+
 ## Index names
 
 The elephant index creates indexes in the pattern `documents-[random name]-[type]-[language]`. So if the name of the index set is "factual-tiger", the type of the document is "core/article", and the language is "sv-se", the following index will be used: "documents-factual-tiger-core_article-sv-se". For language codes without region the suffix "-unspecified" will be used, e.g. "sv" -> "documents-factual-tiger-core_article-sv-unspecified".

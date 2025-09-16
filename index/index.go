@@ -533,6 +533,10 @@ func (idx *Indexer) ensureIndex(
 		return "", fmt.Errorf("could not marshal index settings: %w", err)
 	}
 
+	// TODO: this might be causing issues when we do a blue/green upgrade
+	// migration. New best practice is to always create a new cluster
+	// instead. But it should also be possible to instead rely on the
+	// database to carry the exists-information.
 	existRes, err := idx.client.Indices.Exists([]string{index},
 		idx.client.Indices.Exists.WithContext(ctx))
 	if err != nil {
