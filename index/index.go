@@ -444,6 +444,13 @@ func (idx *Indexer) loopIteration(
 		for _, ofType := range changes {
 			for _, ofLang := range ofType {
 				for _, job := range ofLang {
+					// Was a delete, abort.
+					//
+					// TODO: must handle this better.
+					if job.State == nil {
+						continue
+					}
+
 					docs = append(docs, postgres.PercolatorDocument{
 						EventID:  job.EventID,
 						Fields:   job.fields,
