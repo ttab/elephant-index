@@ -24,7 +24,7 @@ require (
 	github.com/ttab/elsinod v0.2.0-pre1
 	github.com/ttab/eltest v0.2.0
 	github.com/ttab/flerr v0.1.0
-	github.com/ttab/howdah v0.0.2
+	github.com/ttab/howdah v0.0.3
 	github.com/ttab/koonkie v0.1.3
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.8.3
