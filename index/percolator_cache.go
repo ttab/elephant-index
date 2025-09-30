@@ -13,8 +13,10 @@ import (
 
 func NewPercolatorDocCache(db *pgxpool.Pool) *PercolatorDocCache {
 	pdc := PercolatorDocCache{
-		q:     postgres.New(db),
-		cache: sturdyc.New[postgres.PercolatorDocument](5000, 1, 1*time.Hour, 10),
+		q: postgres.New(db),
+		cache: sturdyc.New[postgres.PercolatorDocument](500, 1, 10*time.Minute, 10,
+			sturdyc.WithEvictionInterval(10*time.Second),
+		),
 	}
 
 	return &pdc
