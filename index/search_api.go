@@ -59,6 +59,7 @@ func NewSearchServiceV1(
 		eventPercolated: eventPercolated,
 		subscriptions: sturdyc.New[userSub](
 			5000, 5, 30*time.Minute, 10,
+			sturdyc.WithEvictionInterval(10*time.Second),
 		),
 	}
 }
