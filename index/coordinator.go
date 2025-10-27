@@ -601,7 +601,7 @@ func (c *Coordinator) startIndexer(
 	}
 
 	c.indexerGroup.Go(func() error {
-		err := i.Run(c.indexerCtx)
+		err := elephantine.CallWithRecover(c.indexerCtx, i.Run)
 		if errors.Is(err, context.Canceled) {
 			// Don't treat cancel as an error.
 			return nil
@@ -652,7 +652,7 @@ func (c *Coordinator) Stop(timeout time.Duration) {
 // Run cleanup on a 12-24-hour interval.
 func (c *Coordinator) cleanupLoop(ctx context.Context) {
 	for {
-		err := c.cleanup(ctx)
+		err := elephantine.CallWithRecover(ctx, c.cleanup)
 		if err != nil {
 			c.logger.Error("failed to run cleanup",
 				elephantine.LogKeyError, err)

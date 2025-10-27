@@ -14,7 +14,6 @@ import (
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/twitchtv/twirp"
-	"golang.org/x/sync/errgroup"
 )
 
 type Parameters struct {
@@ -71,7 +70,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 
 	grace := elephantine.NewGracefulShutdown(logger, 10*time.Second)
 
-	serverGroup, gCtx := errgroup.WithContext(grace.CancelOnQuit(ctx))
+	serverGroup := elephantine.NewErrGroup(grace.CancelOnQuit(ctx), logger)
 
 	service, err := NewManagementService(logger, p.Database)
 	if err != nil {
@@ -153,10 +152,8 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		return nil
 	})
 
-	serverGroup.Go(func() error {
-		ctx := grace.CancelOnStop(gCtx)
-
-		err := coord.Run(ctx)
+	serverGroup.Go("coordinator", func(ctx context.Context) error {
+		err := coord.Run(grace.CancelOnStop(ctx))
 		if err != nil {
 			return fmt.Errorf("coordinator error: %w", err)
 		}
@@ -164,8 +161,8 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		return nil
 	})
 
-	serverGroup.Go(func() error {
-		err := server.ListenAndServe(gCtx)
+	serverGroup.Go("server", func(ctx context.Context) error {
+		err := server.ListenAndServe(ctx)
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		} else if err != nil {
