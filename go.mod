@@ -20,7 +20,7 @@ require (
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/ttab/elephant-api v0.18.1
-	github.com/ttab/elephantine v0.21.2-0.20251027141804-0ba4bb8b3211
+	github.com/ttab/elephantine v0.22.0
 	github.com/ttab/elsinod v0.2.0-pre1
 	github.com/ttab/eltest v0.2.0
 	github.com/ttab/flerr v0.1.0
@@ -35,8 +35,8 @@ require (
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/viccon/sturdyc v1.1.5
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621
-	golang.org/x/oauth2 v0.32.0
-	golang.org/x/sync v0.17.0
+	golang.org/x/oauth2 v0.33.0
+	golang.org/x/sync v0.18.0
 	google.golang.org/protobuf v1.36.10
 )
 
