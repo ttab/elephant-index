@@ -276,8 +276,8 @@ github.com/ttab/elephant-api v0.18.2 h1:cQK6M/h5cIEqUu68CQTPWCIfH1b/qo67vFOZFGSZ
 github.com/ttab/elephant-api v0.18.2/go.mod h1:2sd48dqSKazXhiPEpZyw648PWah0CUjDaQZ6MT48S4A=
 github.com/ttab/elephantine v0.22.0 h1:7qURGWu+rNreTpjpagDAdTGs2LJsdhhAqEbKbl5xkz4=
 github.com/ttab/elephantine v0.22.0/go.mod h1:yPPPD+H5yVZ9QHCd054znsh7s3DsZRx9LR9gUi+6rXo=
-github.com/ttab/elsinod v0.1.1 h1:jBK8qtLOzAsOCTNpmDMPp1CqWcpYtLWDTCYpJbAiEx0=
-github.com/ttab/elsinod v0.1.1/go.mod h1:MWdZS6T5gBXAjt7FEWxt2L4KDYworJYK/tOXmNkJ6SQ=
+github.com/ttab/elsinod v0.2.0-pre1 h1:WEfFwWkdkZmKl5GeJjAB3cRNmHOP/nKc/1F1tGRzo8c=
+github.com/ttab/elsinod v0.2.0-pre1/go.mod h1:mTHRPLIu5t8AANFuGXcVIODOQqi1m9mAuFUk+8hZh3g=
 github.com/ttab/eltest v0.2.0 h1:9LEzQdXqno/yGr6HsffUzD5I3+YDGQ6UpafRVfXAPxA=
 github.com/ttab/eltest v0.2.0/go.mod h1:tl+bRgaM78mDGbqzCDEfxGfZmKog2uII9/eOAnGFRjM=
 github.com/ttab/flerr v0.1.0 h1:c5UNl6H3JXssumrdakDqYsvILujBaeivwC9fvVg2pPs=
