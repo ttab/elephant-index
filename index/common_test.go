@@ -72,7 +72,7 @@ func testingAPIServer(
 
 	client := oauth2.NewClient(ctx, auth.TokenSource)
 
-	server := elephantine.NewTestAPIServer(t, logger)
+	server, _ := elephantine.NewTestAPIServer(t, logger)
 
 	dbpool, err := pgxpool.New(ctx, env.PostgresURI)
 	test.Must(t, err, "connect to index database")
