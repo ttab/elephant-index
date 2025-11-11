@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"net"
-	"net/http"
 	"os"
 	"runtime/debug"
 	"time"
@@ -19,7 +17,6 @@ import (
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/urfave/cli/v2"
-	"golang.org/x/oauth2"
 )
 
 func main() {
@@ -179,24 +176,18 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("set up authentication: %w", err)
 	}
 
-	authClient := oauth2.NewClient(c.Context, auth.TokenSource)
+	anonClient := elephantine.NewHTTPClient(30 * time.Second)
+
+	authClient := elephantine.NewHTTPClient(
+		30*time.Second,
+		elephantine.WithTokenSource(auth.TokenSource),
+		elephantine.LongpollClient())
+
+	anonymousDocuments := repository.NewDocumentsProtobufClient(
+		repositoryEndpoint, anonClient)
 
 	authDocuments := repository.NewDocumentsProtobufClient(
 		repositoryEndpoint, authClient)
-
-	client := http.Client{
-		Transport: &http.Transport{
-			Dial: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).Dial,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: 10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		},
-	}
-
-	anonymousDocuments := repository.NewDocumentsProtobufClient(repositoryEndpoint, &client)
 
 	schemas := repository.NewSchemasProtobufClient(
 		repositoryEndpoint, authClient)

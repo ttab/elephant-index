@@ -20,7 +20,7 @@ require (
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/ttab/elephant-api v0.18.1
-	github.com/ttab/elephantine v0.20.4
+	github.com/ttab/elephantine v0.22.0
 	github.com/ttab/elsinod v0.2.0-pre1
 	github.com/ttab/eltest v0.2.0
 	github.com/ttab/flerr v0.1.0
@@ -35,9 +35,9 @@ require (
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/viccon/sturdyc v1.1.5
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621
-	golang.org/x/oauth2 v0.31.0
-	golang.org/x/sync v0.17.0
-	google.golang.org/protobuf v1.36.8
+	golang.org/x/oauth2 v0.33.0
+	golang.org/x/sync v0.18.0
+	google.golang.org/protobuf v1.36.10
 )
 
 require (
@@ -48,8 +48,8 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
-	github.com/MicahParks/jwkset v0.9.6 // indirect
-	github.com/MicahParks/keyfunc/v3 v3.4.0 // indirect
+	github.com/MicahParks/jwkset v0.11.0 // indirect
+	github.com/MicahParks/keyfunc/v3 v3.7.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.1 // indirect
@@ -79,7 +79,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.0 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
@@ -87,13 +87,13 @@ require (
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
-	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
+	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
 	github.com/hashicorp/go-secure-stdlib/parseutil v0.2.0 // indirect
 	github.com/hashicorp/go-secure-stdlib/strutil v0.1.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault-7 // indirect
-	github.com/hashicorp/vault/api v1.20.0 // indirect
+	github.com/hashicorp/vault/api v1.22.0 // indirect
 	github.com/hashicorp/vault/api/auth/kubernetes v0.10.0 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
