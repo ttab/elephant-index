@@ -29,18 +29,17 @@ func NewRepository(t T, conf RepositoryConfig) *Repository {
 type Repository struct {
 	conf RepositoryConfig
 	res  *dockertest.Resource
-	net  *dockertest.Network
 }
 
 func (r *Repository) GetAPIEndpoint() string {
-	return fmt.Sprintf("http://%s:1080",
-		r.res.GetIPInNetwork(r.net))
+	return fmt.Sprintf("http://localhost:%s",
+		r.res.GetPort("1080/tcp"))
 }
 
 func (r *Repository) SetUp(pool *dockertest.Pool, network *dockertest.Network) error {
 	res, err := pool.RunWithOptions(&dockertest.RunOptions{
 		Repository: "ghcr.io/ttab/elephant-repository",
-		Tag:        "v1.2.1",
+		Tag:        "v1.2.5",
 		Cmd:        []string{"run"},
 		Env: []string{
 			"NO_EVENTSINK=true",
@@ -62,19 +61,18 @@ func (r *Repository) SetUp(pool *dockertest.Pool, network *dockertest.Network) e
 	}
 
 	r.res = res
-	r.net = network
 
 	// Make sure that containers don't stick around for more than an hour,
 	// even if in-process cleanup fails.
 	_ = res.Expire(3600)
 
 	err = pool.Retry(func() error {
-		readyEndpoint := fmt.Sprintf("http://%s:1081/health/ready",
-			res.GetIPInNetwork(network))
+		readyEndpoint := fmt.Sprintf("http://localhost:%s/health/ready",
+			res.GetPort("1081/tcp"))
 
 		res, err := http.Get(readyEndpoint) //nolint: gosec
 		if err != nil {
-			return fmt.Errorf("do readyness check: %w", err)
+			return fmt.Errorf("do readiness check: %w", err)
 		}
 
 		// TODO: read response data
