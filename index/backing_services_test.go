@@ -2,13 +2,9 @@ package index_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
-	"sync/atomic"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -20,9 +16,7 @@ import (
 	"github.com/ttab/elephant-index/schema"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
-	"github.com/ttab/elsinod"
 	"github.com/ttab/eltest"
-	"github.com/ttab/howdah"
 )
 
 type Environment struct {
@@ -53,8 +47,6 @@ func SetUpBackingServices(
 	minio := eltest.NewMinio(t, eltest.Minio202509)
 	pg := eltest.NewPostgres(t, eltest.Postgres17_6)
 	opensearch := eltest.NewOpenSearch(t, eltest.OpenSearch2_19)
-
-	oidcURL := runElsinod(t)
 
 	var client http.Client
 
@@ -89,12 +81,17 @@ func SetUpBackingServices(
 
 	minioEnv := minio.Environment()
 
+	// Dummy oidc provider.
+	elsinod := NewElsinod(t, ElsinodConfig{
+		PublicURL: "http://example.com", // Internally used as issuer.
+	})
+
 	repo := NewRepository(t, RepositoryConfig{
-		ConnStr:       repoPGEnv.PostgresURI,
-		S3Endpoint:    "http://" + minioEnv.Endpoint,
+		ConnStr:       repoPGEnv.ContainerPostgresURI,
+		S3Endpoint:    "http://" + minioEnv.ContainerEndpoint,
 		ArchiveBucket: bucket,
 		AssetBucket:   assetBucket,
-		OIDCConfig:    oidcURL,
+		OIDCConfig:    elsinod.GetContainerAPIEndpoint(),
 	})
 
 	indexPGEnv := pg.Database(t, "index", schema.Migrations, true)
@@ -102,7 +99,7 @@ func SetUpBackingServices(
 	env := Environment{
 		PostgresURI:   indexPGEnv.PostgresURI,
 		OpenSearchURI: opensearch.GetEndpoint(),
-		OIDCConfig:    oidcURL,
+		OIDCConfig:    elsinod.GetAPIEndpoint(),
 		Repository:    repo,
 	}
 
@@ -125,75 +122,6 @@ func SetUpBackingServices(
 	env.Migrator = m
 
 	return env
-}
-
-// Start an elsinod server without the UI.
-//
-// TODO: This could probably be extracted to a shared helper in the future. But
-// holding off until we are writing integration tests for something else that
-// needs it.
-func runElsinod(t T) string {
-	t.Helper()
-
-	ctx := t.Context()
-
-	dockerIP, err := eltest.GetGatewayIP()
-	test.Must(t, err, "get Docker gateway IP")
-
-	// Listen on random available port.
-	elsinodListener, err := net.ListenTCP("tcp", &net.TCPAddr{
-		IP: dockerIP,
-	})
-	test.Must(t, err, "create elsinod listener")
-
-	var serverCleansUp atomic.Bool
-
-	t.Cleanup(func() {
-		if serverCleansUp.Load() {
-			return
-		}
-
-		err := elsinodListener.Close()
-		test.Must(t, err, "close elsinod listener")
-	})
-
-	elsinodPubURL := "http://" + elsinodListener.Addr().String()
-
-	signingKey, err := elsinod.NewSigningKey()
-	test.Must(t, err, "create signing key")
-
-	keyStore := elsinod.NewStaticKeyStore("k1", signingKey)
-
-	els, err := elsinod.New(ctx, keyStore, elsinodPubURL, "pass", "pass", "example")
-	test.Must(t, err, "create elsinod")
-
-	elsinodMux := http.NewServeMux()
-	pageMux := howdah.NewPageMux(nil, elsinodMux)
-
-	els.RegisterRoutes(pageMux)
-
-	elsServer := http.Server{
-		Handler:           elsinodMux,
-		ReadHeaderTimeout: 1 * time.Second,
-	}
-
-	go func() {
-		serverCleansUp.Store(true)
-
-		t.Cleanup(func() {
-			err := elsServer.Close()
-			test.Must(t, err, "close elsinod server")
-		})
-
-		err := elsServer.Serve(elsinodListener)
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			_ = elsinodListener.Close()
-
-			t.Fatalf("start elsinod server: %v", err)
-		}
-	}()
-
-	return elsinodPubURL + "/.well-known/openid-configuration"
 }
 
 func getS3Client(
