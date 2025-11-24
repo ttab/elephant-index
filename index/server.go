@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/repository"
@@ -128,7 +129,9 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		q := postgres.New(p.Database)
 
 		active, err := q.GetActiveIndexSet(ctx)
-		if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		} else if err != nil {
 			return fmt.Errorf("get active index set: %w", err)
 		}
 
