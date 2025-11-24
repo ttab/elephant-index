@@ -562,7 +562,10 @@ func (s *ManagementService) checkActiveReplaced(
 	forceActive bool,
 ) error {
 	currentActive, err := q.GetCurrentActiveForUpdate(ctx)
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
+		// No currently active index set.
+		return nil
+	} else if err != nil {
 		return fmt.Errorf(
 			"get currently active set: %w", err)
 	}

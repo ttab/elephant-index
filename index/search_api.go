@@ -607,6 +607,9 @@ func (s *SearchServiceV1) Query(
 	}
 
 	client, indexSet := s.active.GetActiveIndex()
+	if client == nil {
+		return nil, twirp.FailedPrecondition.Error("no active index")
+	}
 
 	osReq, err := internal.NewSearchRequest(auth, req)
 	if err != nil {
