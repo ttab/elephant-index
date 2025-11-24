@@ -16,16 +16,43 @@ type ClusterGetter interface {
 }
 
 type ClusterAuth struct {
-	IAM bool
+	IAM      bool
+	Username string
+	Password string
+}
+
+func (ca *ClusterAuth) SetPassword(password string, passwordKey [32]byte) error {
+	enc, err := encryptPassword(password, passwordKey)
+	if err != nil {
+		return fmt.Errorf("encrypt password: %w", err)
+	}
+
+	ca.Password = enc
+
+	return nil
+}
+
+func (ca *ClusterAuth) GetPassword(passwordKey [32]byte) (string, error) {
+	pass, _, err := decryptPassword(ca.Password, passwordKey)
+	if err != nil {
+		return "", fmt.Errorf("decrypt password: %w", err)
+	}
+
+	return pass, nil
 }
 
 type OSClientProvider struct {
-	clusters ClusterGetter
+	clusters    ClusterGetter
+	passwordKey [32]byte
 }
 
-func NewOSClientProvider(clusters ClusterGetter) *OSClientProvider {
+func NewOSClientProvider(
+	clusters ClusterGetter,
+	passwordKey [32]byte,
+) *OSClientProvider {
 	return &OSClientProvider{
-		clusters: clusters,
+		clusters:    clusters,
+		passwordKey: passwordKey,
 	}
 }
 
@@ -42,6 +69,17 @@ func (o *OSClientProvider) GetClientForCluster(
 	err = json.Unmarshal(c.Auth, &auth)
 	if err != nil {
 		return nil, fmt.Errorf("invalid cluster authentication details: %w", err)
+	}
+
+	var username, password string
+
+	if auth.Username != "" {
+		pw, err := auth.GetPassword(o.passwordKey)
+		if err != nil {
+			return nil, fmt.Errorf("get cluster password: %w", err)
+		}
+
+		username, password = auth.Username, pw
 	}
 
 	osConfig := opensearch.Config{
@@ -62,6 +100,9 @@ func (o *OSClientProvider) GetClientForCluster(
 		}
 
 		osConfig.Signer = signer
+	} else if username != "" {
+		osConfig.Username = username
+		osConfig.Password = password
 	}
 
 	searchClient, err := opensearch.NewClient(osConfig)

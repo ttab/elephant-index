@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -94,6 +95,9 @@ func testingAPIServer(
 
 	appExited := make(chan struct{})
 
+	openSearchURL, err := url.Parse(env.OpenSearchURI)
+	test.Must(t, err, "parse Open Search URL")
+
 	go func() {
 		defer close(appExited)
 
@@ -112,7 +116,7 @@ func testingAPIServer(
 
 				return searchClient, nil
 			},
-			DefaultCluster: env.OpenSearchURI,
+			DefaultCluster: openSearchURL,
 			Documents: repository.NewDocumentsProtobufClient(
 				env.Repository.GetAPIEndpoint(), client),
 			AnonymousDocuments: repository.NewDocumentsProtobufClient(

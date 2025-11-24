@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -710,7 +711,7 @@ func (c *Coordinator) cleanup(ctx context.Context) error {
 // this check at any given time.
 func (c *Coordinator) EnsureDefaultIndexSet(
 	ctx context.Context,
-	defaultClusterURL string,
+	defaultClusterURL *url.URL,
 	clusterAuth ClusterAuth,
 ) error {
 	//nolint:wrapcheck
@@ -744,7 +745,7 @@ func (c *Coordinator) EnsureDefaultIndexSet(
 
 		err = q.AddCluster(ctx, postgres.AddClusterParams{
 			Name: clusterName,
-			Url:  defaultClusterURL,
+			Url:  defaultClusterURL.String(),
 			Auth: authData,
 		})
 		if err != nil {

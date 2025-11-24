@@ -19,14 +19,16 @@ import (
 )
 
 type ManagementService struct {
-	logger  *slog.Logger
-	db      *pgxpool.Pool
-	nameRng *rand.Rand
+	logger      *slog.Logger
+	db          *pgxpool.Pool
+	nameRng     *rand.Rand
+	passwordKey [32]byte
 }
 
 func NewManagementService(
 	logger *slog.Logger,
 	db *pgxpool.Pool,
+	passwordKey [32]byte,
 ) (*ManagementService, error) {
 	rng, err := codename.DefaultRNG()
 	if err != nil {
@@ -34,9 +36,10 @@ func NewManagementService(
 	}
 
 	return &ManagementService{
-		logger:  logger,
-		db:      db,
-		nameRng: rng,
+		logger:      logger,
+		db:          db,
+		nameRng:     rng,
+		passwordKey: passwordKey,
 	}, nil
 }
 
@@ -210,7 +213,8 @@ func (s *ManagementService) ListClusters(
 			Endpoint:      row.Url,
 			IndexSetCount: row.IndexSetCount,
 			Auth: &index.ClusterAuth{
-				Iam: auth.IAM,
+				Iam:      auth.IAM,
+				Username: auth.Username,
 			},
 		}
 	}
@@ -303,8 +307,12 @@ func (s *ManagementService) RegisterCluster(
 		return nil, twirp.RequiredArgumentError("endpoint")
 	}
 
-	if req.Auth == nil {
+	switch {
+	case req.Auth == nil:
 		return nil, twirp.RequiredArgumentError("auth")
+	case req.Auth.Iam && req.Auth.Username != "":
+		return nil, twirp.InvalidArgumentError("auth",
+			"password auth cannot be used with IAM auth")
 	}
 
 	endpointURL, err := url.Parse(req.Endpoint)
@@ -320,6 +328,18 @@ func (s *ManagementService) RegisterCluster(
 
 	auth := ClusterAuth{
 		IAM: req.Auth.Iam,
+	}
+
+	if req.Auth.Username != "" {
+		auth.Username = req.Auth.Username
+
+		enc, err := encryptPassword(req.Auth.Password, s.passwordKey)
+		if err != nil {
+			return nil, twirp.InternalErrorf(
+				"encrypt password: %w", err)
+		}
+
+		auth.Password = enc
 	}
 
 	authData, err := json.Marshal(&auth)
