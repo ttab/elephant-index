@@ -26,7 +26,7 @@ require (
 	github.com/ttab/koonkie v0.1.3
 	github.com/ttab/langos v0.1.1
 	github.com/ttab/mage v0.8.4
-	github.com/ttab/newsdoc v0.7.4
+	github.com/ttab/newsdoc v0.8.0
 	github.com/ttab/revisor v0.9.4
 	github.com/ttab/revisorschemas v1.0.7
 	github.com/twitchtv/twirp v8.1.3+incompatible
