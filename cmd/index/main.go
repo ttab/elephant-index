@@ -68,7 +68,7 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:     "password-key",
-				EnvVars:  []string{"PASSWORD_KEY"},
+				EnvVars:  []string{"PASSWORD_ENCRYPTION_KEY"},
 				Usage:    "32 byte hex encoded encryption key",
 				Required: true,
 			},
