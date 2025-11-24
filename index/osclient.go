@@ -2,8 +2,11 @@ package index
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/opensearch-project/opensearch-go/v2"
@@ -16,9 +19,11 @@ type ClusterGetter interface {
 }
 
 type ClusterAuth struct {
-	IAM      bool
-	Username string
-	Password string
+	IAM         bool
+	Username    string
+	Password    string
+	InsecureTLS bool
+	CACert      string
 }
 
 func (ca *ClusterAuth) SetPassword(password string, passwordKey [32]byte) error {
@@ -41,11 +46,6 @@ func (ca *ClusterAuth) GetPassword(passwordKey [32]byte) (string, error) {
 	return pass, nil
 }
 
-type OSClientProvider struct {
-	clusters    ClusterGetter
-	passwordKey [32]byte
-}
-
 func NewOSClientProvider(
 	clusters ClusterGetter,
 	passwordKey [32]byte,
@@ -54,6 +54,11 @@ func NewOSClientProvider(
 		clusters:    clusters,
 		passwordKey: passwordKey,
 	}
+}
+
+type OSClientProvider struct {
+	clusters    ClusterGetter
+	passwordKey [32]byte
 }
 
 func (o *OSClientProvider) GetClientForCluster(
@@ -84,6 +89,20 @@ func (o *OSClientProvider) GetClientForCluster(
 
 	osConfig := opensearch.Config{
 		Addresses: []string{c.Url},
+		Transport: &http.Transport{
+			TLSHandshakeTimeout: 3 * time.Second,
+			MaxIdleConns:        10,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+			MaxConnsPerHost:     10,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: auth.InsecureTLS, //nolint: gosec
+			},
+		},
+	}
+
+	if auth.CACert != "" {
+		osConfig.CACert = []byte(auth.CACert)
 	}
 
 	if auth.IAM {

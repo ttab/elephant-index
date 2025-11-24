@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -326,8 +327,39 @@ func (s *ManagementService) RegisterCluster(
 			"endpoint", "invalid URL, must be http or https and refer to a host")
 	}
 
+	if req.Auth.CaCert != "" {
+		var (
+			block      *pem.Block
+			blockCount int
+		)
+
+		pemData := []byte(req.Auth.CaCert)
+
+		// Basic PEM validation.
+		for {
+			block, pemData = pem.Decode(pemData)
+			if block == nil {
+				break
+			}
+
+			if block.Type != "CERTIFICATE" {
+				return nil, twirp.InvalidArgumentError("auth.ca_cert",
+					fmt.Sprintf("invalid PEM certificate, unexpected %q block", block.Type))
+			}
+
+			blockCount++
+		}
+
+		if blockCount == 0 {
+			return nil, twirp.InvalidArgumentError("auth.ca_cert",
+				"invalid PEM certificate, no CERTIFICATE blocks")
+		}
+	}
+
 	auth := ClusterAuth{
-		IAM: req.Auth.Iam,
+		IAM:         req.Auth.Iam,
+		InsecureTLS: req.Auth.InsecureTls,
+		CACert:      req.Auth.CaCert,
 	}
 
 	if req.Auth.Username != "" {
