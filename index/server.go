@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,8 +21,8 @@ type Parameters struct {
 	APIServer          *elephantine.APIServer
 	Logger             *slog.Logger
 	Database           *pgxpool.Pool
-	DefaultCluster     string
-	ClusterAuth        ClusterAuth
+	DefaultCluster     *url.URL
+	DefaultClusterAuth ClusterAuth
 	Client             OpenSearchClientFunc
 	Documents          repository.Documents
 	AnonymousDocuments repository.Documents
@@ -31,6 +32,7 @@ type Parameters struct {
 	NoIndexer          bool
 	AuthInfoParser     elephantine.AuthInfoParser
 	Sharding           ShardingPolicy
+	PasswordKey        [32]byte
 }
 
 func RunIndex(ctx context.Context, p Parameters) error {
@@ -61,8 +63,8 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		return fmt.Errorf("create coordinator: %w", err)
 	}
 
-	if !p.NoIndexer {
-		err = coord.EnsureDefaultIndexSet(ctx, p.DefaultCluster, p.ClusterAuth)
+	if !p.NoIndexer && p.DefaultCluster != nil {
+		err = coord.EnsureDefaultIndexSet(ctx, p.DefaultCluster, p.DefaultClusterAuth)
 		if err != nil {
 			return fmt.Errorf("ensure default index set: %w", err)
 		}
@@ -72,7 +74,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 
 	serverGroup := elephantine.NewErrGroup(grace.CancelOnQuit(ctx), logger)
 
-	service, err := NewManagementService(logger, p.Database)
+	service, err := NewManagementService(logger, p.Database, p.PasswordKey)
 	if err != nil {
 		return fmt.Errorf("create management service: %w", err)
 	}

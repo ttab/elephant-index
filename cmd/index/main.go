@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net/url"
 	"os"
 	"runtime/debug"
 	"time"
@@ -61,8 +63,13 @@ func main() {
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:     "opensearch-endpoint",
-				EnvVars:  []string{"OPENSEARCH_ENDPOINT"},
+				Name:    "opensearch-endpoint",
+				EnvVars: []string{"OPENSEARCH_ENDPOINT"},
+			},
+			&cli.StringFlag{
+				Name:     "password-key",
+				EnvVars:  []string{"PASSWORD_KEY"},
+				Usage:    "32 byte hex encoded encryption key",
 				Required: true,
 			},
 			&cli.StringFlag{
@@ -130,6 +137,7 @@ func runIndexer(c *cli.Context) error {
 		noIndexer          = c.Bool("no-indexer")
 		shardingPolicy     = c.String("sharding-policy")
 		corsHosts          = c.StringSlice("cors-host")
+		passwordKeyStr     = c.String("password-key")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
@@ -144,6 +152,21 @@ func runIndexer(c *cli.Context) error {
 			os.Exit(2)
 		}
 	}()
+
+	// Decode and validate password key.
+	passwordKeyData, err := hex.DecodeString(passwordKeyStr)
+	if err != nil {
+		return fmt.Errorf("invalid password key: %w", err)
+	}
+
+	if len(passwordKeyData) != 32 {
+		return fmt.Errorf("invalid password key length %d, expected %d",
+			len(passwordKeyData), 32)
+	}
+
+	var passwordKey [32]byte
+
+	copy(passwordKey[:], passwordKeyData)
 
 	sharding, err := index.ParseShardingPolicy(
 		shardingPolicy, index.ShardingSettings{
@@ -198,7 +221,7 @@ func runIndexer(c *cli.Context) error {
 		return fmt.Errorf("create schema loader: %w", err)
 	}
 
-	clients := index.NewOSClientProvider(postgres.New(dbpool))
+	clients := index.NewOSClientProvider(postgres.New(dbpool), passwordKey)
 
 	metrics, err := index.NewMetrics(prometheus.DefaultRegisterer)
 	if err != nil {
@@ -209,15 +232,41 @@ func runIndexer(c *cli.Context) error {
 		elephantine.APIServerCORSHosts(corsHosts...),
 	)
 
+	var (
+		osURL       *url.URL
+		defaultAuth index.ClusterAuth
+	)
+
+	defaultAuth.IAM = managedOS
+
+	if opensearchEndpoint != "" {
+		osURL, err := url.Parse(opensearchEndpoint)
+		if err != nil {
+			return fmt.Errorf("invalid open search endpoint: %w", err)
+		}
+
+		if osURL.User != nil {
+			defaultAuth.Username = osURL.User.Username()
+
+			pw, _ := osURL.User.Password()
+
+			err := defaultAuth.SetPassword(pw, passwordKey)
+			if err != nil {
+				return fmt.Errorf("set default cluster auth password: %w", err)
+			}
+
+			osURL.User = nil
+			defaultAuth.IAM = false
+		}
+	}
+
 	err = index.RunIndex(c.Context, index.Parameters{
-		APIServer:      server,
-		Logger:         logger,
-		Database:       dbpool,
-		Client:         clients.GetClientForCluster,
-		DefaultCluster: opensearchEndpoint,
-		ClusterAuth: index.ClusterAuth{
-			IAM: managedOS,
-		},
+		APIServer:          server,
+		Logger:             logger,
+		Database:           dbpool,
+		Client:             clients.GetClientForCluster,
+		DefaultCluster:     osURL,
+		DefaultClusterAuth: defaultAuth,
 		Documents:          authDocuments,
 		AnonymousDocuments: anonymousDocuments,
 		Validator:          loader,
@@ -226,6 +275,7 @@ func runIndexer(c *cli.Context) error {
 		NoIndexer:          noIndexer,
 		AuthInfoParser:     auth.AuthParser,
 		Sharding:           sharding,
+		PasswordKey:        passwordKey,
 	})
 	if err != nil {
 		return fmt.Errorf("run application: %w", err)
