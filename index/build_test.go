@@ -2,12 +2,15 @@ package index_test
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
+	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"github.com/ttab/revisorschemas"
 )
@@ -21,7 +24,7 @@ func TestBuildDocument(t *testing.T) {
 		goldenChanges  index.MappingChanges
 	)
 
-	regenerate := os.Getenv("REGENERATE") == "true"
+	regenerate := test.Regenerate()
 
 	err := elephantine.UnmarshalFile(
 		"testdata/raw_1.input.json", &state)
@@ -116,5 +119,74 @@ func TestBuildDocument(t *testing.T) {
 
 	if diff := cmp.Diff(goldenMappings, superset); diff != "" {
 		t.Errorf("Superset() mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestBuildDocumentFields(t *testing.T) {
+	regenerate := test.Regenerate()
+
+	constraints, err := revisor.DecodeConstraintSetsFS(revisorschemas.Files(),
+		"core.json", "core-planning.json", "tt.json")
+	if err != nil {
+		t.Fatalf("failed to load base constraints: %v", err)
+	}
+
+	validator, err := revisor.NewValidator(constraints...)
+	if err != nil {
+		t.Fatalf("failed to create validator: %v", err)
+	}
+
+	lRes := index.NewLanguageResolver(index.LanguageOptions{
+		DefaultLanguage: "sv-se",
+	})
+
+	lang, err := lRes.GetLanguageInfo("sv-se")
+	test.Must(t, err, "get language configuration")
+
+	langConf := index.GetIndexConfig(lang)
+
+	docFiles, err := filepath.Glob(filepath.Join("..", "testdata", "documents", "*.json"))
+	test.Must(t, err, "glob for files")
+
+	fixedTime := time.Date(2026, time.January, 0o2, 16, 13, 0, 0, time.UTC)
+
+	testDir := filepath.Join("..", "testdata", t.Name())
+
+	err = os.MkdirAll(testDir, 0o770)
+	test.Must(t, err, "ensure testdata directory")
+
+	for _, file := range docFiles {
+		name := filepath.Base(file)
+
+		var doc newsdoc.Document
+
+		err := elephantine.UnmarshalFile(file, &doc)
+		test.Must(t, err, "unmarshal source document")
+
+		state := index.DocumentState{
+			Created:        fixedTime,
+			Creator:        "core://user/1",
+			Modified:       fixedTime,
+			Updater:        "core://user/1",
+			CurrentVersion: 1,
+			ACL: []index.ACLEntry{
+				{
+					URI:         "core://unit/redaktionen",
+					Permissions: []string{"r", "w"},
+				},
+			},
+			Heads:    map[string]index.Status{},
+			Document: doc,
+		}
+
+		built, err := index.BuildDocument(validator, &state, langConf, map[string]bool{
+			index.FeatureSortable: true,
+			index.FeaturePrefix:   true,
+			index.FeatureOnlyICU:  true,
+		})
+		test.Must(t, err, "build document")
+
+		test.TestAgainstGolden(t, regenerate, built.Fields,
+			filepath.Join(testDir, name))
 	}
 }

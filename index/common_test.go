@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"testing"
 	"time"
 
@@ -20,10 +19,6 @@ import (
 	"github.com/ttab/elephantine/test"
 	"golang.org/x/oauth2"
 )
-
-func regenerateTestFixtures() bool {
-	return os.Getenv("REGENERATE") == "true"
-}
 
 type TestContext struct {
 	Env           Environment

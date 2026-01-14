@@ -69,7 +69,7 @@ func TestPercolate(t *testing.T) {
 			continue
 		}
 
-		test.TestMessageAgainstGolden(t, regenerateTestFixtures(), res.Hits,
+		test.TestMessageAgainstGolden(t, test.Regenerate(), res.Hits,
 			filepath.Join(testDataDir, "initial-result.json"))
 
 		break
@@ -201,7 +201,7 @@ func TestPercolate(t *testing.T) {
 		}
 	}
 
-	test.TestMessageAgainstGolden(t, regenerateTestFixtures(), &items,
+	test.TestMessageAgainstGolden(t, test.Regenerate(), &items,
 		filepath.Join(testDataDir, "poll-result.json"))
 }
 

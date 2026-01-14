@@ -1,0 +1,199 @@
+{
+  "created": {
+    "type": "date",
+    "values": [
+      "2026-01-02T16:13:00Z"
+    ]
+  },
+  "creator_uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://user/1"
+    ]
+  },
+  "current_version": {
+    "type": "long",
+    "values": [
+      "1"
+    ]
+  },
+  "document.content.core_text.data.text": {
+    "type": "text",
+    "values": [
+      "Efter helgens protester – nytt verk av Banksy ",
+      "Ett nytt konstverk av gatukonstnären Banksy dök på måndagen upp på väggen till en kulturminnesmärkt byggnad vid Högsta domstolen i London.",
+      "Väggmålningen visar en domare i traditionell peruk som med sin klubba slår en demonstrant med ett blodigt plakat. ",
+      "Målningen, som ses som en reaktion på gripandet i lördags av flera hundra demonstranter som stöder den förbjudna gruppen Palestine Act, täcktes snabbt över med svart plast och metallbarriärer. Den bevakades under dagen av säkerhetsvakter, skriver brittiska medier.",
+      "Banksy delade samtidigt ett foto av väggkonsten på sitt Instagramkonto med bildtexten \"Royal Courts Of Justice. London.\"",
+      "Den brittiska regeringen förbjöd nyligen Palestine Act enligt antiterrorlagstiftningen."
+    ]
+  },
+  "document.content.core_text.role": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "heading-1",
+      "preamble"
+    ]
+  },
+  "document.language": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "sv-se"
+    ]
+  },
+  "document.meta.core_newsvalue.value": {
+    "type": "long",
+    "values": [
+      "3"
+    ]
+  },
+  "document.meta.tt_slugline.value": {
+    "fields": {
+      "keyword": {
+        "country": "se",
+        "language": "sv",
+        "type": "icu_collation_keyword"
+      },
+      "prefix": {
+        "analyzer": "elephant_prefix_analyzer",
+        "search_analyzer": "elephant_prefix_search_analyzer",
+        "type": "text"
+      }
+    },
+    "type": "text",
+    "values": [
+      "banksy"
+    ]
+  },
+  "document.rel.section.title": {
+    "type": "text",
+    "values": [
+      "Kultur och nöje"
+    ]
+  },
+  "document.rel.section.type": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core/section"
+    ]
+  },
+  "document.rel.section.uuid": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "1c275798-70d5-4bd4-8f7a-18be4aa74f72"
+    ]
+  },
+  "document.rel.source.title": {
+    "type": "text",
+    "values": [
+      "TT"
+    ]
+  },
+  "document.rel.source.type": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core/content-source"
+    ]
+  },
+  "document.rel.source.uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "tt://content-source/tt"
+    ]
+  },
+  "document.title": {
+    "fields": {
+      "prefix": {
+        "analyzer": "elephant_prefix_analyzer",
+        "search_analyzer": "elephant_prefix_search_analyzer",
+        "type": "text"
+      },
+      "sort": {
+        "country": "se",
+        "language": "sv",
+        "type": "icu_collation_keyword"
+      }
+    },
+    "type": "text",
+    "values": [
+      "Efter helgens protester – nytt verk av Banksy "
+    ]
+  },
+  "document.type": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core/article"
+    ]
+  },
+  "document.uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://article/13749cfe-5cea-4231-b396-91123d3d5be0"
+    ]
+  },
+  "document.url": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      ""
+    ]
+  },
+  "modified": {
+    "type": "date",
+    "values": [
+      "2026-01-02T16:13:00Z"
+    ]
+  },
+  "readers": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://unit/redaktionen"
+    ]
+  },
+  "slug": {
+    "type": "alias",
+    "values": [
+      "document.meta.tt_slugline.value"
+    ]
+  },
+  "text": {
+    "type": "text",
+    "values": [
+      "Efter helgens protester – nytt verk av Banksy ",
+      "Ett nytt konstverk av gatukonstnären Banksy dök på måndagen upp på väggen till en kulturminnesmärkt byggnad vid Högsta domstolen i London.",
+      "Väggmålningen visar en domare i traditionell peruk som med sin klubba slår en demonstrant med ett blodigt plakat. ",
+      "Målningen, som ses som en reaktion på gripandet i lördags av flera hundra demonstranter som stöder den förbjudna gruppen Palestine Act, täcktes snabbt över med svart plast och metallbarriärer. Den bevakades under dagen av säkerhetsvakter, skriver brittiska medier.",
+      "Banksy delade samtidigt ett foto av väggkonsten på sitt Instagramkonto med bildtexten \"Royal Courts Of Justice. London.\"",
+      "Den brittiska regeringen förbjöd nyligen Palestine Act enligt antiterrorlagstiftningen."
+    ]
+  },
+  "updater_uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://user/1"
+    ]
+  }
+}

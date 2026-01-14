@@ -1,0 +1,260 @@
+{
+  "created": {
+    "type": "date",
+    "values": [
+      "2026-01-02T16:13:00Z"
+    ]
+  },
+  "creator_uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://user/1"
+    ]
+  },
+  "current_version": {
+    "type": "long",
+    "values": [
+      "1"
+    ]
+  },
+  "document.language": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "sv-se"
+    ]
+  },
+  "document.meta.core_assignment.data.end_date": {
+    "type": "date",
+    "values": [
+      "2025-10-14T00:00:00Z"
+    ]
+  },
+  "document.meta.core_assignment.data.full_day": {
+    "type": "boolean",
+    "values": [
+      "false"
+    ]
+  },
+  "document.meta.core_assignment.data.public": {
+    "type": "boolean",
+    "values": [
+      "true"
+    ]
+  },
+  "document.meta.core_assignment.data.start": {
+    "type": "date",
+    "values": [
+      "2025-10-14T07:04:44.778Z"
+    ]
+  },
+  "document.meta.core_assignment.data.start_date": {
+    "type": "date",
+    "values": [
+      "2025-10-14T00:00:00Z"
+    ]
+  },
+  "document.meta.core_assignment.id": {
+    "type": "keyword",
+    "values": [
+      "f6755d80-0743-4889-91b8-b886f5bbe84d"
+    ]
+  },
+  "document.meta.core_assignment.meta.core_assignment_type.value": {
+    "type": "text",
+    "values": [
+      "text"
+    ]
+  },
+  "document.meta.core_assignment.rel.assignee.role": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "primary"
+    ]
+  },
+  "document.meta.core_assignment.rel.assignee.title": {
+    "type": "text",
+    "values": [
+      "Elisabeth Modig-Blåder"
+    ]
+  },
+  "document.meta.core_assignment.rel.assignee.type": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core/author"
+    ]
+  },
+  "document.meta.core_assignment.rel.assignee.uuid": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "ee834491-1d09-4e29-8eb2-78422453bc40"
+    ]
+  },
+  "document.meta.core_assignment.title": {
+    "type": "text",
+    "values": [
+      "Nyhetsbevakning från kl 7"
+    ]
+  },
+  "document.meta.core_description.data.text": {
+    "type": "text",
+    "values": [
+      "Ericsson publicerar delårsrapport, kl 7. "
+    ]
+  },
+  "document.meta.core_description.role": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "public"
+    ]
+  },
+  "document.meta.core_newsvalue.value": {
+    "type": "long",
+    "values": [
+      "4"
+    ]
+  },
+  "document.meta.core_planning_item.data.end_date": {
+    "type": "date",
+    "values": [
+      "2025-10-14T00:00:00Z"
+    ]
+  },
+  "document.meta.core_planning_item.data.public": {
+    "type": "boolean",
+    "values": [
+      "true"
+    ]
+  },
+  "document.meta.core_planning_item.data.start_date": {
+    "type": "date",
+    "values": [
+      "2025-10-14T00:00:00Z"
+    ]
+  },
+  "document.meta.core_planning_item.data.tentative": {
+    "type": "boolean",
+    "values": [
+      "false"
+    ]
+  },
+  "document.rel.event.title": {
+    "type": "text",
+    "values": [
+      "Ericsson delår"
+    ]
+  },
+  "document.rel.event.type": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core/event"
+    ]
+  },
+  "document.rel.event.uuid": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "0c1f5311-18fb-4479-bcf1-88ddc5ab6d6f"
+    ]
+  },
+  "document.rel.section.title": {
+    "type": "text",
+    "values": [
+      "Ekonomi"
+    ]
+  },
+  "document.rel.section.type": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core/section"
+    ]
+  },
+  "document.rel.section.uuid": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "c3e9fe11-6d84-4926-b0d2-8048fe163145"
+    ]
+  },
+  "document.title": {
+    "fields": {
+      "prefix": {
+        "analyzer": "elephant_prefix_analyzer",
+        "search_analyzer": "elephant_prefix_search_analyzer",
+        "type": "text"
+      },
+      "sort": {
+        "country": "se",
+        "language": "sv",
+        "type": "icu_collation_keyword"
+      }
+    },
+    "type": "text",
+    "values": [
+      "Ericsson delår"
+    ]
+  },
+  "document.uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://newscoverage/9b774de2-9d16-4b9d-91e1-a598ad675455"
+    ]
+  },
+  "document.url": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      ""
+    ]
+  },
+  "modified": {
+    "type": "date",
+    "values": [
+      "2026-01-02T16:13:00Z"
+    ]
+  },
+  "readers": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://unit/redaktionen"
+    ]
+  },
+  "text": {
+    "type": "text",
+    "values": [
+      "Ericsson delår",
+      "Ericsson publicerar delårsrapport, kl 7. ",
+      "Nyhetsbevakning från kl 7"
+    ]
+  },
+  "updater_uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://user/1"
+    ]
+  }
+}

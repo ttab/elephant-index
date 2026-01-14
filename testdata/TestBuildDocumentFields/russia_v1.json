@@ -1,0 +1,144 @@
+{
+  "created": {
+    "type": "date",
+    "values": [
+      "2026-01-02T16:13:00Z"
+    ]
+  },
+  "creator_uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://user/1"
+    ]
+  },
+  "current_version": {
+    "type": "long",
+    "values": [
+      "1"
+    ]
+  },
+  "document.language": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "sv-se"
+    ]
+  },
+  "document.meta.core_newsvalue.value": {
+    "type": "long",
+    "values": [
+      "4"
+    ]
+  },
+  "document.meta.core_planning_item.data.end_date": {
+    "type": "date",
+    "values": [
+      "2025-08-29T00:00:00Z"
+    ]
+  },
+  "document.meta.core_planning_item.data.public": {
+    "type": "boolean",
+    "values": [
+      "true"
+    ]
+  },
+  "document.meta.core_planning_item.data.start_date": {
+    "type": "date",
+    "values": [
+      "2025-08-29T00:00:00Z"
+    ]
+  },
+  "document.meta.core_planning_item.data.tentative": {
+    "type": "boolean",
+    "values": [
+      "false"
+    ]
+  },
+  "document.rel.section.title": {
+    "type": "text",
+    "values": [
+      "Inrikes"
+    ]
+  },
+  "document.rel.section.type": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core/section"
+    ]
+  },
+  "document.rel.section.uuid": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "956636ed-2687-4bc3-a45a-7e09d98c6eeb"
+    ]
+  },
+  "document.title": {
+    "fields": {
+      "prefix": {
+        "analyzer": "elephant_prefix_analyzer",
+        "search_analyzer": "elephant_prefix_search_analyzer",
+        "type": "text"
+      },
+      "sort": {
+        "country": "se",
+        "language": "sv",
+        "type": "icu_collation_keyword"
+      }
+    },
+    "type": "text",
+    "values": [
+      "Rysslands ambassadör kallas upp"
+    ]
+  },
+  "document.uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://newscoverage/f5d2e4c5-01ba-4dae-9f09-a86701e06ecd"
+    ]
+  },
+  "document.url": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      ""
+    ]
+  },
+  "modified": {
+    "type": "date",
+    "values": [
+      "2026-01-02T16:13:00Z"
+    ]
+  },
+  "readers": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://unit/redaktionen"
+    ]
+  },
+  "text": {
+    "type": "text",
+    "values": [
+      "Rysslands ambassadör kallas upp"
+    ]
+  },
+  "updater_uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://user/1"
+    ]
+  }
+}

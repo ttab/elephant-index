@@ -1,0 +1,130 @@
+{
+  "created": {
+    "type": "date",
+    "values": [
+      "2026-01-02T16:13:00Z"
+    ]
+  },
+  "creator_uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://user/1"
+    ]
+  },
+  "current_version": {
+    "type": "long",
+    "values": [
+      "1"
+    ]
+  },
+  "document.content.core_text.data.text": {
+    "type": "text",
+    "values": [
+      "Birgitte Bardot är död",
+      "Den franska skådespelaren Brigitte Bardot har avlidit, 91 år gammal, enligt nyhetsbyrån AFP. "
+    ]
+  },
+  "document.content.core_text.role": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "heading-1"
+    ]
+  },
+  "document.language": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "sv-se"
+    ]
+  },
+  "document.rel.section.title": {
+    "type": "text",
+    "values": [
+      "Kultur och nöje"
+    ]
+  },
+  "document.rel.section.type": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core/section"
+    ]
+  },
+  "document.rel.section.uuid": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "1c275798-70d5-4bd4-8f7a-18be4aa74f72"
+    ]
+  },
+  "document.title": {
+    "fields": {
+      "prefix": {
+        "analyzer": "elephant_prefix_analyzer",
+        "search_analyzer": "elephant_prefix_search_analyzer",
+        "type": "text"
+      },
+      "sort": {
+        "country": "se",
+        "language": "sv",
+        "type": "icu_collation_keyword"
+      }
+    },
+    "type": "text",
+    "values": [
+      "Birgitte Bardot är död"
+    ]
+  },
+  "document.uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://flash/4c8291f1-a9de-4f2d-93e7-a51b50c2fb36"
+    ]
+  },
+  "document.url": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      ""
+    ]
+  },
+  "modified": {
+    "type": "date",
+    "values": [
+      "2026-01-02T16:13:00Z"
+    ]
+  },
+  "readers": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://unit/redaktionen"
+    ]
+  },
+  "text": {
+    "type": "text",
+    "values": [
+      "Birgitte Bardot är död",
+      "Den franska skådespelaren Brigitte Bardot har avlidit, 91 år gammal, enligt nyhetsbyrån AFP. "
+    ]
+  },
+  "updater_uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://user/1"
+    ]
+  }
+}

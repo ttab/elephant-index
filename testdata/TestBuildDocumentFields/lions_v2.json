@@ -1,0 +1,239 @@
+{
+  "created": {
+    "type": "date",
+    "values": [
+      "2026-01-02T16:13:00Z"
+    ]
+  },
+  "creator_uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://user/1"
+    ]
+  },
+  "current_version": {
+    "type": "long",
+    "values": [
+      "1"
+    ]
+  },
+  "document.language": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "sv-se"
+    ]
+  },
+  "document.meta.core_assignment.data.end_date": {
+    "type": "date",
+    "values": [
+      "2025-09-01T00:00:00Z"
+    ]
+  },
+  "document.meta.core_assignment.data.full_day": {
+    "type": "boolean",
+    "values": [
+      "false"
+    ]
+  },
+  "document.meta.core_assignment.data.public": {
+    "type": "boolean",
+    "values": [
+      "true"
+    ]
+  },
+  "document.meta.core_assignment.data.start": {
+    "type": "date",
+    "values": [
+      "2025-09-01T05:01:53.579Z"
+    ]
+  },
+  "document.meta.core_assignment.data.start_date": {
+    "type": "date",
+    "values": [
+      "2025-09-01T00:00:00Z"
+    ]
+  },
+  "document.meta.core_assignment.id": {
+    "type": "keyword",
+    "values": [
+      "8de91dd0-7541-44ba-a2af-383945dcf9e2"
+    ]
+  },
+  "document.meta.core_assignment.meta.core_assignment_type.value": {
+    "type": "text",
+    "values": [
+      "text"
+    ]
+  },
+  "document.meta.core_assignment.rel.assignee.role": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "primary"
+    ]
+  },
+  "document.meta.core_assignment.rel.assignee.title": {
+    "type": "text",
+    "values": [
+      "Tobias"
+    ]
+  },
+  "document.meta.core_assignment.rel.assignee.type": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core/author"
+    ]
+  },
+  "document.meta.core_assignment.rel.assignee.uuid": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "ff5a4498-9c1e-4de9-9d4c-b269f9ceafd2"
+    ]
+  },
+  "document.meta.core_assignment.rel.deliverable.type": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core/article"
+    ]
+  },
+  "document.meta.core_assignment.rel.deliverable.uuid": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "b9400cd3-d648-4b54-9a7c-ceff237f7ca7"
+    ]
+  },
+  "document.meta.core_assignment.title": {
+    "type": "text",
+    "values": [
+      "notis"
+    ]
+  },
+  "document.meta.core_newsvalue.value": {
+    "type": "long",
+    "values": [
+      "3"
+    ]
+  },
+  "document.meta.core_planning_item.data.end_date": {
+    "type": "date",
+    "values": [
+      "2025-09-01T00:00:00Z"
+    ]
+  },
+  "document.meta.core_planning_item.data.public": {
+    "type": "boolean",
+    "values": [
+      "true"
+    ]
+  },
+  "document.meta.core_planning_item.data.start_date": {
+    "type": "date",
+    "values": [
+      "2025-09-01T00:00:00Z"
+    ]
+  },
+  "document.meta.core_planning_item.data.tentative": {
+    "type": "boolean",
+    "values": [
+      "false"
+    ]
+  },
+  "document.rel.section.title": {
+    "type": "text",
+    "values": [
+      "Inrikes"
+    ]
+  },
+  "document.rel.section.type": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core/section"
+    ]
+  },
+  "document.rel.section.uuid": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "956636ed-2687-4bc3-a45a-7e09d98c6eeb"
+    ]
+  },
+  "document.title": {
+    "fields": {
+      "prefix": {
+        "analyzer": "elephant_prefix_analyzer",
+        "search_analyzer": "elephant_prefix_search_analyzer",
+        "type": "text"
+      },
+      "sort": {
+        "country": "se",
+        "language": "sv",
+        "type": "icu_collation_keyword"
+      }
+    },
+    "type": "text",
+    "values": [
+      "Lejonen var riktiga"
+    ]
+  },
+  "document.uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://newscoverage/7bf0c4e7-aff7-4ddd-97b0-e4d5aca7d3eb"
+    ]
+  },
+  "document.url": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      ""
+    ]
+  },
+  "modified": {
+    "type": "date",
+    "values": [
+      "2026-01-02T16:13:00Z"
+    ]
+  },
+  "readers": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://unit/redaktionen"
+    ]
+  },
+  "text": {
+    "type": "text",
+    "values": [
+      "Lejonen var riktiga",
+      "notis"
+    ]
+  },
+  "updater_uri": {
+    "country": "se",
+    "language": "sv",
+    "type": "icu_collation_keyword",
+    "values": [
+      "core://user/1"
+    ]
+  }
+}

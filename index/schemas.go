@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sync"
 	"time"
 
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/revisor"
-	"golang.org/x/exp/maps"
 )
 
 type SchemaLoader struct {
