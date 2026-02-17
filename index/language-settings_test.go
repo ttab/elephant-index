@@ -85,4 +85,20 @@ func TestGetLanguageSetting(t *testing.T) {
 				analysis.Analyzer["default"].Type)
 		}
 	}
+
+	t.Run("variant type", func(t *testing.T) {
+		res := index.NewLanguageResolver(index.LanguageOptions{})
+
+		lang, err := res.GetLanguageInfo("sv-SE")
+		test.Must(t, err, "get language info")
+
+		idx := index.NewIndexName(
+			index.IndexTypeDocuments,
+			"happy-hog", "core/article+template", lang)
+
+		test.Equal(t, "core_article--template-sv-se", idx.Language,
+			"variant type language name")
+		test.Equal(t, "documents-happy-hog-core_article--template-sv-se", idx.Full,
+			"variant type full name")
+	})
 }
