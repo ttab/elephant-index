@@ -6,6 +6,18 @@ Before indexing, documents are flattened to a [flat property structure](index/te
 
 The indexer will add to the index mappings as needed, and no new properties will be indexed without first creating a mapping for it. A separate index is created for each document type and language. This lets us avoid conflicts between mappings of separate document types, and allows us to use language specific analyzers for better multilingual support.
 
+## Password encryption key
+
+The service requires a 32-byte hex-encoded encryption key (`--password-key` flag or `PASSWORD_ENCRYPTION_KEY` environment variable) used to encrypt OpenSearch cluster passwords before storing them in the database. Passwords are encrypted with AES-256-GCM and stored in a versioned format (`v1.<base64>`).
+
+The key is used when:
+
+- Registering a new cluster with password authentication via the management API.
+- Parsing credentials from the default `--opensearch-addr` URL.
+- Creating OpenSearch clients (decrypting stored passwords).
+
+> **Tip:** Generate a key with `head -c 32 /dev/urandom | xxd -ps -cols 0`
+
 ## Upgrading OpenSearch
 
 We observed a loss of documents/indexes in the cluster when doing a blue/green upgrade from v2.5 to v2.19 in our stage environment. The exact cause is not known, but it's likely to be caused by the on-demand creation of indexes. Best practice for now is to always create a new cluster with the new version, re-index into that cluster, and then switch over when the new index set has caught up. That has the added benefit of being a reversible operation, so that we can switch back to the old cluster if we experience issues.
