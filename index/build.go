@@ -380,15 +380,26 @@ func entityRefsToPath(doc *newsdoc.Document, refs []revisor.EntityRef) string {
 			blocks := source.GetBlocks(v.BlockKind)
 			block := blocks[v.Index]
 
+			values := map[string]string{
+				"type": block.Type,
+				"rel":  block.Rel,
+				"role": block.Role,
+				"name": block.Name,
+			}
+
+			fallbacks := []string{
+				"type", "rel", "role", "name",
+			}
+
 			switch v.BlockKind {
 			case revisor.BlockKindLink:
-				key := internal.NonAlphaNum.ReplaceAllString(block.Rel, "_")
+				key := blockKeyWithFallback("rel", values, fallbacks...)
 				r[i] = "rel." + key
 			case revisor.BlockKindMeta:
-				key := internal.NonAlphaNum.ReplaceAllString(block.Type, "_")
+				key := blockKeyWithFallback("type", values, fallbacks...)
 				r[i] = "meta." + key
 			case revisor.BlockKindContent:
-				key := internal.NonAlphaNum.ReplaceAllString(block.Type, "_")
+				key := blockKeyWithFallback("type", values, fallbacks...)
 				r[i] = "content." + key
 			}
 
@@ -397,6 +408,24 @@ func entityRefsToPath(doc *newsdoc.Document, refs []revisor.EntityRef) string {
 	}
 
 	return strings.Join(r, ".")
+}
+
+func blockKeyWithFallback(
+	primary string, values map[string]string, fallbacks ...string,
+) string {
+	v := values[primary]
+	if v != "" {
+		return internal.NonAlphaNum.ReplaceAllString(v, "_")
+	}
+
+	for _, k := range fallbacks {
+		v := values[k]
+		if v != "" {
+			return k + "__" + internal.NonAlphaNum.ReplaceAllString(v, "_")
+		}
+	}
+
+	return "__unknown"
 }
 
 type ValueCollector struct {

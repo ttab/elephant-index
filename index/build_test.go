@@ -2,12 +2,14 @@ package index_test
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
+	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
 	"github.com/ttab/revisorschemas"
 )
@@ -117,4 +119,52 @@ func TestBuildDocument(t *testing.T) {
 	if diff := cmp.Diff(goldenMappings, superset); diff != "" {
 		t.Errorf("Superset() mismatch (-want +got):\n%s", diff)
 	}
+}
+
+func TestMappingsMetaRel(t *testing.T) {
+	constraints, err := revisor.DecodeConstraintSetsFS(revisorschemas.Files(),
+		"core.json", "core-planning.json", "tt.json", "tt-eidos.json")
+	if err != nil {
+		t.Fatalf("failed to load base constraints: %v", err)
+	}
+
+	validator, err := revisor.NewValidator(constraints...)
+	if err != nil {
+		t.Fatalf("failed to create validator: %v", err)
+	}
+
+	var doc newsdoc.Document
+
+	err = elephantine.UnmarshalFile(
+		filepath.Join("..", "testdata", "documents", "org.json"), &doc)
+	test.Must(t, err, "load document")
+
+	lRes := index.NewLanguageResolver(index.LanguageOptions{
+		DefaultLanguage: doc.Language,
+	})
+
+	lang, err := lRes.GetLanguageInfo(doc.Language)
+	test.Must(t, err, "get language configuration")
+
+	langConf := index.GetIndexConfig(lang)
+
+	state := &index.DocumentState{
+		Document: doc,
+	}
+
+	result, err := index.BuildDocument(validator, state, langConf, map[string]bool{
+		index.FeatureSortable: true,
+		index.FeaturePrefix:   true,
+		index.FeatureOnlyICU:  true,
+	})
+	test.Must(t, err, "build document")
+
+	goldenPathFields := filepath.Join("..", "testdata", t.Name(), "fields.json")
+
+	test.TestAgainstGolden(t, test.Regenerate(), result.Fields, goldenPathFields)
+
+	mappings := result.Mappings()
+	goldenPathMappings := filepath.Join("..", "testdata", t.Name(), "mappings.json")
+
+	test.TestAgainstGolden(t, test.Regenerate(), mappings, goldenPathMappings)
 }

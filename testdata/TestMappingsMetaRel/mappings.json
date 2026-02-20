@@ -1,0 +1,98 @@
+{
+  "properties": {
+    "created": {
+      "type": "date"
+    },
+    "creator_uri": {
+      "country": "se",
+      "language": "sv",
+      "type": "icu_collation_keyword"
+    },
+    "current_version": {
+      "type": "long"
+    },
+    "document.language": {
+      "country": "se",
+      "language": "sv",
+      "type": "icu_collation_keyword"
+    },
+    "document.meta.core_alias.title": {
+      "type": "text"
+    },
+    "document.meta.core_definition.data.text": {
+      "type": "text"
+    },
+    "document.meta.core_definition.role": {
+      "country": "se",
+      "language": "sv",
+      "type": "icu_collation_keyword"
+    },
+    "document.meta.tt_eidos_config.meta.rel__settings_for.data.eligible": {
+      "type": "boolean"
+    },
+    "document.meta.tt_eidos_config.meta.rel__settings_for.data.hide": {
+      "type": "boolean"
+    },
+    "document.meta.tt_eidos_config.meta.rel__settings_for.rel": {
+      "country": "se",
+      "language": "sv",
+      "type": "icu_collation_keyword"
+    },
+    "document.meta.tt_eidos_config.meta.rel__settings_for.value": {
+      "country": "se",
+      "language": "sv",
+      "type": "icu_collation_keyword"
+    },
+    "document.rel.evidence.type": {
+      "country": "se",
+      "language": "sv",
+      "type": "icu_collation_keyword"
+    },
+    "document.rel.evidence.url": {
+      "country": "se",
+      "language": "sv",
+      "type": "icu_collation_keyword"
+    },
+    "document.title": {
+      "fields": {
+        "prefix": {
+          "analyzer": "elephant_prefix_analyzer",
+          "search_analyzer": "elephant_prefix_search_analyzer",
+          "type": "text"
+        },
+        "sort": {
+          "country": "se",
+          "language": "sv",
+          "type": "icu_collation_keyword"
+        }
+      },
+      "type": "text"
+    },
+    "document.type": {
+      "country": "se",
+      "language": "sv",
+      "type": "icu_collation_keyword"
+    },
+    "document.uri": {
+      "country": "se",
+      "language": "sv",
+      "type": "icu_collation_keyword"
+    },
+    "document.url": {
+      "country": "se",
+      "language": "sv",
+      "type": "icu_collation_keyword"
+    },
+    "modified": {
+      "type": "date"
+    },
+    "text": {
+      "type": "text"
+    },
+    "updater_uri": {
+      "country": "se",
+      "language": "sv",
+      "type": "icu_collation_keyword"
+    }
+  }
+}
