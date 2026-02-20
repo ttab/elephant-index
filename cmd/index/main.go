@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,7 +19,7 @@ import (
 	"github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func main() {
@@ -36,22 +37,22 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "addr",
-				EnvVars: []string{"ADDR"},
+				Sources: cli.EnvVars("ADDR"),
 				Value:   ":1080",
 			},
 			&cli.StringFlag{
 				Name:    "profile-addr",
-				EnvVars: []string{"PROFILE_ADDR"},
+				Sources: cli.EnvVars("PROFILE_ADDR"),
 				Value:   ":1081",
 			},
 			&cli.StringFlag{
 				Name:    "log-level",
-				EnvVars: []string{"LOG_LEVEL"},
+				Sources: cli.EnvVars("LOG_LEVEL"),
 				Value:   "debug",
 			},
 			&cli.StringFlag{
 				Name:    "default-language",
-				EnvVars: []string{"DEFAULT_LANGUAGE"},
+				Sources: cli.EnvVars("DEFAULT_LANGUAGE"),
 				// Required for now, but shouldn't be as we want
 				// the repository to enforce that language is
 				// set.
@@ -59,55 +60,55 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:     "repository-endpoint",
-				EnvVars:  []string{"REPOSITORY_ENDPOINT"},
+				Sources:  cli.EnvVars("REPOSITORY_ENDPOINT"),
 				Required: true,
 			},
 			&cli.StringFlag{
 				Name:    "opensearch-endpoint",
-				EnvVars: []string{"OPENSEARCH_ENDPOINT"},
+				Sources: cli.EnvVars("OPENSEARCH_ENDPOINT"),
 			},
 			&cli.StringFlag{
 				Name:     "password-key",
-				EnvVars:  []string{"PASSWORD_ENCRYPTION_KEY"},
+				Sources:  cli.EnvVars("PASSWORD_ENCRYPTION_KEY"),
 				Usage:    "32 byte hex encoded encryption key",
 				Required: true,
 			},
 			&cli.StringFlag{
 				Name:    "parameter-source",
-				EnvVars: []string{"PARAMETER_SOURCE"},
+				Sources: cli.EnvVars("PARAMETER_SOURCE"),
 			},
 			&cli.StringFlag{
 				Name:    "db",
 				Value:   "postgres://elephant-index:pass@localhost/elephant-index",
-				EnvVars: []string{"CONN_STRING"},
+				Sources: cli.EnvVars("CONN_STRING"),
 			},
 			&cli.StringFlag{
 				Name:    "db-parameter",
-				EnvVars: []string{"CONN_STRING_PARAMETER"},
+				Sources: cli.EnvVars("CONN_STRING_PARAMETER"),
 			},
 			&cli.BoolFlag{
 				Name:    "managed-opensearch",
-				EnvVars: []string{"MANAGED_OPENSEARCH"},
+				Sources: cli.EnvVars("MANAGED_OPENSEARCH"),
 			},
 			&cli.BoolFlag{
 				Name:    "no-indexer",
-				EnvVars: []string{"NO_INDEXER"},
+				Sources: cli.EnvVars("NO_INDEXER"),
 			},
 			&cli.StringFlag{
 				Name:    "sharding-policy",
-				EnvVars: []string{"SHARDING_POLICY"},
+				Sources: cli.EnvVars("SHARDING_POLICY"),
 			},
 			&cli.StringSliceFlag{
 				Name:    "cors-host",
 				Usage:   "CORS hosts to allow, supports wildcards",
-				EnvVars: []string{"CORS_HOSTS"},
+				Sources: cli.EnvVars("CORS_HOSTS"),
 			},
 		},
 	}
 
 	runCmd.Flags = append(runCmd.Flags, elephantine.AuthenticationCLIFlags()...)
 
-	app := cli.App{
+	app := cli.Command{
 		Name:  "index",
 		Usage: "The Elephant indexer",
 		Commands: []*cli.Command{
@@ -115,7 +116,7 @@ func main() {
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(context.Background(), os.Args); err != nil {
 		slog.Error("failed to run application",
 			elephantine.LogKeyError, err)
 		os.Exit(1)
@@ -124,27 +125,27 @@ func main() {
 
 var Scopes = []string{"eventlog_read", "doc_read_all", "schema_read"}
 
-func runIndexer(c *cli.Context) error {
+func runIndexer(ctx context.Context, cmd *cli.Command) error {
 	var (
-		addr               = c.String("addr")
-		profileAddr        = c.String("profile-addr")
-		logLevel           = c.String("log-level")
-		defaultLanguage    = c.String("default-language")
-		connString         = c.String("db")
-		opensearchEndpoint = c.String("opensearch-endpoint")
-		repositoryEndpoint = c.String("repository-endpoint")
-		managedOS          = c.Bool("managed-opensearch")
-		noIndexer          = c.Bool("no-indexer")
-		shardingPolicy     = c.String("sharding-policy")
-		corsHosts          = c.StringSlice("cors-host")
-		passwordKeyStr     = c.String("password-key")
+		addr               = cmd.String("addr")
+		profileAddr        = cmd.String("profile-addr")
+		logLevel           = cmd.String("log-level")
+		defaultLanguage    = cmd.String("default-language")
+		connString         = cmd.String("db")
+		opensearchEndpoint = cmd.String("opensearch-endpoint")
+		repositoryEndpoint = cmd.String("repository-endpoint")
+		managedOS          = cmd.Bool("managed-opensearch")
+		noIndexer          = cmd.Bool("no-indexer")
+		shardingPolicy     = cmd.String("sharding-policy")
+		corsHosts          = cmd.StringSlice("cors-host")
+		passwordKeyStr     = cmd.String("password-key")
 	)
 
 	logger := elephantine.SetUpLogger(logLevel, os.Stdout)
 
 	defer func() {
 		if p := recover(); p != nil {
-			slog.ErrorContext(c.Context, "panic during setup",
+			slog.ErrorContext(ctx, "panic during setup",
 				elephantine.LogKeyError, p,
 				"stack", string(debug.Stack()),
 			)
@@ -179,7 +180,7 @@ func runIndexer(c *cli.Context) error {
 
 	langOpts := index.StandardLanguageOptions(defaultLanguage)
 
-	dbpool, err := pgxpool.New(c.Context, connString)
+	dbpool, err := pgxpool.New(ctx, connString)
 	if err != nil {
 		return fmt.Errorf("create connection pool: %w", err)
 	}
@@ -189,12 +190,12 @@ func runIndexer(c *cli.Context) error {
 		go dbpool.Close()
 	}()
 
-	err = dbpool.Ping(c.Context)
+	err = dbpool.Ping(ctx)
 	if err != nil {
 		return fmt.Errorf("connect to database: %w", err)
 	}
 
-	auth, err := elephantine.AuthenticationConfigFromCLI(c, Scopes)
+	auth, err := elephantine.AuthenticationConfigFromCLI(ctx, cmd, Scopes)
 	if err != nil {
 		return fmt.Errorf("set up authentication: %w", err)
 	}
@@ -215,7 +216,7 @@ func runIndexer(c *cli.Context) error {
 	schemas := repository.NewSchemasProtobufClient(
 		repositoryEndpoint, authClient)
 
-	loader, err := index.NewSchemaLoader(c.Context, logger.With(
+	loader, err := index.NewSchemaLoader(ctx, logger.With(
 		elephantine.LogKeyComponent, "schema-loader"), schemas)
 	if err != nil {
 		return fmt.Errorf("create schema loader: %w", err)
@@ -260,7 +261,7 @@ func runIndexer(c *cli.Context) error {
 		}
 	}
 
-	err = index.RunIndex(c.Context, index.Parameters{
+	err = index.RunIndex(ctx, index.Parameters{
 		APIServer:          server,
 		Logger:             logger,
 		Database:           dbpool,

@@ -1,0 +1,53 @@
+{
+  "uuid": "01ef7bc3-399c-482f-b6b5-2b9ddfc75c1c",
+  "type": "core/organisation",
+  "uri": "eidos://organisation/01ef7bc3-399c-482f-b6b5-2b9ddfc75c1c",
+  "title": "TT Nyhetsbyrån",
+  "meta": [
+    {
+      "type": "core/definition",
+      "data": {
+        "text": "TT Nyhetsbyrån - historiskt Tidningarnas Telegrambyrå AB eller i kortform fortfarande TT - är en nationell nyhetsbyrå i Sverige."
+      },
+      "role": "long"
+    },
+    {
+      "type": "core/alias",
+      "title": "TT Nyhetsbyrå"
+    },
+    {
+      "type": "core/alias",
+      "title": "TT"
+    },
+    {
+      "type": "core/alias",
+      "title": "Tidningarnas Telegrambyrå"
+    },
+    {
+      "type": "tt/eidos-config",
+      "meta": [
+        {
+          "rel": "settings-for",
+          "value": "text",
+          "data": {
+            "eligible": "true",
+            "hide": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "url": "https://www.wikidata.org/wiki/Q1312158",
+      "type": "core/wikidata",
+      "rel": "evidence"
+    },
+    {
+      "url": "https://tt.se/",
+      "type": "text/html",
+      "rel": "evidence"
+    }
+  ],
+  "language": "sv-se"
+}
