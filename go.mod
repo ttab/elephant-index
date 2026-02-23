@@ -12,7 +12,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
-	github.com/jackc/tern/v2 v2.3.3
+	github.com/jackc/tern/v2 v2.3.5
 	github.com/joho/godotenv v1.5.1
 	github.com/lucasepe/codename v0.2.0
 	github.com/microcosm-cc/bluemonday v1.0.27
