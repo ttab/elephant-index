@@ -31,6 +31,11 @@ func TestIndexPattern(t *testing.T) {
 			Language:     "sv-se",
 		}),
 		"index pattern with text and language and region")
+	test.Equal(t, "documents-foo-core_article--template-*",
+		internal.IndexPattern("foo", &index.QueryRequestV1{
+			DocumentType: "core/article+template",
+		}),
+		"index pattern with variant type")
 }
 
 func TestLoadDocumentHasSizeCap(t *testing.T) {

@@ -607,7 +607,7 @@ func NewIndexName(
 	docType string,
 	language LanguageInfo,
 ) IndexName {
-	indexTypeName := internal.NonAlphaNum.ReplaceAllString(docType, "_")
+	indexTypeName := internal.SanitizeDocType(docType)
 	root := fmt.Sprintf("%s-%s-%s", t, setName, indexTypeName)
 	localeSuffix := fmt.Sprintf("%s-%s", language.Language, language.RegionSuffix)
 	languageName := fmt.Sprintf("%s-%s", indexTypeName, localeSuffix)
