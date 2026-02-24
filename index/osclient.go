@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -87,6 +88,21 @@ func (o *OSClientProvider) GetClientForCluster(
 		username, password = auth.Username, pw
 	}
 
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: auth.InsecureTLS, //nolint: gosec
+	}
+
+	if auth.CACert != "" {
+		rootCAs, err := x509.SystemCertPool()
+		if err != nil {
+			return nil, fmt.Errorf("load system cert pool: %w", err)
+		}
+
+		rootCAs.AppendCertsFromPEM([]byte(auth.CACert))
+
+		tlsConfig.RootCAs = rootCAs
+	}
+
 	osConfig := opensearch.Config{
 		Addresses: []string{c.Url},
 		Transport: &http.Transport{
@@ -95,14 +111,8 @@ func (o *OSClientProvider) GetClientForCluster(
 			MaxIdleConnsPerHost: 10,
 			IdleConnTimeout:     90 * time.Second,
 			MaxConnsPerHost:     10,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: auth.InsecureTLS, //nolint: gosec
-			},
+			TLSClientConfig:     tlsConfig,
 		},
-	}
-
-	if auth.CACert != "" {
-		osConfig.CACert = []byte(auth.CACert)
 	}
 
 	if auth.IAM {
