@@ -197,7 +197,20 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		c.eventPercolated,
 	}
 
-	go pg.Subscribe(stopCtx, c.logger, c.db, fanOuts...)
+	sub := pg.NewSubscriber(c.logger, c.db, fanOuts)
+
+	go func() {
+		err := sub.Run(stopCtx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			// Stop if the subscriber fails.
+			c.stopOnce.Do(func() {
+				close(c.stop)
+			})
+
+			c.logger.ErrorContext(stopCtx, "notification subscriber stopped",
+				elephantine.LogKeyError, err)
+		}
+	}()
 
 	go func() {
 		c.indexStatuses.ListenAll(stopCtx, c.changes)

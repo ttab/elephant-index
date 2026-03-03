@@ -191,6 +191,7 @@ func GetIndexConfig(
 		MaxGram: 15,
 	})
 
+	//nolint:gosec // false positive, analyzer name is not a credential
 	s.Settings.Analysis.SetAnalyzer("elephant_prefix_analyzer", OpensearchAnalyzer{
 		Type:      "custom",
 		Tokenizer: "edge_ngram_tokenizer",

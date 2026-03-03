@@ -77,7 +77,7 @@ func main() {
 				Name:    "parameter-source",
 				Sources: cli.EnvVars("PARAMETER_SOURCE"),
 			},
-			&cli.StringFlag{
+			&cli.StringFlag{ //nolint:gosec // local dev default, not a real secret
 				Name:    "db",
 				Value:   "postgres://elephant-index:pass@localhost/elephant-index",
 				Sources: cli.EnvVars("CONN_STRING"),

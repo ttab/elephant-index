@@ -22,7 +22,7 @@ type ClusterGetter interface {
 type ClusterAuth struct {
 	IAM         bool
 	Username    string
-	Password    string
+	Password    string //nolint:gosec // stores AES-256-GCM encrypted value, not plaintext
 	InsecureTLS bool
 	CACert      string
 }
