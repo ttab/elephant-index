@@ -17,10 +17,10 @@ const (
 var NonAlphaNum = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
 
 // SanitizeDocType converts a document type name into a string safe for use in
-// index names. The "+" variant separator is replaced with "--" to avoid
+// index names. The "#" variant separator is replaced with "--" to avoid
 // collisions with the "_" used for other non-alphanumeric characters.
 func SanitizeDocType(docType string) string {
-	base, variant, hasVariant := strings.Cut(docType, "+")
+	base, variant, hasVariant := strings.Cut(docType, "#")
 	sanitized := NonAlphaNum.ReplaceAllString(base, "_")
 
 	if hasVariant {

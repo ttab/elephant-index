@@ -94,7 +94,7 @@ func TestGetLanguageSetting(t *testing.T) {
 
 		idx := index.NewIndexName(
 			index.IndexTypeDocuments,
-			"happy-hog", "core/article+template", lang)
+			"happy-hog", "core/article#template", lang)
 
 		test.Equal(t, "core_article--template-sv-se", idx.Language,
 			"variant type language name")

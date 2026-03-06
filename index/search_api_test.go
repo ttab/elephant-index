@@ -33,7 +33,7 @@ func TestIndexPattern(t *testing.T) {
 		"index pattern with text and language and region")
 	test.Equal(t, "documents-foo-core_article--template-*",
 		internal.IndexPattern("foo", &index.QueryRequestV1{
-			DocumentType: "core/article+template",
+			DocumentType: "core/article#template",
 		}),
 		"index pattern with variant type")
 }
