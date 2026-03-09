@@ -33,7 +33,7 @@ require (
 	github.com/urfave/cli/v3 v3.7.0
 	github.com/viccon/sturdyc v1.1.5
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa
-	golang.org/x/oauth2 v0.35.0
+	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.19.0
 	google.golang.org/protobuf v1.36.11
 )
