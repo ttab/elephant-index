@@ -106,6 +106,103 @@ func TestMultiMatchFuzzinessWithPrefixLength(t *testing.T) {
 	)
 }
 
+func TestMultiMatchFuzzinessAuto(t *testing.T) {
+	req, err := internal.NewSearchRequest(
+		&elephantine.AuthInfo{
+			Claims: elephantine.JWTClaims{
+				RegisteredClaims: jwt.RegisteredClaims{
+					Subject: "core://user/1",
+				},
+				Scope: "doc_admin",
+			},
+		},
+		&index.QueryRequestV1{
+			Query: &index.QueryV1{
+				Conditions: &index.QueryV1_MultiMatch{
+					MultiMatch: &index.MultiMatchQueryV1{
+						Fields: []string{"document.title"},
+						Query:  "ukrane",
+						Type:   "best_fields",
+						Fuzziness: &index.Fuzziness{
+							Auto: &index.FuzzinessAuto{},
+						},
+					},
+				},
+			},
+		},
+	)
+	test.Must(t, err, "multi_match with fuzziness AUTO")
+	test.Equal(t,
+		&internal.SearchRequestV1{
+			Size: internal.DefaultSearchSize,
+			Query: map[string]any{
+				"bool": internal.BoolConditionsV1{
+					Must: []map[string]any{{
+						"multi_match": map[string]any{
+							"fields":    []string{"document.title"},
+							"query":     "ukrane",
+							"type":      "best_fields",
+							"fuzziness": "AUTO",
+						},
+					}},
+				},
+			},
+		},
+		req,
+		"multi_match with fuzziness AUTO",
+	)
+}
+
+func TestMultiMatchFuzzinessAutoCustom(t *testing.T) {
+	req, err := internal.NewSearchRequest(
+		&elephantine.AuthInfo{
+			Claims: elephantine.JWTClaims{
+				RegisteredClaims: jwt.RegisteredClaims{
+					Subject: "core://user/1",
+				},
+				Scope: "doc_admin",
+			},
+		},
+		&index.QueryRequestV1{
+			Query: &index.QueryV1{
+				Conditions: &index.QueryV1_MultiMatch{
+					MultiMatch: &index.MultiMatchQueryV1{
+						Fields: []string{"document.title"},
+						Query:  "ukrane",
+						Type:   "best_fields",
+						Fuzziness: &index.Fuzziness{
+							Auto: &index.FuzzinessAuto{
+								Low:  4,
+								High: 8,
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+	test.Must(t, err, "multi_match with fuzziness AUTO:4,8")
+	test.Equal(t,
+		&internal.SearchRequestV1{
+			Size: internal.DefaultSearchSize,
+			Query: map[string]any{
+				"bool": internal.BoolConditionsV1{
+					Must: []map[string]any{{
+						"multi_match": map[string]any{
+							"fields":    []string{"document.title"},
+							"query":     "ukrane",
+							"type":      "best_fields",
+							"fuzziness": "AUTO:4,8",
+						},
+					}},
+				},
+			},
+		},
+		req,
+		"multi_match with fuzziness AUTO:4,8",
+	)
+}
+
 func TestMultiMatchWithoutFuzziness(t *testing.T) {
 	req, err := internal.NewSearchRequest(
 		&elephantine.AuthInfo{
