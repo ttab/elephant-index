@@ -337,6 +337,14 @@ func multiMatchQueryV1(q *index.MultiMatchQueryV1) map[string]any {
 		spec["tie_breaker"] = q.TieBreaker
 	}
 
+	if q.Fuzziness != nil {
+		spec["fuzziness"] = q.Fuzziness.Edits
+	}
+
+	if q.PrefixLength != 0 {
+		spec["prefix_length"] = q.PrefixLength
+	}
+
 	return QWrap("multi_match", spec)
 }
 
