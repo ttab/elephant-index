@@ -337,6 +337,14 @@ func multiMatchQueryV1(q *index.MultiMatchQueryV1) map[string]any {
 		spec["tie_breaker"] = q.TieBreaker
 	}
 
+	if q.Fuzziness != nil {
+		spec["fuzziness"] = fuzzinessValue(q.Fuzziness)
+	}
+
+	if q.PrefixLength != 0 {
+		spec["prefix_length"] = q.PrefixLength
+	}
+
 	return QWrap("multi_match", spec)
 }
 
@@ -380,6 +388,18 @@ func prefixQueryV1(
 	return QWrap("prefix", map[string]any{
 		field: spec,
 	})
+}
+
+func fuzzinessValue(f *index.Fuzziness) any {
+	if f.Auto == nil {
+		return f.Edits
+	}
+
+	if f.Auto.Low != 0 || f.Auto.High != 0 {
+		return fmt.Sprintf("AUTO:%d,%d", f.Auto.Low, f.Auto.High)
+	}
+
+	return "AUTO"
 }
 
 func addBoostCase(
