@@ -140,9 +140,12 @@ func RunIndex(ctx context.Context, p Parameters) error {
 			return fmt.Errorf("gect cluster client: %w", err)
 		}
 
+		reqCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+
 		get := client.Indices.Get
 
-		res, err := get([]string{"documents-*"}, get.WithContext(ctx))
+		res, err := get([]string{"documents-*"}, get.WithContext(reqCtx))
 		if err != nil {
 			return fmt.Errorf("list indices: %w", err)
 		}
