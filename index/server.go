@@ -125,7 +125,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		return nil
 	})
 
-	server.Health.AddReadyFunction("opensearch", func(ctx context.Context) error {
+	server.Health.AddOptionalReadyFunction("opensearch", func(ctx context.Context) error {
 		q := postgres.New(p.Database)
 
 		active, err := q.GetActiveIndexSet(ctx)
