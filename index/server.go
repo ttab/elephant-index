@@ -140,7 +140,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 			return fmt.Errorf("gect cluster client: %w", err)
 		}
 
-		reqCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		reqCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 		defer cancel()
 
 		get := client.Indices.Get
