@@ -751,6 +751,7 @@ func (c *Coordinator) EnsureDefaultIndexSet(
 
 		clusterName = codename.Generate(c.nameRng, 0)
 
+		//nolint:gosec // ClusterAuth.Password holds an encrypted value, not plaintext
 		authData, err := json.Marshal(clusterAuth)
 		if err != nil {
 			return fmt.Errorf("marshal cluster auth: %w", err)

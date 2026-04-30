@@ -374,6 +374,7 @@ func (s *ManagementService) RegisterCluster(
 		auth.Password = enc
 	}
 
+	//nolint:gosec // ClusterAuth.Password holds an encrypted value, not plaintext
 	authData, err := json.Marshal(&auth)
 	if err != nil {
 		return nil, twirp.InternalErrorf(
