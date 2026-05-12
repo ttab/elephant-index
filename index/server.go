@@ -125,36 +125,13 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		return nil
 	})
 
-	server.Health.AddOptionalReadyFunction("opensearch", func(ctx context.Context) error {
-		q := postgres.New(p.Database)
-
-		active, err := q.GetActiveIndexSet(ctx)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		} else if err != nil {
-			return fmt.Errorf("get active index set: %w", err)
-		}
-
-		client, err := p.Client(ctx, active.Cluster.String)
+	server.Health.AddReadyFunction("opensearch", func(ctx context.Context) error {
+		// Opensearch health is informational only: a failure must not block
+		// readiness. We log a warning and return nil.
+		err := checkOpensearchReady(ctx, p)
 		if err != nil {
-			return fmt.Errorf("gect cluster client: %w", err)
-		}
-
-		reqCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-		defer cancel()
-
-		get := client.Indices.Get
-
-		res, err := get([]string{"documents-*"}, get.WithContext(reqCtx))
-		if err != nil {
-			return fmt.Errorf("list indices: %w", err)
-		}
-
-		_ = res.Body.Close()
-
-		if res.StatusCode != http.StatusOK {
-			return fmt.Errorf(
-				"error response from server: %v", res.Status())
+			p.Logger.WarnContext(ctx, "opensearch readiness check failed",
+				elephantine.LogKeyError, err.Error())
 		}
 
 		return nil
@@ -183,6 +160,40 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	err = serverGroup.Wait()
 	if err != nil {
 		return fmt.Errorf("service failed to start: %w", err)
+	}
+
+	return nil
+}
+
+func checkOpensearchReady(ctx context.Context, p Parameters) error {
+	q := postgres.New(p.Database)
+
+	active, err := q.GetActiveIndexSet(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("get active index set: %w", err)
+	}
+
+	client, err := p.Client(ctx, active.Cluster.String)
+	if err != nil {
+		return fmt.Errorf("get cluster client: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+
+	get := client.Indices.Get
+
+	res, err := get([]string{"documents-*"}, get.WithContext(reqCtx))
+	if err != nil {
+		return fmt.Errorf("list indices: %w", err)
+	}
+
+	_ = res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("error response from server: %v", res.Status())
 	}
 
 	return nil
