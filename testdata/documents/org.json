@@ -24,11 +24,11 @@
       "title": "Tidningarnas Telegrambyrå"
     },
     {
-      "type": "tt/eidos-config",
+      "type": "tt/eidos-entity",
       "meta": [
         {
-          "rel": "settings-for",
-          "value": "text",
+          "type": "tt/eidos-settings",
+          "contenttype": "text",
           "data": {
             "eligible": "true",
             "hide": "true"
