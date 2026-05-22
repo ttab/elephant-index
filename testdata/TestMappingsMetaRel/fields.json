@@ -49,32 +49,24 @@
       "long"
     ]
   },
-  "document.meta.tt_eidos_config.meta.rel__settings_for.data.eligible": {
-    "type": "boolean",
-    "values": [
-      "true"
-    ]
-  },
-  "document.meta.tt_eidos_config.meta.rel__settings_for.data.hide": {
-    "type": "boolean",
-    "values": [
-      "true"
-    ]
-  },
-  "document.meta.tt_eidos_config.meta.rel__settings_for.rel": {
-    "country": "se",
-    "language": "sv",
-    "type": "icu_collation_keyword",
-    "values": [
-      "settings-for"
-    ]
-  },
-  "document.meta.tt_eidos_config.meta.rel__settings_for.value": {
+  "document.meta.tt_eidos_entity.meta.tt_eidos_settings.contenttype": {
     "country": "se",
     "language": "sv",
     "type": "icu_collation_keyword",
     "values": [
       "text"
+    ]
+  },
+  "document.meta.tt_eidos_entity.meta.tt_eidos_settings.data.eligible": {
+    "type": "boolean",
+    "values": [
+      "true"
+    ]
+  },
+  "document.meta.tt_eidos_entity.meta.tt_eidos_settings.data.hide": {
+    "type": "boolean",
+    "values": [
+      "true"
     ]
   },
   "document.rel.evidence.type": {

@@ -32,7 +32,7 @@ func TestBuildDocument(t *testing.T) {
 	}
 
 	constraints, err := revisor.DecodeConstraintSetsFS(revisorschemas.Files(),
-		"core.json", "core-planning.json", "tt.json")
+		"se.ecms.json", "se.ecms.planning.json", "se.tt.json")
 	if err != nil {
 		t.Fatalf("failed to load base constraints: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestBuildDocument(t *testing.T) {
 
 func TestMappingsMetaRel(t *testing.T) {
 	constraints, err := revisor.DecodeConstraintSetsFS(revisorschemas.Files(),
-		"core.json", "core-planning.json", "tt.json", "tt-eidos.json")
+		"se.ecms.json", "se.ecms.planning.json", "se.tt.json", "se.tt.eidos.json")
 	if err != nil {
 		t.Fatalf("failed to load base constraints: %v", err)
 	}

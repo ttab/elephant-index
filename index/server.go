@@ -137,7 +137,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 
 		client, err := p.Client(ctx, active.Cluster.String)
 		if err != nil {
-			return fmt.Errorf("gect cluster client: %w", err)
+			return fmt.Errorf("get cluster client: %w", err)
 		}
 
 		reqCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
@@ -153,8 +153,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		_ = res.Body.Close()
 
 		if res.StatusCode != http.StatusOK {
-			return fmt.Errorf(
-				"error response from server: %v", res.Status())
+			return fmt.Errorf("error response from server: %v", res.Status())
 		}
 
 		return nil
