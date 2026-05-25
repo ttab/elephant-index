@@ -20,7 +20,7 @@ require (
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/ttab/elephant-api v0.22.4
-	github.com/ttab/elephantine v0.26.2
+	github.com/ttab/elephantine v0.26.3
 	github.com/ttab/eltest v0.2.2
 	github.com/ttab/flerr v0.1.0
 	github.com/ttab/koonkie v0.1.3
