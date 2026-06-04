@@ -54,10 +54,33 @@ var failBulk = []byte(`{
   ]
 }`)
 
+// unavailableBulk reproduces the per-item 503 unavailable_shards_exception
+// seen when a primary shard is reallocating (see the 2026-06-02 ele000
+// incident). This must be reported as an error so the consumer retries from
+// the same position rather than advancing past the dropped document.
+var unavailableBulk = []byte(`{
+  "took": 60000,
+  "errors": true,
+  "items": [
+    {
+      "index": {
+        "_index": "documents-fair-doctor-doom-tt_wire-es-es",
+        "_id": "b7974da0-e224-547c-ab3b-b54b72f0de33",
+        "status": 503,
+        "error": {
+          "type": "unavailable_shards_exception",
+          "reason": "[documents-fair-doctor-doom-tt_wire-es-es][0] primary shard is not active Timeout: [1m]"
+        }
+      }
+    }
+  ]
+}`)
+
 func TestInterpretBulkResponse(t *testing.T) {
 	type testCase struct {
-		Input  []byte
-		Result map[string]int
+		Input   []byte
+		Result  map[string]int
+		WantErr bool
 	}
 
 	cases := map[string]testCase{
@@ -73,6 +96,13 @@ func TestInterpretBulkResponse(t *testing.T) {
 				"index_err": 1,
 			},
 		},
+		"unavailable_shards": {
+			Input: unavailableBulk,
+			Result: map[string]int{
+				"index_err": 1,
+			},
+			WantErr: true,
+		},
 	}
 
 	for name, tCase := range cases {
@@ -83,7 +113,14 @@ func TestInterpretBulkResponse(t *testing.T) {
 			got, err := index.InterpretBulkResponse(
 				ctx, log, bytes.NewReader(tCase.Input))
 
-			test.Must(t, err, "interpret response")
+			if tCase.WantErr {
+				if err == nil {
+					t.Fatal("expected a retryable error, got nil")
+				}
+			} else {
+				test.Must(t, err, "interpret response")
+			}
+
 			test.EqualDiff(t, tCase.Result, got,
 				"get the expected result")
 		})

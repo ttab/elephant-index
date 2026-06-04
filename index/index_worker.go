@@ -333,15 +333,28 @@ func (iw *indexWorker) Process(
 
 	defer res.Body.Close()
 
-	counters, err := InterpretBulkResponse(ctx, iw.logger, res.Body)
-	if err != nil {
-		return fmt.Errorf("interpret bulk response: %w", err)
+	// A non-2xx response for the bulk request as a whole means none of the
+	// operations were applied (e.g. the cluster returning 503 while primary
+	// shards are unavailable). Treat it as retryable so the consumer blocks
+	// and retries from the same position instead of advancing past the
+	// batch and dropping every document in it.
+	if res.IsError() {
+		return fmt.Errorf("bulk request rejected by opensearch: %s",
+			res.Status())
 	}
 
+	counters, err := InterpretBulkResponse(ctx, iw.logger, res.Body)
+
+	// Emit metrics for whatever the response did tell us before acting on a
+	// retryable error, so partial successes are still observable.
 	for res, count := range counters {
 		iw.idx.metrics.indexedDocument.WithLabelValues(
 			iw.contentType, iw.indexName, res,
 		).Add(float64(count))
+	}
+
+	if err != nil {
+		return fmt.Errorf("interpret bulk response: %w", err)
 	}
 
 	return nil
@@ -362,6 +375,11 @@ func InterpretBulkResponse(
 
 	counters := make(map[string]int)
 
+	var (
+		retryableCount int
+		retryableHint  string
+	)
+
 	for _, item := range result.Items {
 		for operation, result := range item {
 			if result.Status == http.StatusOK || result.Status == http.StatusCreated {
@@ -379,16 +397,53 @@ func InterpretBulkResponse(
 
 			counters[operation+"_err"]++
 
+			retryable := isRetryableStatus(result.Status)
+
 			log.ErrorContext(ctx, "failed update document in index",
 				LogKeyIndexOperation, operation,
 				LogKeyResponseStatus, result.Status,
 				elephantine.LogKeyDocumentUUID, result.ID,
 				elephantine.LogKeyError, result.Error.String(),
+				"retryable", retryable,
 			)
+
+			if retryable {
+				retryableCount++
+
+				if retryableHint == "" {
+					retryableHint = fmt.Sprintf("%s %s: %s",
+						operation, result.ID, result.Error.String())
+				}
+			}
 		}
 	}
 
+	// A retryable per-item failure (a transient 5xx/429 such as the 503
+	// unavailable_shards_exception returned while a primary shard is
+	// reallocating) means the document was not indexed but would succeed on
+	// a later attempt. Return an error so the caller blocks and retries from
+	// the same event-log position instead of advancing past it and leaving
+	// the document permanently stale. Non-retryable failures (4xx, e.g. a
+	// mapping conflict) are caused by the document itself, would fail
+	// identically on retry, and are deliberately skipped here so one
+	// poisonous document can't wedge the consumer forever.
+	if retryableCount > 0 {
+		return counters, fmt.Errorf(
+			"%d operation(s) failed with a retryable status, e.g. %s",
+			retryableCount, retryableHint)
+	}
+
 	return counters, nil
+}
+
+// isRetryableStatus reports whether an OpenSearch response status (for a
+// single bulk item or a whole request) represents a transient failure that
+// should be retried rather than skipped. Any 5xx — including the 503 returned
+// for unavailable_shards_exception — and 429 (too many requests) are
+// transient; 4xx responses describe a problem with the request itself and
+// would fail identically on retry.
+func isRetryableStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status >= 500
 }
 
 func (iw *indexWorker) attemptMappingUpdate(
