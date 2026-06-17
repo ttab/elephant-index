@@ -114,7 +114,7 @@ func (s *SearchServiceV1) convertFlatDocument(
 	// Forward the authentication header so that the repository applies the
 	// caller's read permissions.
 	authCtx, err := twirp.WithHTTPRequestHeaders(ctx, http.Header{
-		"Authorization": []string{"Bearer " + auth.Token},
+		headerAuthorization: []string{"Bearer " + auth.Token},
 	})
 	if err != nil {
 		return nil, twirp.InternalErrorf("invalid header handling: %w", err)
@@ -1008,7 +1008,7 @@ func (s *SearchServiceV1) processSearchResponse(
 
 		// Forward the authentication header.
 		authCtx, err := twirp.WithHTTPRequestHeaders(ctx, http.Header{
-			"Authorization": []string{"Bearer " + auth.Token},
+			headerAuthorization: []string{"Bearer " + auth.Token},
 		})
 		if err != nil {
 			return nil, twirp.InternalErrorf(

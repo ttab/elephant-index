@@ -110,7 +110,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		AllowInsecureLocalhost: true,
 		Hosts:                  []string{"localhost", "tt.se"},
 		AllowedMethods:         []string{"GET"},
-		AllowedHeaders:         []string{"Authorization", "Content-Type"},
+		AllowedHeaders:         []string{headerAuthorization, headerContentType},
 	}, proxy)
 
 	server.Mux.Handle("/", proxyHandler)

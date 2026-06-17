@@ -189,7 +189,7 @@ func ElasticHandler(
 		ee = e
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerContentType, "application/json")
 	w.WriteHeader(ee.Status)
 
 	enc := json.NewEncoder(w)

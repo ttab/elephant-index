@@ -61,7 +61,7 @@ func (ep *ElasticProxy) searchHandler(
 ) (outErr error) {
 	ctx := r.Context()
 
-	authorization := r.Header.Get("Authorization")
+	authorization := r.Header.Get(headerAuthorization)
 	if authorization == "" {
 		return ElasticErrorf(
 			ErrorTypeUnauthorized,
