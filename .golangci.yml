@@ -45,7 +45,8 @@ linters:
       ignore-tests: true
       # Common serialization keys and metric label names that mean different
       # things in different contexts, so a shared constant would be misleading.
-      ignore-string-values: ^(type|name|index|query|rel)$
+      ignore-string-values:
+        - ^(type|name|index|query|rel)$
     godox:
       keywords:
         - FIXME
