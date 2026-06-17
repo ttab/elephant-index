@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ttab/elephant-api/index"
@@ -32,28 +33,62 @@ func TestGetFlatDocument(t *testing.T) {
 
 	const russiaUUID = "f5d2e4c5-01ba-4dae-9f09-a86701e06ecd"
 
-	// The flattened document is fetched directly from the repository, so it's
+	// The converted document is fetched directly from the repository, so it's
 	// available without waiting for OpenSearch to catch up.
-	res, err := search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{
+	live, err := search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{
 		Uuid: russiaUUID,
 	})
-	test.Must(t, err, "get flattened document")
+	test.Must(t, err, "get converted flattened document")
 
-	test.Equal(t, russiaUUID, res.Document.Uuid, "returned document UUID")
+	test.Equal(t, russiaUUID, live.Document.Uuid, "returned document UUID")
 
 	test.EqualDiff(t,
 		[]string{"Rysslands ambassadör kallas upp"},
-		flatFieldValues(res, "document.title"),
+		flatFieldValues(live, "document.title"),
 		"flattened document title")
 
 	test.EqualDiff(t,
 		[]string{"core://newscoverage/" + russiaUUID},
-		flatFieldValues(res, "document.uri"),
+		flatFieldValues(live, "document.uri"),
 		"flattened document URI")
 
 	test.EqualDiff(t, []string{"1"},
-		flatFieldValues(res, "current_version"),
+		flatFieldValues(live, "current_version"),
 		"flattened current version")
+
+	// The stored document becomes available once indexing has caught up. It
+	// should be identical to the document converted directly from the repo.
+	var stored *index.GetFlatDocumentResponse
+
+	deadline := time.After(10 * time.Second)
+
+	for stored == nil {
+		select {
+		case <-ctx.Done():
+			t.Fatal("cancelled while waiting for the document to be indexed")
+		case <-deadline:
+			t.Fatalf("timed out waiting for the document to be indexed,"+
+				" last error: %v", err)
+		case <-time.After(200 * time.Millisecond):
+		}
+
+		var res *index.GetFlatDocumentResponse
+
+		res, err = search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{
+			Uuid:   russiaUUID,
+			Stored: true,
+		})
+		if err == nil {
+			stored = res
+		}
+	}
+
+	if stored.Document != nil {
+		t.Error("the stored response should not include the source document")
+	}
+
+	test.EqualDiff(t, allFlatFields(live), allFlatFields(stored),
+		"stored fields match the converted fields")
 }
 
 func TestGetFlatDocumentRequiresUUID(t *testing.T) {
@@ -78,6 +113,16 @@ func flatFieldValues(
 	}
 
 	return f.Values
+}
+
+func allFlatFields(res *index.GetFlatDocumentResponse) map[string][]string {
+	out := make(map[string][]string, len(res.Fields))
+
+	for name, values := range res.Fields {
+		out[name] = values.Values
+	}
+
+	return out
 }
 
 func TestIndexPattern(t *testing.T) {
