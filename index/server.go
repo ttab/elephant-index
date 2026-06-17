@@ -94,6 +94,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 			NewPostgresMappingSource(postgres.New(p.Database)),
 			coord, p.AnonymousDocuments,
 			coord.percolatorUpdate, coord.eventPercolated, percDocs,
+			p.Validator, p.Languages,
 		),
 		twirp.WithServerJSONSkipDefaults(true),
 		twirp.WithServerHooks(opts.Hooks),

@@ -1,14 +1,84 @@
 package index_test
 
 import (
+	"log/slog"
+	"path/filepath"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ttab/elephant-api/index"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
 )
+
+func TestGetFlatDocument(t *testing.T) {
+	ctx := t.Context()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelWarn))
+
+	tc := testingAPIServer(t, logger)
+
+	documents := repository.NewDocumentsProtobufClient(
+		tc.Env.Repository.GetAPIEndpoint(),
+		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"))
+
+	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
+		tc.AuthenticatedClient(t, "doc_read", "search"))
+
+	docDataDir := filepath.Join("..", "testdata", "documents")
+
+	loadDocuments(t, documents, docDataDir, "russia_v1.json")
+
+	const russiaUUID = "f5d2e4c5-01ba-4dae-9f09-a86701e06ecd"
+
+	// The flattened document is fetched directly from the repository, so it's
+	// available without waiting for OpenSearch to catch up.
+	res, err := search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{
+		Uuid: russiaUUID,
+	})
+	test.Must(t, err, "get flattened document")
+
+	test.Equal(t, russiaUUID, res.Document.Uuid, "returned document UUID")
+
+	test.EqualDiff(t,
+		[]string{"Rysslands ambassadör kallas upp"},
+		flatFieldValues(res, "document.title"),
+		"flattened document title")
+
+	test.EqualDiff(t,
+		[]string{"core://newscoverage/" + russiaUUID},
+		flatFieldValues(res, "document.uri"),
+		"flattened document URI")
+
+	test.EqualDiff(t, []string{"1"},
+		flatFieldValues(res, "current_version"),
+		"flattened current version")
+}
+
+func TestGetFlatDocumentRequiresUUID(t *testing.T) {
+	ctx := t.Context()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelWarn))
+
+	tc := testingAPIServer(t, logger)
+
+	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
+		tc.AuthenticatedClient(t, "doc_read", "search"))
+
+	_, err := search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{})
+	test.MustNot(t, err, "reject request without a UUID")
+}
+
+func flatFieldValues(
+	res *index.GetFlatDocumentResponse, name string,
+) []string {
+	f := res.Fields[name]
+	if f == nil {
+		return nil
+	}
+
+	return f.Values
+}
 
 func TestIndexPattern(t *testing.T) {
 	test.Equal(t, "documents-foo-*-*",

@@ -47,6 +47,8 @@ func NewSearchServiceV1(
 	percChanges *pg.FanOut[PercolatorUpdate],
 	eventPercolated *pg.FanOut[EventPercolated],
 	percDocs PercolatorDocumentGetter,
+	validator ValidatorSource,
+	languages LanguageOptions,
 ) *SearchServiceV1 {
 	return &SearchServiceV1{
 		log:             logger,
@@ -57,6 +59,8 @@ func NewSearchServiceV1(
 		percDocs:        percDocs,
 		percChanges:     percChanges,
 		eventPercolated: eventPercolated,
+		validator:       validator,
+		languages:       languages,
 		subscriptions: sturdyc.New[userSub](
 			5000, 5, 30*time.Minute, 10,
 			sturdyc.WithEvictionInterval(10*time.Second),
@@ -73,7 +77,95 @@ type SearchServiceV1 struct {
 	percDocs        PercolatorDocumentGetter
 	percChanges     *pg.FanOut[PercolatorUpdate]
 	eventPercolated *pg.FanOut[EventPercolated]
+	validator       ValidatorSource
+	languages       LanguageOptions
 	subscriptions   *sturdyc.Client[userSub]
+}
+
+// GetFlatDocument implements index.SearchV1. It fetches a document directly
+// from the repository and returns it in the flattened representation used for
+// indexing, bypassing the eventual consistency of OpenSearch.
+func (s *SearchServiceV1) GetFlatDocument(
+	ctx context.Context, req *index.GetFlatDocumentRequest,
+) (*index.GetFlatDocumentResponse, error) {
+	auth, err := RequireAnyScope(ctx, ScopeSearch, ScopeIndexAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Uuid == "" {
+		return nil, twirp.RequiredArgumentError("uuid")
+	}
+
+	// Forward the authentication header so that the repository applies the
+	// caller's read permissions.
+	authCtx, err := twirp.WithHTTPRequestHeaders(ctx, http.Header{
+		"Authorization": []string{"Bearer " + auth.Token},
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf("invalid header handling: %w", err)
+	}
+
+	docRes, err := s.documents.Get(authCtx, &repository.GetDocumentRequest{
+		Uuid:         req.Uuid,
+		Version:      req.Version,
+		Status:       req.Status,
+		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"get document from repository: %w", err)
+	}
+
+	metaRes, err := s.documents.GetMeta(authCtx, &repository.GetMetaRequest{
+		Uuid: req.Uuid,
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"get document metadata from repository: %w", err)
+	}
+
+	state, err := newDocumentState(docRes, metaRes)
+	if err != nil {
+		return nil, twirp.InternalErrorf("build document state: %w", err)
+	}
+
+	if req.DocumentType != "" {
+		state.Document.Type = req.DocumentType
+	}
+
+	languageCode := req.Language
+	if languageCode == "" {
+		languageCode = state.Document.Language
+	}
+
+	// Use a per-request resolver as the cache it maintains isn't safe for
+	// concurrent use.
+	language, err := NewLanguageResolver(s.languages).GetLanguageInfo(languageCode)
+	if err != nil {
+		return nil, twirp.InvalidArgumentError("language",
+			fmt.Sprintf("could not resolve language %q: %v",
+				languageCode, err))
+	}
+
+	flat, err := BuildDocument(
+		s.validator.GetValidator(), state, GetIndexConfig(language), nil)
+	if err != nil {
+		return nil, twirp.InternalErrorf("flatten document: %w", err)
+	}
+
+	res := index.GetFlatDocumentResponse{
+		Fields:   make(map[string]*index.FieldValuesV1),
+		Document: docRes.Document,
+	}
+
+	for field, values := range flat.Values() {
+		res.Fields[field] = &index.FieldValuesV1{
+			Values: values,
+		}
+	}
+
+	return &res, nil
 }
 
 // EndSubscription implements index.SearchV1.
