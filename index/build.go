@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"slices"
 	"strings"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/newsdoc"
 	"github.com/ttab/revisor"
-	"golang.org/x/exp/slices"
 )
 
 // Fields can depend on index settings (like custom normalisers). These won't be

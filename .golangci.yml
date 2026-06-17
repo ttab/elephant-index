@@ -46,11 +46,6 @@ linters:
       # Common serialization keys and metric label names that mean different
       # things in different contexts, so a shared constant would be misleading.
       ignore-string-values: ^(type|name|index|query|rel)$
-    govet:
-      # The inline analyzer only emits informational "cannot inline" notices,
-      # not actual problems.
-      disable:
-        - inline
     godox:
       keywords:
         - FIXME
