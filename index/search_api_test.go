@@ -172,20 +172,29 @@ func newTestSearchService(t *testing.T, statusCode int, body string) *indeximpl.
 
 func searchAuthContext(t *testing.T) context.Context {
 	t.Helper()
+
 	return elephantine.SetAuthInfo(t.Context(), &elephantine.AuthInfo{
 		Claims: elephantine.JWTClaims{
-			RegisteredClaims: jwt.RegisteredClaims{Subject: "core://user/1"},
+			RegisteredClaims: jwt.RegisteredClaims{Subject: testUser},
 			Scope:            "search",
 		},
 	})
 }
+
+const (
+	testUser     = "core://user/1"
+	testOrg      = "org://tt"
+	testIndexSet = "foo"
+	testLanguage = "sv-se"
+	testDocType  = "text"
+)
 
 var badRequestBody = `{"error":{"type":"search_phase_execution_exception","reason":"all shards failed"},"status":400}`
 
 var simpleQuery = &index.QueryRequestV1{
 	Query: &index.QueryV1{
 		Conditions: &index.QueryV1_Term{
-			Term: &index.TermQueryV1{Field: "id", Value: "foo"},
+			Term: &index.TermQueryV1{Field: "id", Value: testIndexSet},
 		},
 	},
 }
@@ -240,7 +249,7 @@ func TestSubscriptionsCannotBePaginated(t *testing.T) {
 		&index.QueryRequestV1{
 			Subscribe:    true,
 			From:         10,
-			DocumentType: "foo",
+			DocumentType: testIndexSet,
 			Query: &index.QueryV1{
 				Conditions: &index.QueryV1_Term{
 					Term: &index.TermQueryV1{},
@@ -272,10 +281,10 @@ func TestNewSearchRequest(t *testing.T) {
 		&elephantine.AuthInfo{
 			Claims: elephantine.JWTClaims{
 				RegisteredClaims: jwt.RegisteredClaims{
-					Subject: "core://user/1",
+					Subject: testUser,
 				},
 				Scope: "doc_read",
-				Units: []string{"org://tt"},
+				Units: []string{testOrg},
 			},
 		},
 		&index.QueryRequestV1{
@@ -283,12 +292,12 @@ func TestNewSearchRequest(t *testing.T) {
 				Conditions: &index.QueryV1_Term{
 					Term: &index.TermQueryV1{
 						Field: "id",
-						Value: "foo",
+						Value: testIndexSet,
 					},
 				},
 			},
 			DocumentType: "",
-			Language:     "sv-se",
+			Language:     testLanguage,
 			Fields: []string{
 				"id",
 			},
@@ -314,12 +323,12 @@ func TestNewSearchRequest(t *testing.T) {
 			Query: map[string]any{
 				"bool": internal.BoolConditionsV1{
 					Must: []map[string]any{{"term": map[string]any{
-						"id": map[string]string{"value": "foo"},
+						"id": map[string]string{"value": testIndexSet},
 					}}},
 					Filter: []map[string]any{{"terms": map[string]any{
 						"readers": []string{
-							"core://user/1",
-							"org://tt",
+							testUser,
+							testOrg,
 						},
 					}}},
 				},
@@ -362,10 +371,10 @@ func TestNewSearchRequestAsDocAdmin(t *testing.T) {
 		&elephantine.AuthInfo{
 			Claims: elephantine.JWTClaims{
 				RegisteredClaims: jwt.RegisteredClaims{
-					Subject: "core://user/1",
+					Subject: testUser,
 				},
 				Scope: "doc_admin",
-				Units: []string{"org://tt"},
+				Units: []string{testOrg},
 			},
 		},
 		&index.QueryRequestV1{
@@ -373,12 +382,12 @@ func TestNewSearchRequestAsDocAdmin(t *testing.T) {
 				Conditions: &index.QueryV1_Term{
 					Term: &index.TermQueryV1{
 						Field: "id",
-						Value: "foo",
+						Value: testIndexSet,
 					},
 				},
 			},
 			DocumentType: "",
-			Language:     "sv-se",
+			Language:     testLanguage,
 			Fields: []string{
 				"id",
 			},
@@ -404,7 +413,7 @@ func TestNewSearchRequestAsDocAdmin(t *testing.T) {
 			Query: map[string]any{
 				"bool": internal.BoolConditionsV1{
 					Must: []map[string]any{{"term": map[string]any{
-						"id": map[string]string{"value": "foo"},
+						"id": map[string]string{"value": testIndexSet},
 					}}},
 				},
 			},
