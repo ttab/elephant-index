@@ -4,3 +4,4 @@
 .envrc
 flake.lock
 flake.nix
+/.claude

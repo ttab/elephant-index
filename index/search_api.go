@@ -649,6 +649,10 @@ func (s *SearchServiceV1) Query(
 			)
 		}
 
+		if res.StatusCode == http.StatusBadRequest {
+			return nil, twirp.InvalidArgumentError("query or sort", "bad request")
+		}
+
 		return nil, twirp.InternalErrorf(
 			"error response from opensearch: %s", res.Status())
 	}
@@ -737,6 +741,10 @@ func (s *SearchServiceV1) MultiSearch(
 				fmt.Errorf("opensearch responded with: %s", res.Status()),
 				fmt.Errorf("decoded error response: %w", err),
 			)
+		}
+
+		if res.StatusCode == http.StatusBadRequest {
+			return nil, twirp.InvalidArgumentError("query or sort", "bad request")
 		}
 
 		return nil, twirp.InternalErrorf(

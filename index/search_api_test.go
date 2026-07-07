@@ -1,14 +1,82 @@
 package index_test
 
 import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
+	opensearch "github.com/opensearch-project/opensearch-go/v2"
 	"github.com/ttab/elephant-api/index"
+	indeximpl "github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
+	"github.com/twitchtv/twirp"
 )
+
+type staticTransport struct {
+	statusCode int
+	body       string
+}
+
+func (t *staticTransport) RoundTrip(_ *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: t.statusCode,
+		Body:       io.NopCloser(strings.NewReader(t.body)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+type fakeActiveIndex struct {
+	client   *opensearch.Client
+	indexSet string
+}
+
+func (f *fakeActiveIndex) GetActiveIndex() (*opensearch.Client, string) {
+	return f.client, f.indexSet
+}
+
+func newTestSearchService(t *testing.T, statusCode int, body string) *indeximpl.SearchServiceV1 {
+	t.Helper()
+
+	client, err := opensearch.NewClient(opensearch.Config{
+		Addresses: []string{"http://localhost:9200"},
+		Transport: &staticTransport{statusCode: statusCode, body: body},
+	})
+	test.Must(t, err, "create opensearch client")
+
+	return indeximpl.NewSearchServiceV1(
+		slog.New(test.NewLogHandler(t, slog.LevelDebug)),
+		nil, nil,
+		&fakeActiveIndex{client: client, indexSet: "test"},
+		nil, nil, nil, nil,
+	)
+}
+
+func searchAuthContext(t *testing.T) context.Context {
+	t.Helper()
+	return elephantine.SetAuthInfo(t.Context(), &elephantine.AuthInfo{
+		Claims: elephantine.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{Subject: "core://user/1"},
+			Scope:            "search",
+		},
+	})
+}
+
+var badRequestBody = `{"error":{"type":"search_phase_execution_exception","reason":"all shards failed"},"status":400}`
+
+var simpleQuery = &index.QueryRequestV1{
+	Query: &index.QueryV1{
+		Conditions: &index.QueryV1_Term{
+			Term: &index.TermQueryV1{Field: "id", Value: "foo"},
+		},
+	},
+}
 
 func TestIndexPattern(t *testing.T) {
 	test.Equal(t, "documents-foo-*-*",
@@ -148,6 +216,38 @@ func TestNewSearchRequest(t *testing.T) {
 		req,
 		"new search request",
 	)
+}
+
+func TestQueryBadRequest(t *testing.T) {
+	svc := newTestSearchService(t, http.StatusBadRequest, badRequestBody)
+	ctx := searchAuthContext(t)
+
+	_, err := svc.Query(ctx, simpleQuery)
+	test.MustNot(t, err, "query with bad request")
+
+	var twerr twirp.Error
+	if !errors.As(err, &twerr) {
+		t.Fatalf("expected twirp.Error, got %T: %v", err, err)
+	}
+
+	test.Equal(t, twirp.InvalidArgument, twerr.Code(), "twirp error code")
+}
+
+func TestMultiSearchBadRequest(t *testing.T) {
+	svc := newTestSearchService(t, http.StatusBadRequest, badRequestBody)
+	ctx := searchAuthContext(t)
+
+	_, err := svc.MultiSearch(ctx, &index.MultiSearchRequest{
+		Queries: []*index.QueryRequestV1{simpleQuery},
+	})
+	test.MustNot(t, err, "multisearch with bad request")
+
+	var twerr twirp.Error
+	if !errors.As(err, &twerr) {
+		t.Fatalf("expected twirp.Error, got %T: %v", err, err)
+	}
+
+	test.Equal(t, twirp.InvalidArgument, twerr.Code(), "twirp error code")
 }
 
 func TestNewSearchRequestAsDocAdmin(t *testing.T) {
