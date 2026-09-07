@@ -32,5 +32,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # vendorCheck reads the library's migrations out of the module cache,
+      # resolving the directory with "go list -m", which is empty until the
+      # module is downloaded. A warm cache hides this locally.
+      - name: Download modules
+        run: go mod download
       - name: Check vendored migrations
         run: go run github.com/magefile/mage sql:vendorCheck
