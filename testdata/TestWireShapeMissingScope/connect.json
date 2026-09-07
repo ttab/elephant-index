@@ -1,0 +1,4 @@
+{
+  "code": "permission_denied",
+  "message": "one of the the scopes index_admin is required"
+}

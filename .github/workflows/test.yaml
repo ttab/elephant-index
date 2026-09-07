@@ -8,8 +8,15 @@ permissions:
 
 jobs:
   tests:
-    name: Tests
+    name: Tests (${{ matrix.stack }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The service serves Twirp and Connect from one implementation, so the
+        # suite runs twice against the same server rather than testing one
+        # stack and assuming the other.
+        stack: [twirp, connect]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -17,5 +24,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Run go tests
+        env:
+          TEST_RPC_STACK: ${{ matrix.stack }}
         run: |
           go test ./...

@@ -24,8 +24,7 @@ func TestGetFlatDocument(t *testing.T) {
 		tc.Env.Repository.GetAPIEndpoint(),
 		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"))
 
-	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
-		tc.AuthenticatedClient(t, "doc_read", "search"))
+	search := tc.SearchClient(t, "doc_read", "search")
 
 	docDataDir := filepath.Join("..", "testdata", "documents")
 
@@ -97,8 +96,7 @@ func TestGetFlatDocumentRequiresUUID(t *testing.T) {
 
 	tc := testingAPIServer(t, logger)
 
-	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
-		tc.AuthenticatedClient(t, "doc_read", "search"))
+	search := tc.SearchClient(t, "doc_read", "search")
 
 	_, err := search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{})
 	test.MustNotf(t, err, "reject request without a UUID")

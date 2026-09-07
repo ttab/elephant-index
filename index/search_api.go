@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/gobwas/glob"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,6 +25,7 @@ import (
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/rpc"
 	"github.com/twitchtv/twirp"
 	"github.com/viccon/sturdyc"
 )
@@ -487,8 +489,13 @@ func (s *SearchServiceV1) PollSubscription(
 			break
 		}
 
-		if !batchWait(ctx, events, deadline, 10, batchDelay) {
+		switch batchWait(ctx, events, deadline, 10, batchDelay) {
+		case waitBatch:
+			// Round two: collect what the wait turned up.
+		case waitMaxWait:
 			return &res, nil
+		case waitContext:
+			return nil, pollWaitError(ctx)
 		}
 	}
 
@@ -499,13 +506,45 @@ func (s *SearchServiceV1) PollSubscription(
 	return &res, nil
 }
 
+// waitOutcome says why a long poll stopped waiting. The service's own
+// max_wait_ms elapsing is a successful empty response, but a request context
+// that ends the wait is the caller's deadline or the caller going away, and
+// the two have to be told apart to be answered correctly.
+type waitOutcome int
+
+const (
+	// waitBatch means there are events to collect: either a full batch, or
+	// the batch window closed after the first one arrived.
+	waitBatch waitOutcome = iota
+	// waitMaxWait means the request's own max_wait_ms elapsed with nothing
+	// to report.
+	waitMaxWait
+	// waitContext means the request context ended the wait.
+	waitContext
+)
+
+// pollWaitError codes the reason the request context ended a long poll.
+// Connect turns a Connect-Timeout-Ms header into the handler's context
+// deadline and enforces it, so a caller that asked for a timeout shorter than
+// max_wait_ms has to be answered deadline_exceeded, and canceled is left to
+// mean a caller that went away. Twirp ignores client deadlines, so only a
+// disconnect reaches this on that stack.
+func pollWaitError(ctx context.Context) error {
+	if errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
+		return rpc.Errorf(connect.CodeDeadlineExceeded,
+			"the request deadline passed while waiting for events")
+	}
+
+	return rpc.Errorf(connect.CodeCanceled,
+		"the request was cancelled while waiting for events")
+}
+
 // Wait until we're likely to fill a batch or batchDuration has passed since we
-// got the first item. Returns false if we hit the deadline or the context is
-// cancelled before we get any item.
+// got the first item.
 func batchWait(ctx context.Context,
 	events chan EventPercolated, deadline time.Time,
 	batchSize int, batchDuration time.Duration,
-) bool {
+) waitOutcome {
 	var (
 		got       int
 		batchDone <-chan time.Time
@@ -516,7 +555,7 @@ func batchWait(ctx context.Context,
 	for {
 		select {
 		case <-batchDone:
-			return true
+			return waitBatch
 		case <-events:
 			// For the first event we get...
 			if got == 0 {
@@ -531,12 +570,12 @@ func batchWait(ctx context.Context,
 			got++
 
 			if got == batchSize {
-				return true
+				return waitBatch
 			}
 		case <-doneWaiting:
-			return false
+			return waitMaxWait
 		case <-ctx.Done():
-			return false
+			return waitContext
 		}
 	}
 }

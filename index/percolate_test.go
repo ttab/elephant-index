@@ -26,8 +26,7 @@ func TestPercolate(t *testing.T) {
 		tc.Env.Repository.GetAPIEndpoint(),
 		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"))
 
-	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
-		tc.AuthenticatedClient(t, "doc_read", "search"))
+	search := tc.SearchClient(t, "doc_read", "search")
 
 	testDataDir := filepath.Join("..", "testdata", t.Name())
 	docDataDir := filepath.Join("..", "testdata", "documents")
