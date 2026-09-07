@@ -114,9 +114,11 @@ Bring it up piecewise; each step says what the service does without it.
 1. **Postgres.** There is usually one running on the development machine.
    `mage sql:db` creates the database and role, `mage sql:migrate` applies the
    schema. **Without a migrated database nothing starts.**
-2. **An OpenSearch cluster.** Register it through the management API once the
-   service is up. Without one, the service starts, is ready, and serves
-   nothing.
+2. **An OpenSearch cluster.** Point `--opensearch-endpoint` at one and the
+   first run registers it and creates an index set; on a database that already
+   has a cluster that step does nothing, so register further clusters through
+   the management API. Without either, the service starts, is ready, and
+   serves nothing.
 3. **The repository.** `--repository-endpoint` must point at a running
    elephant repository; the revisor schemas are loaded from it at startup, so
    **the service does not start without it**.
@@ -193,7 +195,7 @@ search frontend and none of the indexing below runs.
 | `--no-indexer` | `NO_INDEXER` | `false` | Serve search only. The coordinator builds a client for the active set and starts no indexers. |
 | `--default-language` | `DEFAULT_LANGUAGE` | — | **Required.** The language assumed for a document that does not declare one. Required only because the repository does not yet enforce that documents carry a language; it should stop being required once it does. |
 | `--sharding-policy` | `SHARDING_POLICY` | 2 shards, 2 replicas | Comma-separated `prefix:shards:replicas` stanzas, most specific match winning — `:1:2,core_article-:2:2,core_article-sv-se:5:2`. The empty prefix is the default. |
-| `--opensearch-endpoint` | `OPENSEARCH_ENDPOINT` | — | Intended to name a default cluster to create an index set in. **It does not currently do that** — see [What is not in place yet](docs/ops.md#what-is-not-in-place-yet). Credentials in its userinfo are still read and encrypted. |
+| `--opensearch-endpoint` | `OPENSEARCH_ENDPOINT` | — | Names the cluster to register, and create a first index set in, **on a fresh installation only** — the setup is skipped once any cluster exists. Credentials in its userinfo are moved out of the URL and stored encrypted, and giving them explicitly turns IAM signing off. |
 | `--managed-opensearch` | `MANAGED_OPENSEARCH` | `false` | Sign OpenSearch requests with AWS IAM instead of using a username and password. |
 
 Authentication flags come from `elephantine.AuthenticationCLIFlags()` and are
@@ -320,13 +322,6 @@ the new version, register it, re-index into a set in that cluster, and switch
 when it has caught up. That is reversible, which an in-place upgrade is not.
 
 ## Pending work
-
-**`--opensearch-endpoint` does not create a default index set.** The URL is
-parsed into a variable shadowed inside an `if` block in `cmd/index/main.go`, so
-`DefaultCluster` reaches `RunIndex` as nil and `EnsureDefaultIndexSet` never
-runs. A fresh deployment has to register a cluster and create an index set
-through the management API. The test suite passes `DefaultCluster` directly and
-does not cover the path.
 
 **Two RPC methods are mounted but panic.** `SearchV1.EndSubscription` and
 `Management.PartialReindex` both `panic("unimplemented")`;

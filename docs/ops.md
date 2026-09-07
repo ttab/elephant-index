@@ -214,15 +214,22 @@ event log.** Nothing in Postgres can, apart from the two unlogged tables.
    fails when a client is built for a cluster.
 3. **The repository is reachable.** The schema loader fetches revisor schemas
    at startup and startup fails without them.
-4. **At least one cluster is registered and one index set exists.** Neither is
-   created for you — see the note in
-   [What is not in place yet](#what-is-not-in-place-yet). Until then the
+4. **At least one cluster is registered and one index set exists.** With
+   `--opensearch-endpoint` set, a fresh installation creates both itself:
+   `EnsureDefaultIndexSet` locks the cluster table, and **does nothing at all
+   if any cluster already exists**, so it is a first-run step and not
+   something that reasserts itself on restart. Without the flag, register a
+   cluster through the management API. Until one of those has happened the
    service is ready and serves nothing.
 5. **An index set is active.** Search against no active set fails; the
    readiness check does not.
 
 Out of order, the failures are all at startup except step 4, which is the one
 that leaves a healthy-looking replica serving nothing.
+
+**A cluster the default setup created carries no credentials in its URL** —
+they are moved into the encrypted auth blob — so the cluster row is safe to
+read and log.
 
 ## Recovering the indexed half
 
@@ -400,16 +407,6 @@ a compromised replica does to document state is nothing — the exposure is read
 access across all documents, via `doc_read_all`, and the cluster credentials.
 
 ## What is not in place yet
-
-**A default index set is not created, despite the flag that says it should
-be.** `--opensearch-endpoint` is parsed, and credentials in its userinfo are
-extracted correctly, but the parsed URL is assigned to a shadowed variable
-inside the `if` block in `cmd/index/main.go` and never reaches
-`RunIndex`. `DefaultCluster` is therefore always nil, and
-`EnsureDefaultIndexSet` never runs. **A fresh deployment has to register a
-cluster and create an index set through the management API**, and the flag
-being set is not evidence that it did not need to. The test suite passes
-`DefaultCluster` directly and so does not cover this path.
 
 **`elephant_indexer_mapping_update_total` is registered but never
 incremented.** It is permanently zero; do not build a panel on it.

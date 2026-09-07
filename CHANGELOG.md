@@ -67,6 +67,15 @@ than falling back, which `GOTOOLCHAIN=auto` handles by downloading it and
 
 Changes:
 
+- `--opensearch-endpoint` registers a cluster and creates a first index set
+  again. The parsed URL was being assigned to a variable shadowed inside an
+  `if`, so it never reached the setup code and the flag was silently ignored on
+  every fresh installation; the credentials in its userinfo were read
+  correctly, which is why it looked like it worked. **An installation that
+  already has a cluster is unaffected** — the setup locks the cluster table and
+  does nothing when one exists — so this only changes what happens on an empty
+  database. Credentials given in the endpoint select basic authentication over
+  IAM signing, and are moved out of the URL before the cluster row is written.
 - Both RPC services are mounted on the Twirp and the Connect paths from one
   `elephantine.ServiceOptions`, so authentication, logging and metrics are
   identical on the two stacks by construction. The Connect mount carries
