@@ -10,6 +10,7 @@ import (
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine/test"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -22,12 +23,11 @@ func TestPercolate(t *testing.T) {
 
 	tc := testingAPIServer(t, logger)
 
-	documents := repository.NewDocumentsProtobufClient(
-		tc.Env.Repository.GetAPIEndpoint(),
-		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"))
+	documents := repositoryconnect.NewDocumentsServiceClient(
+		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"),
+		tc.Env.Repository.GetAPIEndpoint())
 
-	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
-		tc.AuthenticatedClient(t, "doc_read", "search"))
+	search := tc.SearchClient(t, "doc_read", "search")
 
 	testDataDir := filepath.Join("..", "testdata", t.Name())
 	docDataDir := filepath.Join("..", "testdata", "documents")
@@ -63,14 +63,13 @@ func TestPercolate(t *testing.T) {
 				Lte:   "2025-08-29T23:59:59.999Z",
 			}),
 		})
-		test.Must(t, err, "perform search")
+		test.Mustf(t, err, "perform search")
 
 		if len(res.Hits.Hits) == 0 {
 			continue
 		}
 
-		test.TestMessageAgainstGolden(t, regenerateTestFixtures(), res.Hits,
-			filepath.Join(testDataDir, "initial-result.json"))
+		test.MessageAgainstGolden(t, regenerateTestFixtures(), res.Hits, filepath.Join(testDataDir, "initial-result.json"))
 
 		break
 	}
@@ -79,9 +78,9 @@ func TestPercolate(t *testing.T) {
 	evtLogRes, err := documents.Eventlog(ctx, &repository.GetEventlogRequest{
 		After: -1,
 	})
-	test.Must(t, err, "get last event from repo")
+	test.Mustf(t, err, "get last event from repo")
 
-	test.Equal(t, 1, len(evtLogRes.Items), "get one event from the repo")
+	test.Equalf(t, 1, len(evtLogRes.Items), "get one event from the repo")
 
 	lastEvent := evtLogRes.Items[0].Id
 
@@ -99,7 +98,7 @@ func TestPercolate(t *testing.T) {
 		}
 
 		pEvt, err := q.GetLastPercolatorEventID(ctx)
-		test.Must(t, err, "get last percolator event ID")
+		test.Mustf(t, err, "get last percolator event ID")
 
 		if pEvt == lastEvent {
 			break
@@ -117,11 +116,11 @@ func TestPercolate(t *testing.T) {
 			Lte:   "2025-09-01T23:59:59.999Z",
 		}),
 	})
-	test.Must(t, err, "do initial subscription search")
+	test.Mustf(t, err, "do initial subscription search")
 
 	t.Logf("initial subscription position: %d", qRes.Subscription.Cursor)
 
-	test.Equal(t, 0, len(qRes.Hits.Hits), "no initial hits expected")
+	test.Equalf(t, 0, len(qRes.Hits.Hits), "no initial hits expected")
 
 	subPos := qRes.Subscription
 	gotBatch := make(chan struct{}, 1)
@@ -176,7 +175,7 @@ func TestPercolate(t *testing.T) {
 				},
 				MaxWaitMs: 3000,
 			})
-		test.Must(t, err, "poll subscription from %d", subPos.Cursor)
+		test.Mustf(t, err, "poll subscription from %d", subPos.Cursor)
 
 		for _, sub := range pollRes.Result {
 			if subPos.Id != qRes.Subscription.Id {
@@ -201,8 +200,7 @@ func TestPercolate(t *testing.T) {
 		}
 	}
 
-	test.TestMessageAgainstGolden(t, regenerateTestFixtures(), &items,
-		filepath.Join(testDataDir, "poll-result.json"))
+	test.MessageAgainstGolden(t, regenerateTestFixtures(), &items, filepath.Join(testDataDir, "poll-result.json"))
 }
 
 func loadDocuments(
@@ -222,7 +220,7 @@ func loadDocuments(
 			Uuid:     doc.Uuid,
 			Document: &doc,
 		})
-		test.Must(t, err, "write document %q (%s)", name, doc.Uuid)
+		test.Mustf(t, err, "write document %q (%s)", name, doc.Uuid)
 	}
 }
 
@@ -230,8 +228,8 @@ func unmarshalMessage(t *testing.T, path string, msg proto.Message) {
 	t.Helper()
 
 	data, err := os.ReadFile(path)
-	test.Must(t, err, "read proto json file")
+	test.Mustf(t, err, "read proto json file")
 
 	err = protojson.Unmarshal(data, msg)
-	test.Must(t, err, "unmarshal %q proto json file", path)
+	test.Mustf(t, err, "unmarshal %q proto json file", path)
 }

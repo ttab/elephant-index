@@ -12,13 +12,15 @@ import (
 	"runtime/debug"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	"github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/rpc"
 	"github.com/urfave/cli/v3"
 )
 
@@ -223,14 +225,20 @@ func runIndexer(ctx context.Context, cmd *cli.Command) error {
 		elephantine.WithTokenSource(auth.TokenSource),
 		elephantine.LongpollClient())
 
-	anonymousDocuments := repository.NewDocumentsProtobufClient(
-		repositoryEndpoint, anonClient)
+	// The anonymous client is the one the handlers that serve a caller use,
+	// and they put the caller's own token on the context per request, so it
+	// needs the interceptor that copies those headers onto the wire. The
+	// authenticated client is for the service's own background work and
+	// carries its token in the http.Client.
+	anonymousDocuments := repositoryconnect.NewDocumentsServiceClient(
+		anonClient, repositoryEndpoint,
+		connect.WithInterceptors(rpc.PropagateHeaders()))
 
-	authDocuments := repository.NewDocumentsProtobufClient(
-		repositoryEndpoint, authClient)
+	authDocuments := repositoryconnect.NewDocumentsServiceClient(
+		authClient, repositoryEndpoint)
 
-	schemas := repository.NewSchemasProtobufClient(
-		repositoryEndpoint, authClient)
+	schemas := repositoryconnect.NewSchemasServiceClient(
+		authClient, repositoryEndpoint)
 
 	loader, err := index.NewSchemaLoader(ctx, logger.With(
 		elephantine.LogKeyComponent, "schema-loader"), schemas)
@@ -256,32 +264,10 @@ func runIndexer(ctx context.Context, cmd *cli.Command) error {
 
 	server := elephantine.NewAPIServer(logger, addr, profileAddr, serverOpts...)
 
-	var (
-		osURL       *url.URL
-		defaultAuth index.ClusterAuth
-	)
-
-	defaultAuth.IAM = managedOS
-
-	if opensearchEndpoint != "" {
-		osURL, err := url.Parse(opensearchEndpoint)
-		if err != nil {
-			return fmt.Errorf("invalid open search endpoint: %w", err)
-		}
-
-		if osURL.User != nil {
-			defaultAuth.Username = osURL.User.Username()
-
-			pw, _ := osURL.User.Password()
-
-			err := defaultAuth.SetPassword(pw, passwordKey)
-			if err != nil {
-				return fmt.Errorf("set default cluster auth password: %w", err)
-			}
-
-			osURL.User = nil
-			defaultAuth.IAM = false
-		}
+	osURL, defaultAuth, err := parseDefaultCluster(
+		opensearchEndpoint, managedOS, passwordKey)
+	if err != nil {
+		return err
 	}
 
 	err = index.RunIndex(ctx, index.Parameters{
@@ -306,4 +292,60 @@ func runIndexer(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return nil
+}
+
+// parseDefaultCluster turns --opensearch-endpoint into the URL and credentials
+// of the cluster to register on a fresh installation. An empty endpoint yields
+// a nil URL, which is what tells RunIndex not to create a default index set.
+//
+// Credentials are moved out of the URL and into the returned ClusterAuth,
+// which encrypts the password, so that the URL stored on the cluster row
+// carries no secret.
+//
+// This used to be an inline block, and the history is worth knowing: it
+// assigned the parsed URL with ":=" inside an "if", which declared a new
+// variable rather than filling in the outer one. The outer URL stayed nil, so
+// DefaultCluster was always nil and EnsureDefaultIndexSet never ran -- the
+// flag was silently ignored on every fresh installation, while the credential
+// handling next to it worked, because it assigned to fields of a struct
+// declared outside the block. Returning the values instead of assigning to
+// captured ones is what stops that from being reintroduced.
+func parseDefaultCluster(
+	endpoint string, managedOS bool, passwordKey [32]byte,
+) (*url.URL, index.ClusterAuth, error) {
+	auth := index.ClusterAuth{
+		IAM: managedOS,
+	}
+
+	if endpoint == "" {
+		return nil, auth, nil
+	}
+
+	osURL, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, index.ClusterAuth{}, fmt.Errorf(
+			"invalid open search endpoint: %w", err)
+	}
+
+	if osURL.User == nil {
+		return osURL, auth, nil
+	}
+
+	auth.Username = osURL.User.Username()
+
+	pw, _ := osURL.User.Password()
+
+	err = auth.SetPassword(pw, passwordKey)
+	if err != nil {
+		return nil, index.ClusterAuth{}, fmt.Errorf(
+			"set default cluster auth password: %w", err)
+	}
+
+	// A username and password in the endpoint is an explicit choice of basic
+	// authentication over IAM signing.
+	auth.IAM = false
+
+	osURL.User = nil
+
+	return osURL, auth, nil
 }

@@ -118,7 +118,7 @@ func TestInterpretBulkResponse(t *testing.T) {
 					t.Fatal("expected a retryable error, got nil")
 				}
 			} else {
-				test.Must(t, err, "interpret response")
+				test.Mustf(t, err, "interpret response")
 			}
 
 			test.EqualDiff(t, tCase.Result, got,

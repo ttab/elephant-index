@@ -3,6 +3,7 @@ package internal
 import (
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 
 	"github.com/ttab/elephantine"
@@ -29,9 +30,7 @@ func writeHTTPError(w http.ResponseWriter, err error) {
 	}
 
 	if httpErr.Header != nil {
-		for k, v := range httpErr.Header {
-			w.Header()[k] = v
-		}
+		maps.Copy(w.Header(), httpErr.Header)
 	}
 
 	statusCode := httpErr.StatusCode

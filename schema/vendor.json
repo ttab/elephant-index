@@ -1,0 +1,8 @@
+{
+  "libraries": [
+    {
+      "module": "github.com/ttab/elephantine",
+      "dir": "pg/joblock/schema"
+    }
+  ]
+}

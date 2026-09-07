@@ -21,6 +21,13 @@ CREATE TABLE IF NOT EXISTS indexing_override(
        primary key(content_type, field)
 );
 
+-- covers: github.com/ttab/elephantine pg/joblock/schema/001_job_lock.sql
+--
+-- This service created the job lock table itself, long before
+-- elephantine shipped a migration for it. The columns, types and
+-- primary key match `pg/joblock/schema/001_job_lock.sql` exactly, so
+-- the library migration is covered here and must not be vendored on
+-- top of it.
 CREATE TABLE IF NOT EXISTS job_lock(
        name text not null primary key,
        holder text not null,

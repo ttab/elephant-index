@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ttab/elephant-api/index"
-	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
@@ -20,12 +20,11 @@ func TestGetFlatDocument(t *testing.T) {
 
 	tc := testingAPIServer(t, logger)
 
-	documents := repository.NewDocumentsProtobufClient(
-		tc.Env.Repository.GetAPIEndpoint(),
-		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"))
+	documents := repositoryconnect.NewDocumentsServiceClient(
+		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"),
+		tc.Env.Repository.GetAPIEndpoint())
 
-	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
-		tc.AuthenticatedClient(t, "doc_read", "search"))
+	search := tc.SearchClient(t, "doc_read", "search")
 
 	docDataDir := filepath.Join("..", "testdata", "documents")
 
@@ -38,9 +37,9 @@ func TestGetFlatDocument(t *testing.T) {
 	live, err := search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{
 		Uuid: russiaUUID,
 	})
-	test.Must(t, err, "get converted flattened document")
+	test.Mustf(t, err, "get converted flattened document")
 
-	test.Equal(t, russiaUUID, live.Document.Uuid, "returned document UUID")
+	test.Equalf(t, russiaUUID, live.Document.Uuid, "returned document UUID")
 
 	test.EqualDiff(t,
 		[]string{"Rysslands ambassadör kallas upp"},
@@ -97,11 +96,10 @@ func TestGetFlatDocumentRequiresUUID(t *testing.T) {
 
 	tc := testingAPIServer(t, logger)
 
-	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
-		tc.AuthenticatedClient(t, "doc_read", "search"))
+	search := tc.SearchClient(t, "doc_read", "search")
 
 	_, err := search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{})
-	test.MustNot(t, err, "reject request without a UUID")
+	test.MustNotf(t, err, "reject request without a UUID")
 }
 
 func flatFieldValues(
@@ -126,27 +124,27 @@ func allFlatFields(res *index.GetFlatDocumentResponse) map[string][]string {
 }
 
 func TestIndexPattern(t *testing.T) {
-	test.Equal(t, "documents-foo-*-*",
+	test.Equalf(t, "documents-foo-*-*",
 		internal.IndexPattern("foo", &index.QueryRequestV1{}),
 		"index pattern")
-	test.Equal(t, "documents-foo-text-*",
+	test.Equalf(t, "documents-foo-text-*",
 		internal.IndexPattern("foo", &index.QueryRequestV1{
 			DocumentType: "text",
 		}),
 		"index pattern with text")
-	test.Equal(t, "documents-foo-text-sv-*",
+	test.Equalf(t, "documents-foo-text-sv-*",
 		internal.IndexPattern("foo", &index.QueryRequestV1{
 			DocumentType: "text",
 			Language:     "sv",
 		}),
 		"index pattern with text and language")
-	test.Equal(t, "documents-foo-text-sv-se",
+	test.Equalf(t, "documents-foo-text-sv-se",
 		internal.IndexPattern("foo", &index.QueryRequestV1{
 			DocumentType: "text",
 			Language:     "sv-se",
 		}),
 		"index pattern with text and language and region")
-	test.Equal(t, "documents-foo-core_article--template-*",
+	test.Equalf(t, "documents-foo-core_article--template-*",
 		internal.IndexPattern("foo", &index.QueryRequestV1{
 			DocumentType: "core/article#template",
 		}),
@@ -166,7 +164,7 @@ func TestLoadDocumentHasSizeCap(t *testing.T) {
 			},
 		},
 	)
-	test.MustNot(t, err, "loading requires size <= 200")
+	test.MustNotf(t, err, "loading requires size <= 200")
 }
 
 func TestSubscriptionsCannotBePaginated(t *testing.T) {
@@ -183,7 +181,7 @@ func TestSubscriptionsCannotBePaginated(t *testing.T) {
 			},
 		},
 	)
-	test.MustNot(t, err, "subscriptions cannot be paginated")
+	test.MustNotf(t, err, "subscriptions cannot be paginated")
 }
 
 func TestRequireDocumentTypeForSubscription(t *testing.T) {
@@ -199,7 +197,7 @@ func TestRequireDocumentTypeForSubscription(t *testing.T) {
 			},
 		},
 	)
-	test.MustNot(t, err, "require document type for subscription")
+	test.MustNotf(t, err, "require document type for subscription")
 }
 
 func TestNewSearchRequest(t *testing.T) {
@@ -242,8 +240,8 @@ func TestNewSearchRequest(t *testing.T) {
 			Shared:       false,
 		},
 	)
-	test.Must(t, err, "new search request")
-	test.Equal(t,
+	test.Mustf(t, err, "new search request")
+	test.Equalf(t,
 		&internal.SearchRequestV1{
 			Size: internal.DefaultSearchSize,
 			Query: map[string]any{
@@ -310,8 +308,8 @@ func TestNewSearchRequestAsDocAdmin(t *testing.T) {
 			Shared:       false,
 		},
 	)
-	test.Must(t, err, "new search request")
-	test.Equal(t,
+	test.Mustf(t, err, "new search request")
+	test.Equalf(t,
 		&internal.SearchRequestV1{
 			Size: internal.DefaultSearchSize,
 			Query: map[string]any{

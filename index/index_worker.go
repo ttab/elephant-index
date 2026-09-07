@@ -11,13 +11,14 @@ import (
 	"net/http"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
-	"github.com/twitchtv/twirp"
+	"github.com/ttab/elephantine/rpc"
 )
 
 func newIndexWorker(
@@ -249,12 +250,14 @@ func (iw *indexWorker) Process(
 	for _, job := range documents {
 		select {
 		case <-ctx.Done():
-			return ctx.Err() //nolint:wrapcheck
+			return ctx.Err()
 		case <-job.done:
 		}
 
-		var twErr twirp.Error
-		if errors.As(job.err, &twErr) && twErr.Code() == twirp.NotFound {
+		// The repository client is still a Twirp client, so this is a
+		// twirp.Error today and a *connect.Error once it is swapped.
+		// rpc.IsCode reads both.
+		if rpc.IsCode(job.err, connect.CodeNotFound) {
 			job.Operation = opDelete
 			job.err = nil
 		} else if job.err != nil {

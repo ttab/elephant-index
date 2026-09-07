@@ -1,0 +1,7 @@
+{
+  "code": "invalid_argument",
+  "meta": {
+    "argument": "uuid"
+  },
+  "msg": "uuid is required"
+}

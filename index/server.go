@@ -12,10 +12,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ttab/elephant-api/index"
+	"github.com/ttab/elephant-api/index/indexconnect"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
-	"github.com/twitchtv/twirp"
 )
 
 type Parameters struct {
@@ -80,27 +80,15 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		return fmt.Errorf("create management service: %w", err)
 	}
 
-	api := index.NewManagementServer(
-		service,
-		twirp.WithServerJSONSkipDefaults(true),
-		twirp.WithServerHooks(opts.Hooks),
+	searchService := NewSearchServiceV1(
+		logger, p.Database,
+		NewPostgresMappingSource(postgres.New(p.Database)),
+		coord, p.AnonymousDocuments,
+		coord.percolatorUpdate, coord.eventPercolated, percDocs,
+		p.Validator, p.Languages,
 	)
 
-	server.RegisterAPI(api, opts)
-
-	searchAPI := index.NewSearchV1Server(
-		NewSearchServiceV1(
-			logger, p.Database,
-			NewPostgresMappingSource(postgres.New(p.Database)),
-			coord, p.AnonymousDocuments,
-			coord.percolatorUpdate, coord.eventPercolated, percDocs,
-			p.Validator, p.Languages,
-		),
-		twirp.WithServerJSONSkipDefaults(true),
-		twirp.WithServerHooks(opts.Hooks),
-	)
-
-	server.RegisterAPI(searchAPI, opts)
+	registerAPIs(server, opts, service, searchService)
 
 	// TODO: retire the proxy.
 	proxy := NewElasticProxy(logger, coord, p.AuthInfoParser)
@@ -186,4 +174,39 @@ func RunIndex(ctx context.Context, p Parameters) error {
 	}
 
 	return nil
+}
+
+// registerAPIs mounts the two RPC services on the API server, once on the
+// Twirp paths and once on the Connect ones. Both mounts wrap the same service
+// implementation and are configured from the same elephantine.ServiceOptions,
+// so authentication, logging and metrics are identical by construction rather
+// than by two chains that have to be kept in step.
+//
+// The Connect subtrees ("/elephant.index.SearchV1/") are more specific
+// patterns than the elastic proxy's "/" catch-all, so the mux routes them
+// here and everything else to the proxy.
+func registerAPIs(
+	server *elephantine.APIServer,
+	opts elephantine.ServiceOptions,
+	management index.Management,
+	search index.SearchV1,
+) {
+	server.RegisterAPI(index.NewManagementServer(
+		management, opts.ServerOptions()), opts)
+	server.RegisterAPI(index.NewSearchV1Server(
+		search, opts.ServerOptions()), opts)
+
+	// The handlers return rpc errors, so there is no translation left to do
+	// on the way out: rpc.LegacyTwirpErrors is gone, and the Twirp mounts
+	// above translate in the other direction through the interceptor
+	// opts.ServerOptions() installs.
+	handlerOpts := opts.HandlerOptions()
+
+	path, handler := indexconnect.NewManagementServiceHandler(
+		management, handlerOpts...)
+	server.RegisterConnect(path, handler, opts)
+
+	path, handler = indexconnect.NewSearchV1ServiceHandler(
+		search, handlerOpts...)
+	server.RegisterConnect(path, handler, opts)
 }

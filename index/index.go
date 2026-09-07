@@ -19,6 +19,7 @@ import (
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
 	"github.com/ttab/koonkie"
 	"github.com/ttab/revisor"
 	"golang.org/x/sync/errgroup"
@@ -126,9 +127,9 @@ func (idx *Indexer) Run(ctx context.Context) error {
 		idx.logger.Info("indexer has stopped")
 	}()
 
-	lock, err := pg.NewJobLock(idx.database, idx.logger,
+	lock, err := joblock.New(idx.database, idx.logger,
 		"indexer-"+idx.name,
-		pg.JobLockOptions{})
+		joblock.Options{})
 	if err != nil {
 		return fmt.Errorf("create job lock: %w", err)
 	}
