@@ -587,7 +587,7 @@ func documentToItem(
 }
 
 type FieldFilter struct {
-	globs []glob.Glob
+	globs []*glob.Pattern
 	exact map[string]struct{}
 }
 

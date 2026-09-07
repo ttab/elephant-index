@@ -94,7 +94,7 @@ type Coordinator struct {
 	nameRng    *rand.Rand
 	db         *pgxpool.Pool
 	q          *postgres.Queries
-	startCount int32
+	startCount atomic.Int32
 	lang       *LanguageResolver
 
 	activeMut    sync.RWMutex
@@ -183,7 +183,7 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		cancel()
 	}()
 
-	count := atomic.AddInt32(&c.startCount, 1)
+	count := c.startCount.Add(1)
 	if count > 1 {
 		return errors.New("already started")
 	}

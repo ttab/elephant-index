@@ -37,10 +37,10 @@ func (tc *TestContext) AuthenticatedClient(t T, scopes ...string) *http.Client {
 	t.Helper()
 
 	src, err := tc.Auth.NewTokenSource(t.Context(), scopes)
-	test.Must(t, err, "get token source for client")
+	test.Mustf(t, err, "get token source for client")
 
 	_, err = src.Token()
-	test.Must(t, err, "fetch token source for client")
+	test.Mustf(t, err, "fetch token source for client")
 
 	return oauth2.NewClient(t.Context(), src)
 }
@@ -53,7 +53,7 @@ func testingAPIServer(
 	reg := prometheus.NewRegistry()
 
 	instrumentation, err := elephantine.NewHTTPClientIntrumentation(reg)
-	test.Must(t, err, "set up HTTP client instrumentation")
+	test.Mustf(t, err, "set up HTTP client instrumentation")
 
 	env := SetUpBackingServices(t, instrumentation, false)
 
@@ -66,17 +66,17 @@ func testingAPIServer(
 			ClientSecret: "pass",
 		},
 		[]string{"eventlog_read", "doc_read_all", "schema_read"})
-	test.Must(t, err, "create authentication config")
+	test.Mustf(t, err, "create authentication config")
 
 	_, err = auth.TokenSource.Token()
-	test.Must(t, err, "get an access token")
+	test.Mustf(t, err, "get an access token")
 
 	client := oauth2.NewClient(ctx, auth.TokenSource)
 
 	server, _ := elephantine.NewTestAPIServer(t, logger)
 
 	dbpool, err := pgxpool.New(ctx, env.PostgresURI)
-	test.Must(t, err, "connect to index database")
+	test.Mustf(t, err, "connect to index database")
 
 	t.Cleanup(func() {
 		// Don't block for close
@@ -88,15 +88,15 @@ func testingAPIServer(
 
 	loader, err := index.NewSchemaLoader(ctx, logger.With(
 		elephantine.LogKeyComponent, "schema-loader"), schemas)
-	test.Must(t, err, "create schema loader")
+	test.Mustf(t, err, "create schema loader")
 
 	metrics, err := index.NewMetrics(reg)
-	test.Must(t, err, "set up metrics")
+	test.Mustf(t, err, "set up metrics")
 
 	appExited := make(chan struct{})
 
 	openSearchURL, err := url.Parse(env.OpenSearchURI)
-	test.Must(t, err, "parse Open Search URL")
+	test.Mustf(t, err, "parse Open Search URL")
 
 	go func() {
 		defer close(appExited)
@@ -134,7 +134,7 @@ func testingAPIServer(
 			},
 		})
 		if err != nil && !errors.Is(err, context.Canceled) {
-			test.Must(t, err, "run application")
+			test.Mustf(t, err, "run application")
 		}
 	}()
 

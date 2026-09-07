@@ -47,7 +47,7 @@ func TestBuildDocument(t *testing.T) {
 	})
 
 	lang, err := lRes.GetLanguageInfo("sv-se")
-	test.Must(t, err, "get language configuration")
+	test.Mustf(t, err, "get language configuration")
 
 	langConf := index.GetIndexConfig(lang)
 
@@ -63,7 +63,7 @@ func TestBuildDocument(t *testing.T) {
 	if regenerate {
 		err := elephantine.MarshalFile(
 			"testdata/raw_1.fields.json", doc.Fields)
-		test.Must(t, err, "update golden state")
+		test.Mustf(t, err, "update golden state")
 	}
 
 	err = elephantine.UnmarshalFile(
@@ -89,7 +89,7 @@ func TestBuildDocument(t *testing.T) {
 	if regenerate {
 		err := elephantine.MarshalFile(
 			"testdata/mapping_changes.json", mappingChanges)
-		test.Must(t, err, "update golden mapping changes")
+		test.Mustf(t, err, "update golden mapping changes")
 	}
 
 	err = elephantine.UnmarshalFile(
@@ -107,7 +107,7 @@ func TestBuildDocument(t *testing.T) {
 	if regenerate {
 		err := elephantine.MarshalFile(
 			"testdata/mapping_superset.json", superset)
-		test.Must(t, err, "update golden mapping superset")
+		test.Mustf(t, err, "update golden mapping superset")
 	}
 
 	err = elephantine.UnmarshalFile(
@@ -137,14 +137,14 @@ func TestMappingsMetaRel(t *testing.T) {
 
 	err = elephantine.UnmarshalFile(
 		filepath.Join("..", "testdata", "documents", "org.json"), &doc)
-	test.Must(t, err, "load document")
+	test.Mustf(t, err, "load document")
 
 	lRes := index.NewLanguageResolver(index.LanguageOptions{
 		DefaultLanguage: doc.Language,
 	})
 
 	lang, err := lRes.GetLanguageInfo(doc.Language)
-	test.Must(t, err, "get language configuration")
+	test.Mustf(t, err, "get language configuration")
 
 	langConf := index.GetIndexConfig(lang)
 
@@ -157,14 +157,14 @@ func TestMappingsMetaRel(t *testing.T) {
 		index.FeaturePrefix:   true,
 		index.FeatureOnlyICU:  true,
 	})
-	test.Must(t, err, "build document")
+	test.Mustf(t, err, "build document")
 
 	goldenPathFields := filepath.Join("..", "testdata", t.Name(), "fields.json")
 
-	test.TestAgainstGolden(t, test.Regenerate(), result.Fields, goldenPathFields)
+	test.AgainstGolden(t, test.Regenerate(), result.Fields, goldenPathFields)
 
 	mappings := result.Mappings()
 	goldenPathMappings := filepath.Join("..", "testdata", t.Name(), "mappings.json")
 
-	test.TestAgainstGolden(t, test.Regenerate(), mappings, goldenPathMappings)
+	test.AgainstGolden(t, test.Regenerate(), mappings, goldenPathMappings)
 }

@@ -242,14 +242,14 @@ func (s *ManagementService) ListIndexSets(
 	)
 
 	if req.OnlyActive {
-		active = boolP(true)
+		active = new(true)
 	}
 
 	switch req.Status {
 	case index.EnabledFilter_STATUS_ENABLED:
-		enabled = boolP(true)
+		enabled = new(true)
 	case index.EnabledFilter_STATUS_DISABLED:
-		enabled = boolP(false)
+		enabled = new(false)
 	case index.EnabledFilter_STATUS_UNSPECIFIED:
 	}
 
@@ -277,10 +277,6 @@ func (s *ManagementService) ListIndexSets(
 	}
 
 	return &res, nil
-}
-
-func boolP(v bool) *bool {
-	return &v
 }
 
 // PartialReindex implements index.Management.

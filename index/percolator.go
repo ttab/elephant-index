@@ -20,6 +20,7 @@ import (
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
 	"github.com/ttab/flerr"
 )
 
@@ -336,9 +337,9 @@ func (p *Percolator) percolationLoop(ctx context.Context) {
 	for {
 		p.metrics.percolatorLife.WithLabelValues("acquire-lock").Inc()
 
-		lock, err := pg.NewJobLock(
+		lock, err := joblock.New(
 			p.db, p.log, "percolator",
-			pg.JobLockOptions{})
+			joblock.Options{})
 		if err != nil {
 			p.log.ErrorContext(ctx, "failed to create percolator job lock",
 				elephantine.LogKeyError, err)

@@ -18,5 +18,17 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          version: v2.13
           args: --timeout=4m
+
+  vendored-migrations:
+    name: Vendored migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check vendored migrations
+        run: go run github.com/magefile/mage sql:vendorCheck

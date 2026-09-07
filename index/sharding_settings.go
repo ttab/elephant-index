@@ -33,9 +33,9 @@ func ParseShardingPolicy(
 		return conf, nil
 	}
 
-	stanzas := strings.Split(value, ",")
+	stanzas := strings.SplitSeq(value, ",")
 
-	for _, stanza := range stanzas {
+	for stanza := range stanzas {
 		parts := strings.Split(stanza, ":")
 		if len(parts) != 3 {
 			return ShardingPolicy{}, fmt.Errorf(
