@@ -20,6 +20,8 @@ jobs:
         with:
           version: v2.13
           args: --timeout=4m
+      - name: Documentation links
+        run: go run github.com/magefile/mage docs:links
 
   vendored-migrations:
     name: Vendored migrations
