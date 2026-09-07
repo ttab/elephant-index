@@ -316,7 +316,7 @@ func (c *Coordinator) runEventloop(
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err() //nolint:wrapcheck
+			return ctx.Err()
 		case change := <-c.changes:
 			err := c.handleChange(ctx, change)
 			if err != nil {
@@ -693,7 +693,6 @@ func (c *Coordinator) cleanupLoop(ctx context.Context) {
 
 // Delete old index sets that have been marked as deleted.
 func (c *Coordinator) cleanup(ctx context.Context) error {
-	//nolint:wrapcheck
 	return pg.WithTX(ctx, c.db, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 
@@ -727,7 +726,6 @@ func (c *Coordinator) EnsureDefaultIndexSet(
 	defaultClusterURL *url.URL,
 	clusterAuth ClusterAuth,
 ) error {
-	//nolint:wrapcheck
 	return pg.WithTX(ctx, c.db, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
 

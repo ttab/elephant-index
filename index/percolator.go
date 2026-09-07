@@ -280,7 +280,7 @@ func (p *Percolator) cleanup(ctx context.Context) {
 func (p *Percolator) purgePercolator(
 	ctx context.Context, client *opensearch.Client, id int64, docType string,
 ) error {
-	return pg.WithTX(ctx, p.db, func(tx pgx.Tx) (outErr error) { //nolint: wrapcheck
+	return pg.WithTX(ctx, p.db, func(tx pgx.Tx) (outErr error) {
 		q := postgres.New(tx)
 
 		var clean flerr.Cleaner
@@ -581,7 +581,7 @@ func (p *Percolator) createPercolatorDocument(
 	index string,
 	perc *PercolatorReference,
 ) error {
-	return pg.WithTX(ctx, p.db, func(tx pgx.Tx) (outErr error) { //nolint: wrapcheck
+	return pg.WithTX(ctx, p.db, func(tx pgx.Tx) (outErr error) {
 		q := postgres.New(tx)
 
 		err := q.RegisterPercolatorDocumentIndex(ctx,

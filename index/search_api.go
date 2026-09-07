@@ -98,7 +98,7 @@ func (s *SearchServiceV1) GetFlatDocument(
 	}
 
 	if req.Uuid == "" {
-		return nil, twirp.RequiredArgumentError("uuid")
+		return nil, rpc.RequiredArgument("uuid")
 	}
 
 	if req.Stored {
@@ -119,7 +119,7 @@ func (s *SearchServiceV1) convertFlatDocument(
 		headerAuthorization: []string{"Bearer " + auth.Token},
 	})
 	if err != nil {
-		return nil, twirp.InternalErrorf("invalid header handling: %w", err)
+		return nil, rpc.Internalf("invalid header handling: %w", err)
 	}
 
 	docRes, err := s.documents.Get(authCtx, &repository.GetDocumentRequest{
@@ -129,7 +129,7 @@ func (s *SearchServiceV1) convertFlatDocument(
 		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
 	})
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"get document from repository: %w", err)
 	}
 
@@ -137,13 +137,13 @@ func (s *SearchServiceV1) convertFlatDocument(
 		Uuid: req.Uuid,
 	})
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"get document metadata from repository: %w", err)
 	}
 
 	state, err := newDocumentState(docRes, metaRes)
 	if err != nil {
-		return nil, twirp.InternalErrorf("build document state: %w", err)
+		return nil, rpc.Internalf("build document state: %w", err)
 	}
 
 	// Use a per-request resolver as the cache it maintains isn't safe for
@@ -151,7 +151,7 @@ func (s *SearchServiceV1) convertFlatDocument(
 	language, err := NewLanguageResolver(s.languages).GetLanguageInfo(
 		state.Document.Language)
 	if err != nil {
-		return nil, twirp.InvalidArgumentError("language",
+		return nil, rpc.InvalidArgument("language",
 			fmt.Sprintf("could not resolve document language %q: %v",
 				state.Document.Language, err))
 	}
@@ -159,7 +159,7 @@ func (s *SearchServiceV1) convertFlatDocument(
 	flat, err := BuildDocument(
 		s.validator.GetValidator(), state, GetIndexConfig(language), nil)
 	if err != nil {
-		return nil, twirp.InternalErrorf("flatten document: %w", err)
+		return nil, rpc.Internalf("flatten document: %w", err)
 	}
 
 	res := index.GetFlatDocumentResponse{
@@ -184,7 +184,7 @@ func (s *SearchServiceV1) storedFlatDocument(
 ) (_ *index.GetFlatDocumentResponse, outErr error) {
 	client, indexSet := s.active.GetActiveIndex()
 	if client == nil {
-		return nil, twirp.FailedPrecondition.Error("no active index")
+		return nil, rpc.FailedPreconditionf("no active index")
 	}
 
 	// Look the document up by ID across the active index set. Going through
@@ -201,12 +201,12 @@ func (s *SearchServiceV1) storedFlatDocument(
 
 	osReq, err := internal.NewSearchRequest(auth, query)
 	if err != nil {
-		return nil, twirp.InternalErrorf("create search request: %w", err)
+		return nil, rpc.Internalf("create search request: %w", err)
 	}
 
 	queryPayload, err := json.Marshal(osReq)
 	if err != nil {
-		return nil, twirp.InternalErrorf("marshal opensearch query: %w", err)
+		return nil, rpc.Internalf("marshal opensearch query: %w", err)
 	}
 
 	res, err := client.Search(
@@ -214,7 +214,7 @@ func (s *SearchServiceV1) storedFlatDocument(
 		client.Search.WithIndex(internal.IndexPattern(indexSet, query)),
 		client.Search.WithBody(bytes.NewReader(queryPayload)))
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"perform opensearch search request: %w", err)
 	}
 
@@ -239,7 +239,7 @@ func (s *SearchServiceV1) storedFlatDocument(
 			)
 		}
 
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"error response from opensearch: %s", res.Status())
 	}
 
@@ -247,12 +247,12 @@ func (s *SearchServiceV1) storedFlatDocument(
 
 	err = dec.Decode(&response)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"unmarshal opensearch response: %w", err)
 	}
 
 	if len(response.Hits.Hits) == 0 {
-		return nil, twirp.NotFoundError(
+		return nil, rpc.NotFound(
 			"no stored document with that UUID in the active index")
 	}
 
@@ -288,7 +288,7 @@ func (s *SearchServiceV1) PollSubscription(
 	}
 
 	if len(req.Subscriptions) == 0 {
-		return nil, twirp.RequiredArgumentError("subscriptions")
+		return nil, rpc.RequiredArgument("subscriptions")
 	}
 
 	batchDelay := time.Duration(req.BatchDelayMs) * time.Millisecond
@@ -310,11 +310,11 @@ func (s *SearchServiceV1) PollSubscription(
 	// Validate and decompose.
 	for _, s := range req.Subscriptions {
 		if s.Id == 0 {
-			return nil, twirp.RequiredArgumentError("subscriptions.id")
+			return nil, rpc.RequiredArgument("subscriptions.id")
 		}
 
 		if slices.Contains(subIDs, s.Id) {
-			return nil, twirp.InvalidArgumentError("subscription.id",
+			return nil, rpc.InvalidArgument("subscription.id",
 				fmt.Sprintf("the subscription %d was specified more than once", s.Id))
 		}
 
@@ -326,7 +326,7 @@ func (s *SearchServiceV1) PollSubscription(
 
 	subscriptions, err := s.getSubscriptionsForUser(ctx, q, auth.Claims.Subject, subIDs)
 	if err != nil {
-		return nil, twirp.InternalErrorf("get subscription details: %w", err)
+		return nil, rpc.Internalf("get subscription details: %w", err)
 	}
 
 	// Underlying percolators for the subscription.
@@ -399,7 +399,7 @@ func (s *SearchServiceV1) PollSubscription(
 		Ids:     knownSubs,
 	})
 	if err != nil {
-		return nil, twirp.InternalErrorf("failed to set subscriptions as touched: %v", err)
+		return nil, rpc.Internalf("failed to set subscriptions as touched: %v", err)
 	}
 
 	deadline := time.Now().Add(maxWait)
@@ -446,7 +446,7 @@ func (s *SearchServiceV1) PollSubscription(
 				Limit:       30,
 			})
 		if err != nil {
-			return nil, fmt.Errorf("fetch events: %w", err)
+			return nil, rpc.Internalf("fetch events: %w", err)
 		}
 
 		for _, item := range items {
@@ -745,12 +745,12 @@ func (s *SearchServiceV1) GetMappings(
 	_, set := s.active.GetActiveIndex()
 
 	if req.DocumentType == "" {
-		return nil, twirp.RequiredArgumentError("document_type")
+		return nil, rpc.RequiredArgument("document_type")
 	}
 
 	mappings, err := s.mappings.GetMappings(ctx, set, req.DocumentType)
 	if err != nil {
-		return nil, twirp.InternalErrorf("read mappings: %w", err)
+		return nil, rpc.Internalf("read mappings: %w", err)
 	}
 
 	res := index.GetMappingsResponseV1{
@@ -760,7 +760,7 @@ func (s *SearchServiceV1) GetMappings(
 	for name, prop := range mappings {
 		t, ok := fieldTypeToExternalType(prop.Type)
 		if !ok {
-			return nil, twirp.InternalErrorf(
+			return nil, rpc.Internalf(
 				"unknown mapping type %q for %q",
 				prop.Type, prop.Path,
 			)
@@ -775,7 +775,7 @@ func (s *SearchServiceV1) GetMappings(
 		for fName, sf := range prop.Fields {
 			t, ok := fieldTypeToExternalType(sf.Type)
 			if !ok {
-				return nil, twirp.InternalErrorf(
+				return nil, rpc.Internalf(
 					"unknown mapping type %q for field %q of %q",
 					sf.Type, fName, name,
 				)
@@ -788,7 +788,7 @@ func (s *SearchServiceV1) GetMappings(
 			default:
 				// We don't want to miscategorise any fields
 				// with special analysers.
-				return nil, twirp.InternalErrorf(
+				return nil, rpc.Internalf(
 					"unknown analyzer %q for field %q of %q",
 					sf.Analyzer, fName, name,
 				)
@@ -840,18 +840,17 @@ func (s *SearchServiceV1) Query(
 
 	client, indexSet := s.active.GetActiveIndex()
 	if client == nil {
-		return nil, twirp.FailedPrecondition.Error("no active index")
+		return nil, rpc.FailedPreconditionf("no active index")
 	}
 
 	osReq, err := internal.NewSearchRequest(auth, req)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
-			"create search request: %w", err)
+		return nil, err
 	}
 
 	queryPayload, err := json.Marshal(osReq)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"marshal opensearch query: %w", err)
 	}
 
@@ -860,7 +859,7 @@ func (s *SearchServiceV1) Query(
 		client.Search.WithIndex(internal.IndexPattern(indexSet, req)),
 		client.Search.WithBody(bytes.NewReader(queryPayload)))
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"perform opensearch search request: %w", err)
 	}
 
@@ -885,7 +884,7 @@ func (s *SearchServiceV1) Query(
 			)
 		}
 
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"error response from opensearch: %s", res.Status())
 	}
 
@@ -893,13 +892,13 @@ func (s *SearchServiceV1) Query(
 
 	err = dec.Decode(&response)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"unmarshal opensearch response: %w", err)
 	}
 
 	pRes, err := s.processSearchResponse(ctx, auth, req, osReq, &response)
 	if err != nil {
-		return nil, fmt.Errorf("create search response: %w", err)
+		return nil, err
 	}
 
 	return pRes, nil
@@ -924,7 +923,7 @@ func (s *SearchServiceV1) MultiSearch(
 			Index: internal.IndexPattern(indexSet, q),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("marshal metadata: %w", err)
+			return nil, rpc.Internalf("marshal metadata: %w", err)
 		}
 
 		body.Write(metadata)
@@ -932,14 +931,14 @@ func (s *SearchServiceV1) MultiSearch(
 
 		osReq, err := internal.NewSearchRequest(auth, q)
 		if err != nil {
-			return nil, fmt.Errorf("create query: %w", err)
+			return nil, err
 		}
 
 		requests[i] = osReq
 
 		queryPayload, err := json.Marshal(osReq)
 		if err != nil {
-			return nil, fmt.Errorf("marshal query: %w", err)
+			return nil, rpc.Internalf("marshal query: %w", err)
 		}
 
 		body.Write(queryPayload)
@@ -950,7 +949,7 @@ func (s *SearchServiceV1) MultiSearch(
 		client.Msearch.WithContext(ctx),
 	)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"perform opensearch msearch request: %w", err)
 	}
 
@@ -975,7 +974,7 @@ func (s *SearchServiceV1) MultiSearch(
 			)
 		}
 
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"error response from opensearch: %s", res.Status())
 	}
 
@@ -983,7 +982,7 @@ func (s *SearchServiceV1) MultiSearch(
 
 	err = dec.Decode(&mresponse)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"unmarshal opensearch msearch response: %w", err)
 	}
 
@@ -999,7 +998,7 @@ func (s *SearchServiceV1) MultiSearch(
 			requests[i],
 			&response)
 		if err != nil {
-			return nil, fmt.Errorf("search response error: %w", err)
+			return nil, err
 		}
 
 		mRes.Results[i] = r
@@ -1050,14 +1049,14 @@ func (s *SearchServiceV1) processSearchResponse(
 			headerAuthorization: []string{"Bearer " + auth.Token},
 		})
 		if err != nil {
-			return nil, twirp.InternalErrorf(
+			return nil, rpc.Internalf(
 				"invalid header handling: %w", err)
 		}
 
 		bulkRes, err := s.documents.BulkGet(authCtx,
 			&repository.BulkGetRequest{Documents: load})
 		if err != nil {
-			return nil, twirp.InternalErrorf(
+			return nil, rpc.Internalf(
 				"error response from repository: %w", err)
 		}
 

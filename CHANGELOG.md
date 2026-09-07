@@ -39,6 +39,16 @@ answered `unauthenticated` (`401`) where it was answered `permission_denied`
 Anything keyed on `403` for a bad token — an ingress rule, a dashboard panel,
 a client's retry logic — reads `401` after the upgrade.
 
+**Behaviour change (a malformed query is answered invalid_argument):** a
+`Query` or `MultiSearch` whose query cannot be translated — in practice an
+unsupported query type — is answered `invalid_argument` where it was answered
+`internal`. The handler was recoding the request parser's error, so the
+parser's own `invalid_argument` never reached the caller. The validation
+failures that were already reported as `invalid_argument`, such as pagination
+combined with a subscription, are unchanged. Anything treating an `internal`
+from this API as "retry, the service is broken" should read the code again: a
+query it will never accept now says so.
+
 **Behaviour change (long-poll timeouts):** `PollSubscription` answers a call
 whose deadline passed while it was waiting with `deadline_exceeded`, and one
 whose caller went away with `canceled`, where both previously produced an
@@ -78,10 +88,14 @@ Changes:
   IAM signing, and are moved out of the URL before the cluster row is written.
 - Both RPC services are mounted on the Twirp and the Connect paths from one
   `elephantine.ServiceOptions`, so authentication, logging and metrics are
-  identical on the two stacks by construction. The Connect mount carries
-  `rpc.LegacyTwirpErrors()` as its innermost interceptor while the handlers
-  still return Twirp errors; it is removed when they move to the `rpc`
-  vocabulary, with no change to what a caller sees.
+  identical on the two stacks by construction.
+- No handler constructs a Twirp error any more: they return `*connect.Error`
+  through the `elephantine/rpc` helpers, and a Twirp caller is answered by
+  translating on the way out. Every message and every metadata key a caller
+  reads is unchanged, apart from the `invalid_argument` above, and that is
+  tested rather than asserted — the same failing call is made on both stacks
+  and the code, message and metadata compared, with two error bodies per stack
+  pinned by golden files.
 - `rpc_protocol_responses_total{service,method,protocol,code,client_id}` is
   reported by both stacks. `protocol="twirp"` falling to zero for a method is
   what says its Twirp mount can be retired, and `client_id` names the

@@ -10,13 +10,14 @@ import (
 	"math/rand"
 	"net/url"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lucasepe/codename"
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine/pg"
-	"github.com/twitchtv/twirp"
+	"github.com/ttab/elephantine/rpc"
 )
 
 type ManagementService struct {
@@ -53,7 +54,7 @@ func (s *ManagementService) DeleteIndexSet(
 		return nil, err
 	}
 
-	var twErr twirp.Error
+	var rpcErr *connect.Error
 
 	err = pg.WithTX(ctx, s.db, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
@@ -64,7 +65,7 @@ func (s *ManagementService) DeleteIndexSet(
 		}
 
 		if idx.Active || idx.Enabled {
-			return twirp.FailedPrecondition.Error(
+			return rpc.FailedPreconditionf(
 				"active or enabled index sets cannot be deleted",
 			)
 		}
@@ -82,10 +83,10 @@ func (s *ManagementService) DeleteIndexSet(
 
 		return nil
 	})
-	if ok := errors.As(err, &twErr); ok {
-		return nil, twErr
+	if ok := errors.As(err, &rpcErr); ok {
+		return nil, rpcErr
 	} else if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"database operation failed: %v", err,
 		)
 	}
@@ -125,18 +126,18 @@ func (s *ManagementService) DeleteCluster(
 	}
 
 	if req.Name == "" {
-		return nil, twirp.RequiredArgumentError("name")
+		return nil, rpc.RequiredArgument("name")
 	}
 
-	var twErr twirp.Error
+	var rpcErr *connect.Error
 
 	err = pg.WithTX(ctx, s.db, func(tx pgx.Tx) error {
 		return s.deleteCluster(ctx, tx, req.Name)
 	})
-	if ok := errors.As(err, &twErr); ok {
-		return nil, twErr
+	if ok := errors.As(err, &rpcErr); ok {
+		return nil, rpcErr
 	} else if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"database operation failed: %v", err,
 		)
 	}
@@ -153,7 +154,7 @@ func (s *ManagementService) deleteCluster(
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	} else if err != nil {
-		return twirp.InternalErrorf(
+		return rpc.Internalf(
 			"failed to read cluster information: %v", err,
 		)
 	}
@@ -164,11 +165,11 @@ func (s *ManagementService) deleteCluster(
 	}
 
 	if counts.PendingDelete > 0 {
-		return twirp.FailedPrecondition.Errorf(
+		return rpc.FailedPreconditionf(
 			"%d indexes are still pending delete: %w",
 			counts.PendingDelete, err)
 	} else if counts.Total > 0 {
-		return twirp.FailedPrecondition.Error(
+		return rpc.FailedPreconditionf(
 			"the cluster still has indexes")
 	}
 
@@ -193,7 +194,7 @@ func (s *ManagementService) ListClusters(
 
 	rows, err := q.ListClustersWithCounts(ctx)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"failed to read from database: %w", err)
 	}
 
@@ -204,7 +205,7 @@ func (s *ManagementService) ListClusters(
 
 		err := json.Unmarshal(row.Auth, &auth)
 		if err != nil {
-			return nil, twirp.InternalErrorf(
+			return nil, rpc.Internalf(
 				"decode auth information for %q: %w",
 				row.Name, err)
 		}
@@ -259,7 +260,7 @@ func (s *ManagementService) ListIndexSets(
 		Enabled: pg.PBool(enabled),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("query database: %w", err)
+		return nil, rpc.Internalf("query database: %w", err)
 	}
 
 	res := index.ListIndexSetsResponse{
@@ -301,25 +302,25 @@ func (s *ManagementService) RegisterCluster(
 	}
 
 	if req.Endpoint == "" {
-		return nil, twirp.RequiredArgumentError("endpoint")
+		return nil, rpc.RequiredArgument("endpoint")
 	}
 
 	switch {
 	case req.Auth == nil:
-		return nil, twirp.RequiredArgumentError("auth")
+		return nil, rpc.RequiredArgument("auth")
 	case req.Auth.Iam && req.Auth.Username != "":
-		return nil, twirp.InvalidArgumentError("auth",
+		return nil, rpc.InvalidArgument("auth",
 			"password auth cannot be used with IAM auth")
 	}
 
 	endpointURL, err := url.Parse(req.Endpoint)
 	if err != nil {
-		return nil, twirp.InvalidArgumentError("endpoint", err.Error())
+		return nil, rpc.InvalidArgument("endpoint", err.Error())
 	}
 
 	if (endpointURL.Scheme != "http" && endpointURL.Scheme != "https") ||
 		endpointURL.Host == "" {
-		return nil, twirp.InvalidArgumentError(
+		return nil, rpc.InvalidArgument(
 			"endpoint", "invalid URL, must be http or https and refer to a host")
 	}
 
@@ -339,7 +340,7 @@ func (s *ManagementService) RegisterCluster(
 			}
 
 			if block.Type != "CERTIFICATE" {
-				return nil, twirp.InvalidArgumentError("auth.ca_cert",
+				return nil, rpc.InvalidArgument("auth.ca_cert",
 					fmt.Sprintf("invalid PEM certificate, unexpected %q block", block.Type))
 			}
 
@@ -347,7 +348,7 @@ func (s *ManagementService) RegisterCluster(
 		}
 
 		if blockCount == 0 {
-			return nil, twirp.InvalidArgumentError("auth.ca_cert",
+			return nil, rpc.InvalidArgument("auth.ca_cert",
 				"invalid PEM certificate, no CERTIFICATE blocks")
 		}
 	}
@@ -363,7 +364,7 @@ func (s *ManagementService) RegisterCluster(
 
 		enc, err := encryptPassword(req.Auth.Password, s.passwordKey)
 		if err != nil {
-			return nil, twirp.InternalErrorf(
+			return nil, rpc.Internalf(
 				"encrypt password: %w", err)
 		}
 
@@ -373,11 +374,11 @@ func (s *ManagementService) RegisterCluster(
 	//nolint:gosec // ClusterAuth.Password holds an encrypted value, not plaintext
 	authData, err := json.Marshal(&auth)
 	if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"failed to marshal cluster auth data: %v", err)
 	}
 
-	var twErr twirp.Error
+	var rpcErr *connect.Error
 
 	err = pg.WithTX(ctx, s.db, func(tx pgx.Tx) error {
 		q := postgres.New(tx)
@@ -393,10 +394,10 @@ func (s *ManagementService) RegisterCluster(
 
 		return nil
 	})
-	if ok := errors.As(err, &twErr); ok {
-		return nil, twErr
+	if ok := errors.As(err, &rpcErr); ok {
+		return nil, rpcErr
 	} else if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"database operation failed: %v", err,
 		)
 	}
@@ -414,12 +415,12 @@ func (s *ManagementService) Reindex(
 	}
 
 	if req.Cluster == "" {
-		return nil, twirp.RequiredArgumentError("cluster")
+		return nil, rpc.RequiredArgument("cluster")
 	}
 
 	var (
-		name  string
-		twErr twirp.Error
+		name   string
+		rpcErr *connect.Error
 	)
 
 	err = pg.WithTX(ctx, s.db, func(tx pgx.Tx) error {
@@ -432,10 +433,10 @@ func (s *ManagementService) Reindex(
 
 		return nil
 	})
-	if ok := errors.As(err, &twErr); ok {
-		return nil, twErr
+	if ok := errors.As(err, &rpcErr); ok {
+		return nil, rpcErr
 	} else if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"database operation failed: %v", err,
 		)
 	}
@@ -453,7 +454,7 @@ func (s *ManagementService) reindex(
 	// Getting cluster for update as we want to serialise all re-index-ops.
 	cluster, err := q.GetClusterForUpdate(ctx, clusterName)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", twirp.InvalidArgumentError("cluster", "no such cluster")
+		return "", rpc.InvalidArgument("cluster", "no such cluster")
 	} else if err != nil {
 		return "", fmt.Errorf(
 			"read cluster information: %w", err,
@@ -527,15 +528,15 @@ func (s *ManagementService) SetIndexSetStatus(
 		return nil, err
 	}
 
-	var twErr twirp.Error
+	var rpcErr *connect.Error
 
 	err = pg.WithTX(ctx, s.db, func(tx pgx.Tx) error {
 		return s.setIndexSetStatus(ctx, tx, req)
 	})
-	if ok := errors.As(err, &twErr); ok {
-		return nil, twErr
+	if ok := errors.As(err, &rpcErr); ok {
+		return nil, rpcErr
 	} else if err != nil {
-		return nil, twirp.InternalErrorf(
+		return nil, rpc.Internalf(
 			"database operation failed: %v", err,
 		)
 	}
@@ -554,11 +555,11 @@ func (s *ManagementService) setIndexSetStatus(
 
 	idx, err := q.GetIndexSetForUpdate(ctx, req.Name)
 	if errors.Is(err, pgx.ErrNoRows) || idx.Deleted {
-		return twirp.NotFoundError("no such index")
+		return rpc.NotFound("no such index")
 	}
 
 	if idx.Active && !req.Active {
-		return twirp.InvalidArgument.Error(
+		return rpc.Errorf(connect.CodeInvalidArgument,
 			"an index set can only be deactivated by activating another set")
 	}
 
@@ -602,7 +603,7 @@ func (s *ManagementService) checkActiveReplaced(
 	if currentActive.Name != "" && currentActive.Name != idx.Name {
 		lag := currentActive.Position - idx.Position
 		if lag > maxActivationLag && !forceActive {
-			return twirp.FailedPrecondition.Errorf(
+			return rpc.FailedPreconditionf(
 				"the index set lags behind with more than %d events (%d), use force_active to activate anyway",
 				maxActivationLag,
 				lag,

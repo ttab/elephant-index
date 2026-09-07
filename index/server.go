@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ttab/elephant-api/index"
@@ -17,7 +16,6 @@ import (
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
-	"github.com/ttab/elephantine/rpc"
 )
 
 type Parameters struct {
@@ -198,15 +196,11 @@ func registerAPIs(
 	server.RegisterAPI(index.NewSearchV1Server(
 		search, opts.ServerOptions()), opts)
 
-	// LegacyTwirpErrors is last in the chain, so it is the innermost
-	// interceptor: it translates the Twirp errors the handlers still
-	// return before the logging and metrics interceptors observe them,
-	// which is what keeps the code they report the real one. It goes away
-	// in the change that moves the handlers to the rpc vocabulary.
-	handlerOpts := make([]connect.HandlerOption, 0, 2)
-	handlerOpts = append(handlerOpts, opts.HandlerOptions()...)
-	handlerOpts = append(handlerOpts,
-		connect.WithInterceptors(rpc.LegacyTwirpErrors()))
+	// The handlers return rpc errors, so there is no translation left to do
+	// on the way out: rpc.LegacyTwirpErrors is gone, and the Twirp mounts
+	// above translate in the other direction through the interceptor
+	// opts.ServerOptions() installs.
+	handlerOpts := opts.HandlerOptions()
 
 	path, handler := indexconnect.NewManagementServiceHandler(
 		management, handlerOpts...)

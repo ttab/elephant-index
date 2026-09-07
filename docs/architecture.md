@@ -294,10 +294,34 @@ against Twirp's `412`, `canceled` `499` against `408`, and `deadline_exceeded`
 `failed_precondition` is what an index set lag refusal returns, so this is a
 live difference and not a theoretical one.
 
-The handlers still return Twirp errors, and the Connect mount carries
-`rpc.LegacyTwirpErrors()` as its innermost interceptor to translate them. That
-interceptor is removed when the handlers move to the `rpc` vocabulary, with no
-change to what a caller sees.
+**Handlers return `*connect.Error` through the `elephantine/rpc` helpers, and
+no handler constructs a Twirp error.** A Twirp caller is answered by
+translating on the way out, through the interceptor `opts.ServerOptions()`
+installs, so the Twirp mount needs no knowledge of it — that is why the file
+that mounts Twirp does not import `twitchtv/twirp` at all.
+
+Two rules keep that working, and both are easy to undo by accident:
+
+* **Never wrap an RPC error.** Wrapping it in another coded error replaces the
+  code the handler picked, and wrapping it in a bare `fmt.Errorf` leaves a
+  prefix that is written and never read, because the caller is answered from
+  the innermost coded error. Return the helper's result as it is and put the
+  context in the message you pass the helper. `internal.NewSearchRequest` is
+  the case to know: it validates caller input and returns coded errors, so
+  `Query` and `MultiSearch` return its error untouched.
+* **Every handler error carries a code.** The two stacks default an uncoded
+  error differently — Twirp `internal`, Connect `unknown` — so a bare
+  `fmt.Errorf` escaping a handler changes meaning between them. Helpers may
+  return plain errors as long as the handler codes them.
+
+`RequireAnyScope` in `index/permissions.go` is the service's own copy rather
+than `rpc.RequireAnyScope`. It returns `rpc` errors, but its message and its
+lack of a `required_any_of_scopes` meta key are the ones callers have always
+seen, and adopting the shared helper would change both.
+
+Parity between the stacks is tested rather than assumed: `TestErrorParity`
+performs the same failing call on both and asserts the code, the message and
+the metadata match, and the wire golden files pin two error bodies per stack.
 
 ### Scopes
 
