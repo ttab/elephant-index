@@ -20,6 +20,15 @@ document type for use in an index name maps `/`, `+` and spaces all onto `_` —
 so the value is read from the `document_index` registry, which has recorded
 the unsanitized type since the index was created.
 
+**Deploy order (requires a Connect-serving repository):** this service now
+calls the elephant repository with Connect clients, so **the repository has to
+be deployed with Connect before this release goes out** — v1.9.0 or later.
+Against an older repository every call is answered `unimplemented` with a
+`404`, and since the schemas are loaded at startup the service does not come up
+at all. There is no flag to fall back to the Twirp clients; the ordering is
+the mitigation. Nothing else about the calls changes: the same endpoint
+configuration, the same scopes, and the same token in the same place.
+
 **Behaviour change (search reads the database):** serving a search now
 involves a Postgres lookup, where it previously needed only OpenSearch. The
 result is cached per index name for an hour, because an index's document type
@@ -45,6 +54,12 @@ Changes:
 - `HitV1` gains `document_type`, resolved from the `document_index` registry
   and cached per index name.
 - New query `GetIndexContentTypes`, which is the registry lookup behind it.
+- The repository clients are Connect clients, so this service no longer speaks
+  Twirp to anything. `twitchtv/twirp` is gone from every source file here and
+  is an indirect dependency only, kept by the generated Twirp server this
+  service still mounts. The caller-token forwarding that `GetFlatDocument` and
+  document loading depend on moved from `twirp.WithHTTPRequestHeaders` to
+  `rpc.WithOutgoingHeaders` plus a `rpc.PropagateHeaders()` interceptor. (#298)
 - A new subscription no longer reports matching documents as non-matches for
   the first second of its life. A percolator query is an OpenSearch document
   and is only matched once a refresh has made it visible; the code refreshed

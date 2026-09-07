@@ -254,9 +254,8 @@ func (iw *indexWorker) Process(
 		case <-job.done:
 		}
 
-		// The repository client is still a Twirp client, so this is a
-		// twirp.Error today and a *connect.Error once it is swapped.
-		// rpc.IsCode reads both.
+		// The repository client is a Connect client, so this is a
+		// *connect.Error. rpc.IsCode reads the code out of it.
 		if rpc.IsCode(job.err, connect.CodeNotFound) {
 			job.Operation = opDelete
 			job.err = nil

@@ -39,8 +39,11 @@ func (r *Repository) GetAPIEndpoint() string {
 func (r *Repository) SetUp(pool *dockertest.Pool, network *dockertest.Network) error {
 	res, err := pool.RunWithOptions(&dockertest.RunOptions{
 		Repository: "ghcr.io/ttab/elephant-repository",
-		Tag:        "v1.9.0",
-		Cmd:        []string{"run"},
+		// The pin has to serve Connect, since this service's clients
+		// are Connect clients: a Twirp-only repository answers every
+		// call "unimplemented: 404 Not Found".
+		Tag: "v1.9.0",
+		Cmd: []string{"run"},
 		Env: []string{
 			"NO_EVENTSINK=true",
 			"MIGRATE_DB=true",
