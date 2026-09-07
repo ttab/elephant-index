@@ -26,7 +26,6 @@ import (
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/elephantine/rpc"
-	"github.com/twitchtv/twirp"
 	"github.com/viccon/sturdyc"
 )
 
@@ -114,13 +113,13 @@ func (s *SearchServiceV1) convertFlatDocument(
 	auth *elephantine.AuthInfo, req *index.GetFlatDocumentRequest,
 ) (*index.GetFlatDocumentResponse, error) {
 	// Forward the authentication header so that the repository applies the
-	// caller's read permissions.
-	authCtx, err := twirp.WithHTTPRequestHeaders(ctx, http.Header{
+	// caller's read permissions rather than this service's, which carry
+	// doc_read_all. rpc.PropagateHeaders on the client is what puts these
+	// on the wire; without it the call goes out anonymous and the
+	// repository refuses it.
+	authCtx := rpc.WithOutgoingHeaders(ctx, http.Header{
 		headerAuthorization: []string{"Bearer " + auth.Token},
 	})
-	if err != nil {
-		return nil, rpc.Internalf("invalid header handling: %w", err)
-	}
 
 	docRes, err := s.documents.Get(authCtx, &repository.GetDocumentRequest{
 		Uuid:         req.Uuid,
@@ -1044,14 +1043,12 @@ func (s *SearchServiceV1) processSearchResponse(
 			}
 		}
 
-		// Forward the authentication header.
-		authCtx, err := twirp.WithHTTPRequestHeaders(ctx, http.Header{
+		// Forward the authentication header, as in
+		// convertFlatDocument: the caller's own permissions decide
+		// which of these documents come back.
+		authCtx := rpc.WithOutgoingHeaders(ctx, http.Header{
 			headerAuthorization: []string{"Bearer " + auth.Token},
 		})
-		if err != nil {
-			return nil, rpc.Internalf(
-				"invalid header handling: %w", err)
-		}
 
 		bulkRes, err := s.documents.BulkGet(authCtx,
 			&repository.BulkGetRequest{Documents: load})

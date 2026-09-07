@@ -11,15 +11,20 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/index/indexconnect"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	indexsvc "github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/rpc"
 	"github.com/ttab/elephantine/test"
+	"github.com/ttab/revisor"
+	"github.com/ttab/revisorschemas"
 	"golang.org/x/oauth2"
 )
 
@@ -85,8 +90,10 @@ func testingAPIServer(
 		go dbpool.Close()
 	})
 
-	schemas := repository.NewSchemasProtobufClient(
-		env.Repository.GetAPIEndpoint(), client)
+	schemas := repositoryconnect.NewSchemasServiceClient(
+		client, env.Repository.GetAPIEndpoint())
+
+	registerCoreSchemas(ctx, t, auth, env)
 
 	loader, err := indexsvc.NewSchemaLoader(ctx, logger.With(
 		elephantine.LogKeyComponent, "schema-loader"), schemas)
@@ -119,10 +126,16 @@ func testingAPIServer(
 				return searchClient, nil
 			},
 			DefaultCluster: openSearchURL,
-			Documents: repository.NewDocumentsProtobufClient(
-				env.Repository.GetAPIEndpoint(), client),
-			AnonymousDocuments: repository.NewDocumentsProtobufClient(
-				env.Repository.GetAPIEndpoint(), http.DefaultClient),
+			Documents: repositoryconnect.NewDocumentsServiceClient(
+				client, env.Repository.GetAPIEndpoint()),
+			// PropagateHeaders as in cmd/index: the handlers that
+			// serve a caller forward the caller's own token on
+			// this client, so without the interceptor the call
+			// goes out anonymous and the repository refuses it.
+			// TestGetFlatDocument is what notices.
+			AnonymousDocuments: repositoryconnect.NewDocumentsServiceClient(
+				http.DefaultClient, env.Repository.GetAPIEndpoint(),
+				connect.WithInterceptors(rpc.PropagateHeaders())),
 			Validator:      loader,
 			Metrics:        metrics,
 			Languages:      indexsvc.StandardLanguageOptions("sv-se"),
@@ -259,4 +272,60 @@ func (tc *TestContext) ManagementClientOn(
 	}
 
 	return index.NewManagementProtobufClient(tc.IndexEndpoint, client)
+}
+
+// registerCoreSchemas activates the core revisor schemas in the test
+// repository, without which every document write fails validation with
+// "undeclared document type".
+//
+// The repository used to do this itself: up to v1.2.5 it registered the
+// embedded core schemas at startup unless --no-core-schema was passed, and
+// this suite relied on that. Schema generations replaced it, so the schemas
+// now have to be pushed over the API, and the set is the same three that
+// EnsureCoreSchema used.
+//
+// RegisterGeneration takes the whole set and activates it in one call, and it
+// is idempotent on the schema versions, so it does not matter that every test
+// gets its own repository.
+func registerCoreSchemas(
+	ctx context.Context, t *testing.T,
+	auth *elephantine.AuthenticationConfig, env Environment,
+) {
+	t.Helper()
+
+	src, err := auth.NewTokenSource(ctx, []string{"schema_admin"})
+	test.Mustf(t, err, "get a schema admin token source")
+
+	client := repositoryconnect.NewSchemasServiceClient(
+		oauth2.NewClient(ctx, src), env.Repository.GetAPIEndpoint())
+
+	files := []string{
+		"se.ecms.json", "se.ecms.metadoc.json", "se.ecms.planning.json",
+	}
+
+	// Decoding is what gives us the name the schema declares, which is not
+	// the file name, and it fails here rather than in the repository if a
+	// schema does not parse.
+	sets, err := revisor.DecodeConstraintSetsFS(revisorschemas.Files(), files...)
+	test.Mustf(t, err, "decode the embedded core schemas")
+
+	specs := make([]*repository.Schema, len(sets))
+
+	for i, set := range sets {
+		data, err := revisorschemas.Files().ReadFile(files[i])
+		test.Mustf(t, err, "read %s", files[i])
+
+		specs[i] = &repository.Schema{
+			Name:    set.Name,
+			Version: revisorschemas.Version(),
+			Spec:    string(data),
+		}
+	}
+
+	_, err = client.RegisterGeneration(ctx,
+		&repository.RegisterGenerationRequest{
+			Schemas:    specs,
+			Activation: repository.SchemaActivation_ACTIVATION_ACTIVE,
+		})
+	test.Mustf(t, err, "register and activate the core schemas")
 }

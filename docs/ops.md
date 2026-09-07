@@ -48,7 +48,7 @@ different causes.**
 |---|---|---|
 | Postgres | Everything: index set registry, cluster registry, subscriptions, percolation state, job locks | Readiness fails and the replica leaves rotation. Nothing works. |
 | OpenSearch (active cluster) | Serving search, indexing documents | Search fails; indexing retries and lags. Readiness stays up — the check is optional by design. |
-| Elephant repository | Following the event log, loading documents, loading revisor schemas | Indexing stops and lags. Search keeps serving stale results. Startup fails if schemas cannot be loaded at all. |
+| Elephant repository, **serving Connect** | Following the event log, loading documents, loading revisor schemas | Indexing stops and lags. Search keeps serving stale results. Startup fails if schemas cannot be loaded at all — including against a repository too old to serve Connect, which answers `unimplemented` with `404`. |
 | OIDC provider | Authenticating every RPC and proxy request | All requests are refused. Search and indexing are otherwise unaffected. |
 | AWS IAM | Signing OpenSearch requests, only with `--managed-opensearch` | OpenSearch requests are refused. |
 
@@ -204,6 +204,11 @@ event log.** Nothing in Postgres can, apart from the two unlogged tables.
 
 ## Bootstrap order
 
+0. **The repository serves Connect.** This service calls it with Connect
+   clients, so a repository older than v1.9.0-pre2 answers every call
+   `unimplemented` with a `404` and this service fails to start on its first
+   schema load. **Deploy the repository first.** It is the one ordering
+   constraint that spans two services.
 1. **Postgres reachable and migrated.** Migrations are never run by the
    service; `mage sql:migrate` locally, `setup db migrate` in
    elephant-platform. Starting against an unmigrated database fails on the
@@ -390,11 +395,13 @@ caller cannot use it to reach a document their own token would be refused** —
 which is the whole point, because the service's own token carries
 `doc_read_all`. The reasoning is recorded in a comment at the call site.
 
-That forwarding currently uses `twirp.WithHTTPRequestHeaders`. It still works,
-because the repository client is still a Twirp client; when that client moves
-to Connect it becomes `rpc.WithOutgoingHeaders`, and **the check that it still
-forwards is that `GetFlatDocument` keeps working against a caller whose token
-is narrower than the service's** — not that it compiles.
+The forwarding is `rpc.WithOutgoingHeaders` on the context plus
+`rpc.PropagateHeaders()` as an interceptor on the anonymous client. **Both
+halves are needed and only one of them fails loudly**: without the interceptor
+the headers are set on the context and silently never sent, the call goes out
+anonymous, and the repository refuses it. `TestGetFlatDocument` is what
+notices, because it reads a document with a caller token narrower than the
+service's own.
 
 **Keys.** The 32-byte `--password-key` encrypts cluster passwords with
 AES-256-GCM in a `v1.<base64>` envelope. It is not rotatable without

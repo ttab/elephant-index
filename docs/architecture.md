@@ -362,6 +362,14 @@ future mount at a bare prefix has to be checked against this.
 
 ## Where the schemas come from
 
+**The repository is called with Connect clients** (`repositoryconnect`), so it
+has to be a version that serves them; see
+[ops.md](ops.md#bootstrap-order). The service's own background work — following
+the log, loading documents and schemas — carries the service token in the
+`http.Client`, while the handlers that serve a caller forward the caller's
+token per request with `rpc.WithOutgoingHeaders`, which reaches the wire only
+because the anonymous client is built with `rpc.PropagateHeaders()`.
+
 `index/schemas.go` loads revisor schemas from the repository at startup and
 keeps them current. They are the input to mapping construction, so **a schema
 the loader could not fetch is an index whose mapping cannot be extended** —

@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ttab/elephant-api/index"
-	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
@@ -20,9 +20,9 @@ func TestGetFlatDocument(t *testing.T) {
 
 	tc := testingAPIServer(t, logger)
 
-	documents := repository.NewDocumentsProtobufClient(
-		tc.Env.Repository.GetAPIEndpoint(),
-		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"))
+	documents := repositoryconnect.NewDocumentsServiceClient(
+		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"),
+		tc.Env.Repository.GetAPIEndpoint())
 
 	search := tc.SearchClient(t, "doc_read", "search")
 

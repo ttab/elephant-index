@@ -12,13 +12,15 @@ import (
 	"runtime/debug"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	"github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/rpc"
 	"github.com/urfave/cli/v3"
 )
 
@@ -223,14 +225,20 @@ func runIndexer(ctx context.Context, cmd *cli.Command) error {
 		elephantine.WithTokenSource(auth.TokenSource),
 		elephantine.LongpollClient())
 
-	anonymousDocuments := repository.NewDocumentsProtobufClient(
-		repositoryEndpoint, anonClient)
+	// The anonymous client is the one the handlers that serve a caller use,
+	// and they put the caller's own token on the context per request, so it
+	// needs the interceptor that copies those headers onto the wire. The
+	// authenticated client is for the service's own background work and
+	// carries its token in the http.Client.
+	anonymousDocuments := repositoryconnect.NewDocumentsServiceClient(
+		anonClient, repositoryEndpoint,
+		connect.WithInterceptors(rpc.PropagateHeaders()))
 
-	authDocuments := repository.NewDocumentsProtobufClient(
-		repositoryEndpoint, authClient)
+	authDocuments := repositoryconnect.NewDocumentsServiceClient(
+		authClient, repositoryEndpoint)
 
-	schemas := repository.NewSchemasProtobufClient(
-		repositoryEndpoint, authClient)
+	schemas := repositoryconnect.NewSchemasServiceClient(
+		authClient, repositoryEndpoint)
 
 	loader, err := index.NewSchemaLoader(ctx, logger.With(
 		elephantine.LogKeyComponent, "schema-loader"), schemas)
