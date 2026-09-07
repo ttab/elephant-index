@@ -13,6 +13,13 @@ const (
 	ScopeSearch     = "search"
 )
 
+// HTTP header names.
+const (
+	// headerAuthorization carries the bearer token.
+	headerAuthorization = "Authorization"
+	headerContentType   = "Content-Type"
+)
+
 func RequireAnyScope(ctx context.Context, scopes ...string) (*elephantine.AuthInfo, error) {
 	auth, ok := elephantine.GetAuthInfo(ctx)
 	if !ok {

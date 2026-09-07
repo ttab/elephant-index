@@ -14,7 +14,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/opensearch-project/opensearch-go/v2"
-	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephant-index/postgres"
@@ -197,8 +196,6 @@ type enrichJob struct {
 	UUID       string
 	Operation  int
 	State      *DocumentState
-	doc        *newsdoc.Document
-	metadoc    *newsdoc.Document
 	fields     map[string][]string
 }
 

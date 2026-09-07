@@ -1,11 +1,11 @@
 package index
 
 import (
+	"slices"
 	"strconv"
 	"time"
 
 	"github.com/ttab/newsdoc"
-	"golang.org/x/exp/slices"
 )
 
 // DocumentState is the full state that we want to index.

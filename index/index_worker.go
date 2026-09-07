@@ -125,12 +125,10 @@ func (iw *indexWorker) loop(ctx context.Context) {
 func (iw *indexWorker) enrich(
 	job *enrichJob,
 ) (*DocumentState, error) {
-	state := DocumentState{
-		Heads: make(map[string]Status),
-	}
-
 	if job.Operation == opDelete {
-		return &state, nil
+		return &DocumentState{
+			Heads: make(map[string]Status),
+		}, nil
 	}
 
 	ctx, cancel := context.WithTimeout(job.ctx, 5*time.Second)
@@ -145,12 +143,6 @@ func (iw *indexWorker) enrich(
 		return nil, fmt.Errorf("get document: %w", err)
 	}
 
-	job.doc = docRes.Document
-
-	if docRes.Meta != nil {
-		job.metadoc = docRes.Meta.Document
-	}
-
 	metaRes, err := iw.idx.documents.GetMeta(ctx, &repository.GetMetaRequest{
 		Uuid: job.UUID,
 	})
@@ -158,9 +150,28 @@ func (iw *indexWorker) enrich(
 		return nil, fmt.Errorf("get document metadata: %w", err)
 	}
 
-	state.CurrentVersion = metaRes.Meta.CurrentVersion
-	state.WorkflowState = metaRes.Meta.WorkflowState
-	state.WorkflowCheckpoint = metaRes.Meta.WorkflowCheckpoint
+	state, err := newDocumentState(docRes, metaRes)
+	if err != nil {
+		return nil, err
+	}
+
+	return state, nil
+}
+
+// newDocumentState assembles the indexable document state from a repository
+// document and its metadata.
+func newDocumentState(
+	docRes *repository.GetDocumentResponse,
+	metaRes *repository.GetMetaResponse,
+) (*DocumentState, error) {
+	state := DocumentState{
+		Heads:              make(map[string]Status),
+		CurrentVersion:     metaRes.Meta.CurrentVersion,
+		WorkflowState:      metaRes.Meta.WorkflowState,
+		WorkflowCheckpoint: metaRes.Meta.WorkflowCheckpoint,
+		Creator:            metaRes.Meta.CreatorUri,
+		Updater:            metaRes.Meta.UpdaterUri,
+	}
 
 	created, err := time.Parse(time.RFC3339, metaRes.Meta.Created)
 	if err != nil {
@@ -170,14 +181,12 @@ func (iw *indexWorker) enrich(
 
 	modified, err := time.Parse(time.RFC3339, metaRes.Meta.Modified)
 	if err != nil {
-		return nil, fmt.Errorf("parse document created time: %w",
+		return nil, fmt.Errorf("parse document modified time: %w",
 			err)
 	}
 
 	state.Created = created
-	state.Creator = metaRes.Meta.CreatorUri
 	state.Modified = modified
-	state.Updater = metaRes.Meta.UpdaterUri
 
 	for _, v := range metaRes.Meta.Acl {
 		state.ACL = append(state.ACL, ACLEntry{
@@ -193,21 +202,19 @@ func (iw *indexWorker) enrich(
 				name, err)
 		}
 
-		status := Status{
+		state.Heads[name] = Status{
 			ID:      v.Id,
 			Version: v.Version,
 			Creator: v.Creator,
 			Created: created,
 			Meta:    v.Meta,
 		}
-
-		state.Heads[name] = status
 	}
 
-	state.Document = newsdoc.DocumentFromRPC(job.doc)
+	state.Document = newsdoc.DocumentFromRPC(docRes.Document)
 
-	if job.metadoc != nil {
-		md := newsdoc.DocumentFromRPC(job.metadoc)
+	if docRes.Meta != nil {
+		md := newsdoc.DocumentFromRPC(docRes.Meta.Document)
 
 		state.MetaDocument = &md
 	}

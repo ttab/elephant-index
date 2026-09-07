@@ -19,7 +19,7 @@ require (
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/prometheus/client_golang v1.23.2
-	github.com/ttab/elephant-api v0.23.0
+	github.com/ttab/elephant-api v0.24.1
 	github.com/ttab/elephantine v0.27.1
 	github.com/ttab/eltest v0.2.2
 	github.com/ttab/flerr v0.1.0
@@ -32,7 +32,6 @@ require (
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v3 v3.9.0
 	github.com/viccon/sturdyc v1.1.5
-	golang.org/x/exp v0.0.0-20260603202125-055de637280b
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.20.0
 	google.golang.org/protobuf v1.36.11

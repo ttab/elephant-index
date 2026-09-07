@@ -90,7 +90,7 @@ func testingAPIServer(
 		elephantine.LogKeyComponent, "schema-loader"), schemas)
 	test.Must(t, err, "create schema loader")
 
-	metrics, err := index.NewMetrics(prometheus.DefaultRegisterer)
+	metrics, err := index.NewMetrics(reg)
 	test.Must(t, err, "set up metrics")
 
 	appExited := make(chan struct{})

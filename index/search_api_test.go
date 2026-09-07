@@ -1,14 +1,129 @@
 package index_test
 
 import (
+	"log/slog"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ttab/elephant-api/index"
+	"github.com/ttab/elephant-api/repository"
 	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
 )
+
+func TestGetFlatDocument(t *testing.T) {
+	ctx := t.Context()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelWarn))
+
+	tc := testingAPIServer(t, logger)
+
+	documents := repository.NewDocumentsProtobufClient(
+		tc.Env.Repository.GetAPIEndpoint(),
+		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"))
+
+	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
+		tc.AuthenticatedClient(t, "doc_read", "search"))
+
+	docDataDir := filepath.Join("..", "testdata", "documents")
+
+	loadDocuments(t, documents, docDataDir, "russia_v1.json")
+
+	const russiaUUID = "f5d2e4c5-01ba-4dae-9f09-a86701e06ecd"
+
+	// The converted document is fetched directly from the repository, so it's
+	// available without waiting for OpenSearch to catch up.
+	live, err := search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{
+		Uuid: russiaUUID,
+	})
+	test.Must(t, err, "get converted flattened document")
+
+	test.Equal(t, russiaUUID, live.Document.Uuid, "returned document UUID")
+
+	test.EqualDiff(t,
+		[]string{"Rysslands ambassadör kallas upp"},
+		flatFieldValues(live, "document.title"),
+		"flattened document title")
+
+	test.EqualDiff(t,
+		[]string{"core://newscoverage/" + russiaUUID},
+		flatFieldValues(live, "document.uri"),
+		"flattened document URI")
+
+	test.EqualDiff(t, []string{"1"},
+		flatFieldValues(live, "current_version"),
+		"flattened current version")
+
+	// The stored document becomes available once indexing has caught up. It
+	// should be identical to the document converted directly from the repo.
+	var stored *index.GetFlatDocumentResponse
+
+	deadline := time.After(10 * time.Second)
+
+	for stored == nil {
+		select {
+		case <-ctx.Done():
+			t.Fatal("cancelled while waiting for the document to be indexed")
+		case <-deadline:
+			t.Fatalf("timed out waiting for the document to be indexed,"+
+				" last error: %v", err)
+		case <-time.After(200 * time.Millisecond):
+		}
+
+		var res *index.GetFlatDocumentResponse
+
+		res, err = search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{
+			Uuid:   russiaUUID,
+			Stored: true,
+		})
+		if err == nil {
+			stored = res
+		}
+	}
+
+	if stored.Document != nil {
+		t.Error("the stored response should not include the source document")
+	}
+
+	test.EqualDiff(t, allFlatFields(live), allFlatFields(stored),
+		"stored fields match the converted fields")
+}
+
+func TestGetFlatDocumentRequiresUUID(t *testing.T) {
+	ctx := t.Context()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelWarn))
+
+	tc := testingAPIServer(t, logger)
+
+	search := index.NewSearchV1ProtobufClient(tc.IndexEndpoint,
+		tc.AuthenticatedClient(t, "doc_read", "search"))
+
+	_, err := search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{})
+	test.MustNot(t, err, "reject request without a UUID")
+}
+
+func flatFieldValues(
+	res *index.GetFlatDocumentResponse, name string,
+) []string {
+	f := res.Fields[name]
+	if f == nil {
+		return nil
+	}
+
+	return f.Values
+}
+
+func allFlatFields(res *index.GetFlatDocumentResponse) map[string][]string {
+	out := make(map[string][]string, len(res.Fields))
+
+	for name, values := range res.Fields {
+		out[name] = values.Values
+	}
+
+	return out
+}
 
 func TestIndexPattern(t *testing.T) {
 	test.Equal(t, "documents-foo-*-*",

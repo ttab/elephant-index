@@ -47,6 +47,8 @@ func NewSearchServiceV1(
 	percChanges *pg.FanOut[PercolatorUpdate],
 	eventPercolated *pg.FanOut[EventPercolated],
 	percDocs PercolatorDocumentGetter,
+	validator ValidatorSource,
+	languages LanguageOptions,
 ) *SearchServiceV1 {
 	return &SearchServiceV1{
 		log:             logger,
@@ -57,6 +59,8 @@ func NewSearchServiceV1(
 		percDocs:        percDocs,
 		percChanges:     percChanges,
 		eventPercolated: eventPercolated,
+		validator:       validator,
+		languages:       languages,
 		subscriptions: sturdyc.New[userSub](
 			5000, 5, 30*time.Minute, 10,
 			sturdyc.WithEvictionInterval(10*time.Second),
@@ -73,7 +77,196 @@ type SearchServiceV1 struct {
 	percDocs        PercolatorDocumentGetter
 	percChanges     *pg.FanOut[PercolatorUpdate]
 	eventPercolated *pg.FanOut[EventPercolated]
+	validator       ValidatorSource
+	languages       LanguageOptions
 	subscriptions   *sturdyc.Client[userSub]
+}
+
+// GetFlatDocument implements index.SearchV1. By default it fetches a document
+// directly from the repository and returns it in the flattened representation
+// used for indexing, bypassing the eventual consistency of OpenSearch. If
+// stored is set it instead returns the flattened document as it is currently
+// stored in the active index.
+func (s *SearchServiceV1) GetFlatDocument(
+	ctx context.Context, req *index.GetFlatDocumentRequest,
+) (*index.GetFlatDocumentResponse, error) {
+	auth, err := RequireAnyScope(ctx, ScopeSearch, ScopeIndexAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Uuid == "" {
+		return nil, twirp.RequiredArgumentError("uuid")
+	}
+
+	if req.Stored {
+		return s.storedFlatDocument(ctx, auth, req)
+	}
+
+	return s.convertFlatDocument(ctx, auth, req)
+}
+
+// convertFlatDocument fetches the document from the repository and flattens it.
+func (s *SearchServiceV1) convertFlatDocument(
+	ctx context.Context,
+	auth *elephantine.AuthInfo, req *index.GetFlatDocumentRequest,
+) (*index.GetFlatDocumentResponse, error) {
+	// Forward the authentication header so that the repository applies the
+	// caller's read permissions.
+	authCtx, err := twirp.WithHTTPRequestHeaders(ctx, http.Header{
+		headerAuthorization: []string{"Bearer " + auth.Token},
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf("invalid header handling: %w", err)
+	}
+
+	docRes, err := s.documents.Get(authCtx, &repository.GetDocumentRequest{
+		Uuid:         req.Uuid,
+		Version:      req.Version,
+		Status:       req.Status,
+		MetaDocument: repository.GetMetaDoc_META_INCLUDE,
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"get document from repository: %w", err)
+	}
+
+	metaRes, err := s.documents.GetMeta(authCtx, &repository.GetMetaRequest{
+		Uuid: req.Uuid,
+	})
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"get document metadata from repository: %w", err)
+	}
+
+	state, err := newDocumentState(docRes, metaRes)
+	if err != nil {
+		return nil, twirp.InternalErrorf("build document state: %w", err)
+	}
+
+	// Use a per-request resolver as the cache it maintains isn't safe for
+	// concurrent use.
+	language, err := NewLanguageResolver(s.languages).GetLanguageInfo(
+		state.Document.Language)
+	if err != nil {
+		return nil, twirp.InvalidArgumentError("language",
+			fmt.Sprintf("could not resolve document language %q: %v",
+				state.Document.Language, err))
+	}
+
+	flat, err := BuildDocument(
+		s.validator.GetValidator(), state, GetIndexConfig(language), nil)
+	if err != nil {
+		return nil, twirp.InternalErrorf("flatten document: %w", err)
+	}
+
+	res := index.GetFlatDocumentResponse{
+		Fields:   make(map[string]*index.FieldValuesV1, len(flat.Fields)),
+		Document: docRes.Document,
+	}
+
+	for field, values := range flat.Values() {
+		res.Fields[field] = &index.FieldValuesV1{
+			Values: values,
+		}
+	}
+
+	return &res, nil
+}
+
+// storedFlatDocument returns the flattened document as it is currently stored
+// in the active index.
+func (s *SearchServiceV1) storedFlatDocument(
+	ctx context.Context,
+	auth *elephantine.AuthInfo, req *index.GetFlatDocumentRequest,
+) (_ *index.GetFlatDocumentResponse, outErr error) {
+	client, indexSet := s.active.GetActiveIndex()
+	if client == nil {
+		return nil, twirp.FailedPrecondition.Error("no active index")
+	}
+
+	// Look the document up by ID across the active index set. Going through
+	// NewSearchRequest applies the caller's read restrictions.
+	query := &index.QueryRequestV1{
+		Query: &index.QueryV1{
+			Conditions: &index.QueryV1_Term{
+				Term: &index.TermQueryV1{Field: "_id", Value: req.Uuid},
+			},
+		},
+		Source: true,
+		Size:   1,
+	}
+
+	osReq, err := internal.NewSearchRequest(auth, query)
+	if err != nil {
+		return nil, twirp.InternalErrorf("create search request: %w", err)
+	}
+
+	queryPayload, err := json.Marshal(osReq)
+	if err != nil {
+		return nil, twirp.InternalErrorf("marshal opensearch query: %w", err)
+	}
+
+	res, err := client.Search(
+		client.Search.WithContext(ctx),
+		client.Search.WithIndex(internal.IndexPattern(indexSet, query)),
+		client.Search.WithBody(bytes.NewReader(queryPayload)))
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"perform opensearch search request: %w", err)
+	}
+
+	defer func() {
+		err := res.Body.Close()
+		if err != nil {
+			outErr = errors.Join(outErr, fmt.Errorf(
+				"close opensearch response body: %w", err))
+		}
+	}()
+
+	dec := json.NewDecoder(res.Body)
+
+	if res.IsError() {
+		var elasticErr ElasticErrorResponse
+
+		err := dec.Decode(&elasticErr)
+		if err != nil {
+			return nil, errors.Join(
+				fmt.Errorf("opensearch responded with: %s", res.Status()),
+				fmt.Errorf("decode error response: %w", err),
+			)
+		}
+
+		return nil, twirp.InternalErrorf(
+			"error response from opensearch: %s", res.Status())
+	}
+
+	var response searchResponse
+
+	err = dec.Decode(&response)
+	if err != nil {
+		return nil, twirp.InternalErrorf(
+			"unmarshal opensearch response: %w", err)
+	}
+
+	if len(response.Hits.Hits) == 0 {
+		return nil, twirp.NotFoundError(
+			"no stored document with that UUID in the active index")
+	}
+
+	hit := response.Hits.Hits[0]
+
+	out := index.GetFlatDocumentResponse{
+		Fields: make(map[string]*index.FieldValuesV1, len(hit.Source)),
+	}
+
+	for field, values := range hit.Source {
+		out.Fields[field] = &index.FieldValuesV1{
+			Values: anySliceToStrings(values),
+		}
+	}
+
+	return &out, nil
 }
 
 // EndSubscription implements index.SearchV1.
@@ -815,7 +1008,7 @@ func (s *SearchServiceV1) processSearchResponse(
 
 		// Forward the authentication header.
 		authCtx, err := twirp.WithHTTPRequestHeaders(ctx, http.Header{
-			"Authorization": []string{"Bearer " + auth.Token},
+			headerAuthorization: []string{"Bearer " + auth.Token},
 		})
 		if err != nil {
 			return nil, twirp.InternalErrorf(

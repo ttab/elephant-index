@@ -15,7 +15,7 @@ linters:
     - godox
     - goheader
     - gomoddirectives
-    - gomodguard
+    - gomodguard_v2
     - goprintffuncname
     - gosec
     - importas
@@ -40,6 +40,13 @@ linters:
     - wrapcheck
     - wsl_v5
   settings:
+    goconst:
+      # Test fixtures legitimately repeat string literals.
+      ignore-tests: true
+      # Common serialization keys and metric label names that mean different
+      # things in different contexts, so a shared constant would be misleading.
+      ignore-string-values:
+        - ^(type|name|index|query|rel)$
     godox:
       keywords:
         - FIXME
