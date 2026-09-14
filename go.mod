@@ -3,6 +3,7 @@ module github.com/ttab/elephant-index
 go 1.27.1
 
 require (
+	connectrpc.com/connect v1.20.0
 	github.com/aws/aws-sdk-go-v2 v1.46.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.3
@@ -19,7 +20,7 @@ require (
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/prometheus/client_golang v1.24.1
-	github.com/ttab/elephant-api v0.24.3-0.20260906172711-58ef998d0a74
+	github.com/ttab/elephant-api v0.25.0
 	github.com/ttab/elephantine v0.29.0
 	github.com/ttab/eltest v0.4.2
 	github.com/ttab/flerr v0.1.0
@@ -38,7 +39,6 @@ require (
 )
 
 require (
-	connectrpc.com/connect v1.20.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/IvanZagoskin/wkt v0.0.1 // indirect
