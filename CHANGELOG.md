@@ -51,9 +51,16 @@ Changes:
   the index with a flush, which makes the write durable without making it
   visible, and the path that registers a subscription did not refresh at all.
   Every write of a percolator query now refreshes before anything percolates
-  against it. A document indexed before the subscription is registered is
-  still not matched against it — that is a missed notification, which the
-  delivery contract allows, rather than a wrong answer. (#299)
+  against it, and a new subscription is registered only once its query is
+  evaluable, so percolation never sees the state in between. A document
+  indexed before the subscription is registered is still not matched against
+  it — that is a missed notification, which the delivery contract allows,
+  rather than a wrong answer. (#299)
+- Registering a subscription no longer stalls percolation while its query is
+  written. The percolator held the lock that percolation needs across a
+  Postgres transaction and the OpenSearch write, so every new subscription
+  blocked matching for the duration; the lock is now taken for the
+  registration itself and nothing else. (#299)
 - Dependency upgrades: elephant-api to v0.25.2.
 
 ## [v1.4.1] - 2026-09-17

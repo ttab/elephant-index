@@ -118,7 +118,7 @@ func NewPercolator(
 	}
 
 	for _, def := range defs {
-		p.registerPercolator(def)
+		p.registerPercolator(newPercolatorReference(def))
 	}
 
 	// Get notified when percolators are created or deleted.
@@ -697,21 +697,18 @@ func (p *Percolator) handleUpdate(
 	ctx context.Context,
 	change PercolatorUpdate,
 ) error {
-	p.pMutex.Lock()
-	defer p.pMutex.Unlock()
-
-	m, knownType := p.percolators[change.DocType]
-
 	if change.Deleted {
-		if knownType {
-			delete(m, change.ID)
-		}
+		p.unregisterPercolator(change.DocType, change.ID)
 
 		return nil
 	}
 
-	_, exists := m[change.ID]
-	if exists {
+	// Safe to check and then register without holding the lock across
+	// both: handlePercolatorUpdates is the only writer of the percolator
+	// set and is a single goroutine. Deletions arrive here too, as a
+	// Deleted update published by purgePercolator, rather than reaching
+	// into the map from the cleanup goroutine.
+	if p.hasPercolator(change.DocType, change.ID) {
 		return nil
 	}
 
@@ -722,34 +719,70 @@ func (p *Percolator) handleUpdate(
 		return fmt.Errorf("load percolator definition: %w", err)
 	}
 
-	ref := p.registerPercolator(def)
+	ref := newPercolatorReference(def)
 
-	err = p.preseedQuery(ctx, def, ref)
-	if err != nil {
-		return fmt.Errorf("preseed percolator document: %w", err)
+	// Seed and refresh before registering, and hold no lock while doing
+	// it. percolateDocument needs a read lock to see the percolator set,
+	// so writing the query document under the write lock stalled
+	// percolation for the length of a Postgres transaction and two
+	// OpenSearch calls. Registering last gives the same guarantee for
+	// free: percolateDocument either does not see this percolator yet,
+	// which is a missed notification the delivery contract allows, or sees
+	// one whose query is already evaluable.
+	seedErr := p.preseedQuery(ctx, def, ref)
+
+	// Registered even when seeding failed. The reference then carries no
+	// index in HasDocument, so ensurePercolatorQueries writes and
+	// refreshes the query before the next document is percolated against
+	// it. Dropping it here would leave the subscription unregistered until
+	// the service restarts.
+	p.registerPercolator(ref)
+
+	if seedErr != nil {
+		return fmt.Errorf("preseed percolator document: %w", seedErr)
 	}
 
 	return nil
 }
 
-func (p *Percolator) registerPercolator(def postgres.Percolator) *PercolatorReference {
-	m, ok := p.percolators[def.DocType]
-	if !ok {
-		m = make(map[int64]*PercolatorReference)
-		p.percolators[def.DocType] = m
-	}
-
-	ref := PercolatorReference{
+func newPercolatorReference(def postgres.Percolator) *PercolatorReference {
+	return &PercolatorReference{
 		ID:          def.ID,
 		DocType:     def.DocType,
 		Language:    def.Language,
 		Query:       def.Query,
 		HasDocument: make(map[string]bool),
 	}
+}
 
-	m[def.ID] = &ref
+// registerPercolator makes the percolator visible to percolateDocument.
+func (p *Percolator) registerPercolator(ref *PercolatorReference) {
+	p.pMutex.Lock()
+	defer p.pMutex.Unlock()
 
-	return &ref
+	m, ok := p.percolators[ref.DocType]
+	if !ok {
+		m = make(map[int64]*PercolatorReference)
+		p.percolators[ref.DocType] = m
+	}
+
+	m[ref.ID] = ref
+}
+
+func (p *Percolator) unregisterPercolator(docType string, id int64) {
+	p.pMutex.Lock()
+	defer p.pMutex.Unlock()
+
+	delete(p.percolators[docType], id)
+}
+
+func (p *Percolator) hasPercolator(docType string, id int64) bool {
+	p.pMutex.RLock()
+	defer p.pMutex.RUnlock()
+
+	_, exists := p.percolators[docType][id]
+
+	return exists
 }
 
 func (p *Percolator) percolateDocument(
