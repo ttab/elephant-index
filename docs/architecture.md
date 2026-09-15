@@ -168,13 +168,29 @@ write durable without reopening the searcher — so a query that has only been
 flushed stays invisible until the next periodic refresh, which is a second
 away by default.
 
-This closes one window and deliberately leaves another. A subscription is
-registered on the percolator's own goroutine, so a document indexed before
-that has happened is not matched against the new subscription at all, and the
-client hears nothing about it. That is a missed notification, which the
+**The order is what gives the guarantee, not a lock.** A new subscription's
+query document is written and refreshed *before* the percolator is registered
+in the in-memory set that percolation reads, and none of that work holds the
+lock guarding that set. So percolation either does not see the subscription
+yet, or sees one whose query is already evaluable — never the state in
+between.
+
+That ordering also keeps the write off the critical path. Registration takes
+the write lock for a map insert alone; percolating a document takes the read
+lock, so doing the Postgres and OpenSearch work under the write lock would
+stall percolation for every new subscription.
+
+This closes one window and deliberately leaves another. A document indexed
+before the subscription is registered is not matched against it at all, and
+the client hears nothing about it. That is a missed notification, which the
 delivery contract below already allows; a query registered but not yet visible
 would instead have produced a *wrong* answer, reporting the document as a
 non-match.
+
+A subscription whose query could not be written is still registered, without
+an index recorded against it, so the lazy path writes and refreshes it before
+the next document is percolated. It is counted on
+`query-doc-error` either way.
 
 ### Flow
 
