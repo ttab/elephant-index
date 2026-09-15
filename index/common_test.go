@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -20,6 +21,7 @@ import (
 	indexsvc "github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
+	"github.com/ttab/revisorschemas"
 	"golang.org/x/oauth2"
 )
 
@@ -84,6 +86,13 @@ func testingAPIServer(
 		// Don't block for close
 		go dbpool.Close()
 	})
+
+	adminSrc, err := auth.NewTokenSource(ctx, []string{"schema_admin"})
+	test.Mustf(t, err, "create a schema admin token source")
+
+	registerCoreSchemas(ctx, t, repository.NewSchemasProtobufClient(
+		env.Repository.GetAPIEndpoint(),
+		oauth2.NewClient(ctx, adminSrc)))
 
 	schemas := repository.NewSchemasProtobufClient(
 		env.Repository.GetAPIEndpoint(), client)
@@ -259,4 +268,42 @@ func (tc *TestContext) ManagementClientOn(
 	}
 
 	return index.NewManagementProtobufClient(tc.IndexEndpoint, client)
+}
+
+// coreSchemaNames are the schemas the repository registered from its own
+// embedded set at startup up to v1.2.5. Schema generations replaced that, so
+// the test suite has to push them itself — without them every document write
+// fails with "undeclared document type".
+var coreSchemaNames = []string{
+	"se.ecms",
+	"se.ecms.metadoc",
+	"se.ecms.planning",
+}
+
+// registerCoreSchemas pushes the core revisor schemas to the repository and
+// activates them as a generation.
+func registerCoreSchemas(
+	ctx context.Context, t *testing.T, client repository.Schemas,
+) {
+	t.Helper()
+
+	schemas := make([]*repository.Schema, 0, len(coreSchemaNames))
+
+	for _, name := range coreSchemaNames {
+		spec, err := fs.ReadFile(revisorschemas.Files(), name+".json")
+		test.Mustf(t, err, "read the %q schema", name)
+
+		schemas = append(schemas, &repository.Schema{
+			Name:    name,
+			Version: revisorschemas.Version(),
+			Spec:    string(spec),
+		})
+	}
+
+	_, err := client.RegisterGeneration(ctx,
+		&repository.RegisterGenerationRequest{
+			Schemas:    schemas,
+			Activation: repository.SchemaActivation_ACTIVATION_ACTIVE,
+		})
+	test.Mustf(t, err, "register the core schema generation")
 }

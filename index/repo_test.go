@@ -39,7 +39,7 @@ func (r *Repository) GetAPIEndpoint() string {
 func (r *Repository) SetUp(pool *dockertest.Pool, network *dockertest.Network) error {
 	res, err := pool.RunWithOptions(&dockertest.RunOptions{
 		Repository: "ghcr.io/ttab/elephant-repository",
-		Tag:        "v1.2.5",
+		Tag:        "v1.9.0",
 		Cmd:        []string{"run"},
 		Env: []string{
 			"NO_EVENTSINK=true",
