@@ -30,7 +30,6 @@ require (
 	github.com/ttab/newsdoc v1.1.0
 	github.com/ttab/revisor v1.0.3
 	github.com/ttab/revisorschemas v1.5.3
-	github.com/twitchtv/twirp v8.1.3+incompatible
 	github.com/urfave/cli/v3 v3.11.0
 	github.com/viccon/sturdyc v1.1.5
 	golang.org/x/oauth2 v0.36.0
@@ -131,6 +130,7 @@ require (
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
+	github.com/twitchtv/twirp v8.1.3+incompatible // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0 // indirect

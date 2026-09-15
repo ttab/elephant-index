@@ -69,6 +69,15 @@ the read that passes the limit, and there the stacks differ: Twirp answers
 `malformed` with `400` and Connect answers `resource_exhausted` with `429`.
 A large `MultiSearch` is the request in this API most likely to notice.
 
+**Deploy order (requires a Connect-serving repository):** this service now
+calls the elephant repository with Connect clients, so **the repository has to
+be deployed with Connect before this release goes out** — v1.9.0 or later.
+Against an older repository every call is answered `unimplemented` with a
+`404`, and since the schemas are loaded at startup the service does not come up
+at all. There is no flag to fall back to the Twirp clients; the ordering is
+the mitigation. Nothing else about the calls changes: the same endpoint
+configuration, the same scopes, and the same token in the same place.
+
 **Build (Go 1.27.1):** the module's `go` directive is `1.27.1`, up from
 `1.26.4`. A build box pinned to an older toolchain fails on the upgrade rather
 than falling back, which `GOTOOLCHAIN=auto` handles by downloading it and
@@ -112,6 +121,12 @@ Changes:
   tested rather than asserted — the same failing call is made on both stacks
   and the code, message and metadata compared, with two error bodies per stack
   pinned by golden files.
+- The repository clients are Connect clients, so this service no longer speaks
+  Twirp to anything. `twitchtv/twirp` is gone from every source file here and
+  is an indirect dependency only, kept by the generated Twirp server this
+  service still mounts. The caller-token forwarding that `GetFlatDocument` and
+  document loading depend on moved from `twirp.WithHTTPRequestHeaders` to
+  `rpc.WithOutgoingHeaders` plus a `rpc.PropagateHeaders()` interceptor.
 - `rpc_protocol_responses_total{service,method,protocol,code,client_id}` is
   reported by both stacks. `protocol="twirp"` falling to zero for a method is
   what says its Twirp mount can be retired, and `client_id` names the
