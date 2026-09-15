@@ -154,6 +154,28 @@ would mean guessing the languages; instead the document is created the first
 time a document of that type and language is indexed, and a new language index
 appears while a subscription is already running.
 
+### A percolator query is refreshed before it is percolated against
+
+A percolator query is an ordinary OpenSearch document, so it is matched only
+once a **refresh** has made it visible to search. Every path that writes one
+therefore refreshes the index before anything percolates against it, and the
+error is propagated rather than logged: the percolator retries the event from
+its last position, because reporting a document that matches as a non-match is
+worse than reporting it late.
+
+**A flush is not a substitute.** A flush is a Lucene commit — it makes the
+write durable without reopening the searcher — so a query that has only been
+flushed stays invisible until the next periodic refresh, which is a second
+away by default.
+
+This closes one window and deliberately leaves another. A subscription is
+registered on the percolator's own goroutine, so a document indexed before
+that has happened is not matched against the new subscription at all, and the
+client hears nothing about it. That is a missed notification, which the
+delivery contract below already allows; a query registered but not yet visible
+would instead have produced a *wrong* answer, reporting the document as a
+non-match.
+
 ### Flow
 
 ```

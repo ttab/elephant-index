@@ -86,6 +86,15 @@ Changes:
   does nothing when one exists — so this only changes what happens on an empty
   database. Credentials given in the endpoint select basic authentication over
   IAM signing, and are moved out of the URL before the cluster row is written.
+- A new subscription no longer reports matching documents as non-matches for
+  the first second of its life. A percolator query is an OpenSearch document
+  and is only matched once a refresh has made it visible; the code refreshed
+  the index with a flush, which makes the write durable without making it
+  visible, and the path that registers a subscription did not refresh at all.
+  Every write of a percolator query now refreshes before anything percolates
+  against it. A document indexed before the subscription is registered is
+  still not matched against it — that is a missed notification, which the
+  delivery contract allows, rather than a wrong answer.
 - Both RPC services are mounted on the Twirp and the Connect paths from one
   `elephantine.ServiceOptions`, so authentication, logging and metrics are
   identical on the two stacks by construction.

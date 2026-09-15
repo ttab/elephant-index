@@ -492,9 +492,22 @@ func (p *Percolator) preseedQuery(
 
 	index := NewIndexName(IndexTypePercolate, set, percolator.DocType, language)
 
+	// Both failures here leave a registered subscription whose query is not
+	// percolated against, which is what query-doc-error is the signal for.
+	// The lazy path counts it, so this one has to as well, or the runbook
+	// is only true for half the ways it happens.
 	err = p.createPercolatorDocument(ctx, client, index.Full, ref)
 	if err != nil {
+		p.metrics.percolatorLife.WithLabelValues("query-doc-error").Inc()
+
 		return err
+	}
+
+	err = p.refreshIndex(ctx, client, index.Full)
+	if err != nil {
+		p.metrics.percolatorLife.WithLabelValues("query-doc-error").Inc()
+
+		return fmt.Errorf("refresh index: %w", err)
 	}
 
 	ref.HasDocument[index.Full] = true
@@ -543,33 +556,40 @@ func (p *Percolator) ensurePercolatorQueries(
 	}
 
 	if written > 0 {
-		err := p.flushIndex(ctx, client, index)
+		err := p.refreshIndex(ctx, client, index)
 		if err != nil {
-			return fmt.Errorf("flush index: %w", err)
+			return fmt.Errorf("refresh index: %w", err)
 		}
 	}
 
 	return nil
 }
 
-func (p *Percolator) flushIndex(
+// refreshIndex makes the percolator queries written to the index evaluable.
+//
+// A refresh, not a flush: a flush is a Lucene commit, so it makes the write
+// durable without reopening the searcher, and a query that has only been
+// flushed stays invisible to percolation until the next periodic refresh.
+// Percolating against an index whose queries are not all visible reports a
+// document that should match as a non-match, so the error is returned rather
+// than logged — the percolator retries the event from its last position, and
+// a wrong answer is worse than a late one.
+func (p *Percolator) refreshIndex(
 	ctx context.Context, client *opensearch.Client, index string,
 ) (outErr error) {
-	// Flush the index so that we're guaranteed that the written
-	// queries are evaluated.
-	res, err := client.Indices.Flush(
-		client.Indices.Flush.WithContext(ctx),
-		client.Indices.Flush.WithIndex(index),
-		client.Indices.Flush.WithWaitIfOngoing(true),
+	res, err := client.Indices.Refresh(
+		client.Indices.Refresh.WithContext(ctx),
+		client.Indices.Refresh.WithIndex(index),
 	)
-
-	defer elephantine.Close("flush response", res.Body, &outErr)
-
-	err = errors.Join(ElasticErrorFromResponse(res), err)
 	if err != nil {
-		p.log.Error(
-			"failed to flush indices after percolator update",
-			elephantine.LogKeyError, err)
+		return fmt.Errorf("make refresh request: %w", err)
+	}
+
+	defer elephantine.Close("refresh response", res.Body, &outErr)
+
+	err = ElasticErrorFromResponse(res)
+	if err != nil {
+		return fmt.Errorf("refresh percolator index: %w", err)
 	}
 
 	return nil
