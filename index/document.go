@@ -37,8 +37,8 @@ func (d *Document) AddTime(name string, value time.Time) {
 	v := value.Format(time.RFC3339)
 
 	d.AddField(name, Field{
-		FieldOptions: FieldOptions{Type: TypeDate},
-		Values:       []string{v},
+		Type:   TypeDate,
+		Values: []string{v},
 	})
 }
 
@@ -46,8 +46,8 @@ func (d *Document) AddInteger(name string, value int64) {
 	v := strconv.FormatInt(value, 10)
 
 	d.AddField(name, Field{
-		FieldOptions: FieldOptions{Type: TypeLong},
-		Values:       []string{v},
+		Type:   TypeLong,
+		Values: []string{v},
 	})
 }
 

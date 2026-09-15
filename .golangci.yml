@@ -51,6 +51,17 @@ linters:
       keywords:
         - FIXME
         - BUG
+    wrapcheck:
+      extra-ignore-sigs:
+        # The elephantine/rpc helpers construct RPC errors that already carry
+        # their code. Wrapping one buries the code the handler picked, which
+        # is the whole point of returning it.
+        - github.com/ttab/elephantine/rpc.
+        # NewSearchRequest validates caller input and returns coded RPC
+        # errors, so a handler returns its error as it is for the same reason.
+        - github.com/ttab/elephant-index/internal.NewSearchRequest(
+        - (context.Context).Err(
+        - github.com/ttab/elephantine/pg.WithTX(
     wsl_v5:
       allow-first-in-block: true
       allow-whole-block: false

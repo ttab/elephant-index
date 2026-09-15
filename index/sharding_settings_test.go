@@ -71,7 +71,7 @@ func TestShardingSettings(t *testing.T) {
 			Shards:   4,
 			Replicas: 2,
 		})
-		test.Must(t, err, "parse sharding configuration")
+		test.Mustf(t, err, "parse sharding configuration")
 
 		if diff := cmp.Diff(c.Config, got); diff != "" {
 			t.Errorf("config mismatch (-want +got):\n%s", diff)

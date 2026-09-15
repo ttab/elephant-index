@@ -35,8 +35,8 @@ func TestMultiMatchFuzziness(t *testing.T) {
 			},
 		},
 	)
-	test.Must(t, err, "multi_match with fuzziness")
-	test.Equal(t,
+	test.Mustf(t, err, "multi_match with fuzziness")
+	test.Equalf(t,
 		&internal.SearchRequestV1{
 			Size: internal.DefaultSearchSize,
 			Query: map[string]any{
@@ -83,8 +83,8 @@ func TestMultiMatchFuzzinessWithPrefixLength(t *testing.T) {
 			},
 		},
 	)
-	test.Must(t, err, "multi_match with fuzziness and prefix_length")
-	test.Equal(t,
+	test.Mustf(t, err, "multi_match with fuzziness and prefix_length")
+	test.Equalf(t,
 		&internal.SearchRequestV1{
 			Size: internal.DefaultSearchSize,
 			Query: map[string]any{
@@ -131,8 +131,8 @@ func TestMultiMatchFuzzinessAuto(t *testing.T) {
 			},
 		},
 	)
-	test.Must(t, err, "multi_match with fuzziness AUTO")
-	test.Equal(t,
+	test.Mustf(t, err, "multi_match with fuzziness AUTO")
+	test.Equalf(t,
 		&internal.SearchRequestV1{
 			Size: internal.DefaultSearchSize,
 			Query: map[string]any{
@@ -181,8 +181,8 @@ func TestMultiMatchFuzzinessAutoCustom(t *testing.T) {
 			},
 		},
 	)
-	test.Must(t, err, "multi_match with fuzziness AUTO:4,8")
-	test.Equal(t,
+	test.Mustf(t, err, "multi_match with fuzziness AUTO:4,8")
+	test.Equalf(t,
 		&internal.SearchRequestV1{
 			Size: internal.DefaultSearchSize,
 			Query: map[string]any{
@@ -225,8 +225,8 @@ func TestMultiMatchWithoutFuzziness(t *testing.T) {
 			},
 		},
 	)
-	test.Must(t, err, "multi_match without fuzziness")
-	test.Equal(t,
+	test.Mustf(t, err, "multi_match without fuzziness")
+	test.Equalf(t,
 		&internal.SearchRequestV1{
 			Size: internal.DefaultSearchSize,
 			Query: map[string]any{

@@ -51,23 +51,23 @@ func SetUpBackingServices(
 	var client http.Client
 
 	err := instrument.Client("s3", &client)
-	test.Must(t, err, "instrument s3 http client")
+	test.Mustf(t, err, "instrument s3 http client")
 
 	s3Client, err := getS3Client(ctx, &client, minio.Environment())
-	test.Must(t, err, "get S3 client")
+	test.Mustf(t, err, "get S3 client")
 
 	bucket := strings.ToLower(t.Name() + "-repo")
 
 	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
 		Bucket: aws.String(bucket),
 	})
-	test.Must(t, err, "create repo bucket")
+	test.Mustf(t, err, "create repo bucket")
 
 	assetBucket := bucket + "-assets"
 	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
 		Bucket: aws.String(assetBucket),
 	})
-	test.Must(t, err, "create repo asset bucket")
+	test.Mustf(t, err, "create repo asset bucket")
 
 	_, err = s3Client.PutBucketVersioning(ctx, &s3.PutBucketVersioningInput{
 		Bucket: aws.String(assetBucket),
@@ -75,7 +75,7 @@ func SetUpBackingServices(
 			Status: types.BucketVersioningStatusEnabled,
 		},
 	})
-	test.Must(t, err, "enable asset bucket versioning")
+	test.Mustf(t, err, "enable asset bucket versioning")
 
 	repoPGEnv := pg.Database(t, "repo", nil, false)
 
@@ -104,19 +104,19 @@ func SetUpBackingServices(
 	}
 
 	conn, err := pgx.Connect(ctx, env.PostgresURI)
-	test.Must(t, err, "open postgres user connection")
+	test.Mustf(t, err, "open postgres user connection")
 
 	defer conn.Close(ctx)
 
 	m, err := migrate.NewMigrator(ctx, conn, "schema_vesion")
-	test.Must(t, err, "create migrator")
+	test.Mustf(t, err, "create migrator")
 
 	err = m.LoadMigrations(schema.Migrations)
-	test.Must(t, err, "create load migrations")
+	test.Mustf(t, err, "create load migrations")
 
 	if !skipMigrations {
 		err = m.Migrate(ctx)
-		test.Must(t, err, "migrate to current DB schema")
+		test.Mustf(t, err, "migrate to current DB schema")
 	}
 
 	env.Migrator = m

@@ -61,7 +61,7 @@ func TestGetLanguageSetting(t *testing.T) {
 		})
 
 		lang, err := res.GetLanguageInfo(param.code)
-		test.Must(t, err, "get language info")
+		test.Mustf(t, err, "get language info")
 
 		s := index.GetIndexConfig(lang)
 		idx := index.NewIndexName(
@@ -90,15 +90,15 @@ func TestGetLanguageSetting(t *testing.T) {
 		res := index.NewLanguageResolver(index.LanguageOptions{})
 
 		lang, err := res.GetLanguageInfo("sv-SE")
-		test.Must(t, err, "get language info")
+		test.Mustf(t, err, "get language info")
 
 		idx := index.NewIndexName(
 			index.IndexTypeDocuments,
 			"happy-hog", "core/article#template", lang)
 
-		test.Equal(t, "core_article--template-sv-se", idx.Language,
+		test.Equalf(t, "core_article--template-sv-se", idx.Language,
 			"variant type language name")
-		test.Equal(t, "documents-happy-hog-core_article--template-sv-se", idx.Full,
+		test.Equalf(t, "documents-happy-hog-core_article--template-sv-se", idx.Full,
 			"variant type full name")
 	})
 }

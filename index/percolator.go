@@ -20,6 +20,7 @@ import (
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/pg"
+	"github.com/ttab/elephantine/pg/joblock"
 	"github.com/ttab/flerr"
 )
 
@@ -279,7 +280,7 @@ func (p *Percolator) cleanup(ctx context.Context) {
 func (p *Percolator) purgePercolator(
 	ctx context.Context, client *opensearch.Client, id int64, docType string,
 ) error {
-	return pg.WithTX(ctx, p.db, func(tx pgx.Tx) (outErr error) { //nolint: wrapcheck
+	return pg.WithTX(ctx, p.db, func(tx pgx.Tx) (outErr error) {
 		q := postgres.New(tx)
 
 		var clean flerr.Cleaner
@@ -336,9 +337,9 @@ func (p *Percolator) percolationLoop(ctx context.Context) {
 	for {
 		p.metrics.percolatorLife.WithLabelValues("acquire-lock").Inc()
 
-		lock, err := pg.NewJobLock(
+		lock, err := joblock.New(
 			p.db, p.log, "percolator",
-			pg.JobLockOptions{})
+			joblock.Options{})
 		if err != nil {
 			p.log.ErrorContext(ctx, "failed to create percolator job lock",
 				elephantine.LogKeyError, err)
@@ -580,7 +581,7 @@ func (p *Percolator) createPercolatorDocument(
 	index string,
 	perc *PercolatorReference,
 ) error {
-	return pg.WithTX(ctx, p.db, func(tx pgx.Tx) (outErr error) { //nolint: wrapcheck
+	return pg.WithTX(ctx, p.db, func(tx pgx.Tx) (outErr error) {
 		q := postgres.New(tx)
 
 		err := q.RegisterPercolatorDocumentIndex(ctx,

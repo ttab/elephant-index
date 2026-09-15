@@ -1,5 +1,7 @@
 package index
 
+import "maps"
+
 type FieldType string
 
 const (
@@ -189,9 +191,7 @@ func (mc MappingChanges) Superset(mappings Mappings) Mappings {
 		Properties: make(map[string]Mapping),
 	}
 
-	for k, v := range mappings.Properties {
-		sup.Properties[k] = v
-	}
+	maps.Copy(sup.Properties, mappings.Properties)
 
 	for k := range mc {
 		// Only add changes that are part of a superset. We can't break

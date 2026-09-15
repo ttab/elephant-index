@@ -5,9 +5,10 @@ import (
 	"regexp"
 	"strings"
 
+	"connectrpc.com/connect"
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephantine"
-	"github.com/twitchtv/twirp"
+	"github.com/ttab/elephantine/rpc"
 )
 
 const (
@@ -63,19 +64,19 @@ func NewSearchRequest(
 	}
 
 	if req.LoadDocument && req.Size > 200 {
-		return nil, twirp.InvalidArgumentError("documents",
+		return nil, rpc.InvalidArgument("documents",
 			"document loading is not allowed for result sets over 200 items")
 	}
 
 	paginated := req.From != 0 || len(req.SearchAfter) > 0
 
 	if req.Subscribe && paginated {
-		return nil, twirp.InvalidArgumentError("subscribe",
+		return nil, rpc.InvalidArgument("subscribe",
 			"pagination cannot be used with subscriptions")
 	}
 
 	if req.Subscribe && req.DocumentType == "" {
-		return nil, twirp.InvalidArgumentError("subscribe",
+		return nil, rpc.InvalidArgument("subscribe",
 			"document type is required for subscriptions")
 	}
 
@@ -83,7 +84,12 @@ func NewSearchRequest(
 
 	userQuery, err := protoToQuery(req.Query)
 	if err != nil {
-		return nil, twirp.InternalErrorf("translate query: %w", err)
+		// A query that cannot be translated is a query the caller
+		// sent, so it is an invalid argument rather than a fault of
+		// ours. The helpers below it return plain errors and this is
+		// the one place that knows they describe caller input.
+		return nil, rpc.Errorf(connect.CodeInvalidArgument,
+			"translate query: %w", err)
 	}
 
 	boolQuery.Must = append(boolQuery.Must, userQuery)

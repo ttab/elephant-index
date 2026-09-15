@@ -36,8 +36,8 @@ func BuildDocument(
 	doc := &state.Document
 
 	titleField := Field{
-		FieldOptions: FieldOptions{Type: TypeText},
-		Values:       []string{doc.Title},
+		Type:   TypeText,
+		Values: []string{doc.Title},
 	}
 
 	if featureFlags[FeatureSortable] {
@@ -141,8 +141,8 @@ func BuildDocument(
 	}
 
 	d.AddField("text", Field{
-		FieldOptions: FieldOptions{Type: TypeText},
-		Values:       text,
+		Type:   TypeText,
+		Values: text,
 	})
 
 	err := collectDocumentFields(
@@ -296,9 +296,7 @@ func collectDocumentFields(
 			// TODO: can we alias the sub-fields as well, is it
 			// needed or is an alias like a directory symlink?
 			d.AddField(alias, Field{
-				FieldOptions: FieldOptions{
-					Type: TypeAlias,
-				},
+				Type:   TypeAlias,
 				Values: []string{path},
 			})
 		}
@@ -356,13 +354,7 @@ func isKind(r revisor.EntityRef, kind ...revisor.BlockKind) bool {
 		return false
 	}
 
-	for _, k := range kind {
-		if r.BlockKind == k {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(kind, r.BlockKind)
 }
 
 func entityRefsToPath(doc *newsdoc.Document, refs []revisor.EntityRef) string {

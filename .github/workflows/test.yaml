@@ -8,8 +8,15 @@ permissions:
 
 jobs:
   tests:
-    name: Tests
+    name: Tests (${{ matrix.stack }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The service serves Twirp and Connect from one implementation, so the
+        # suite runs twice against the same server rather than testing one
+        # stack and assuming the other.
+        stack: [twirp, connect]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -17,5 +24,30 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Run go tests
+        env:
+          TEST_RPC_STACK: ${{ matrix.stack }}
         run: |
           go test ./...
+
+  # main's branch protection requires a check named "Tests", and a matrix job
+  # reports one check per leg ("Tests (twirp)", "Tests (connect)") rather than
+  # that name, so without this the required check never reports and a pull
+  # request waits on it forever.
+  #
+  # if: always() is load-bearing. A skipped job still reports its check, and a
+  # skipped required check does not block, so a gate that only ran on success
+  # would turn a failed matrix into a green requirement.
+  tests-gate:
+    name: Tests
+    runs-on: ubuntu-latest
+    needs: tests
+    if: always()
+    steps:
+      - name: Check the matrix result
+        env:
+          RESULT: ${{ needs.tests.result }}
+        run: |
+          if [ "$RESULT" != "success" ]; then
+            echo "the test matrix did not succeed: $RESULT" >&2
+            exit 1
+          fi
