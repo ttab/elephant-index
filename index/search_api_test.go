@@ -1,14 +1,21 @@
 package index_test
 
 import (
+	"context"
+	"io"
 	"log/slog"
+	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/golang-jwt/jwt/v5"
+	opensearch "github.com/opensearch-project/opensearch-go/v2"
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/repository"
+	indeximpl "github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephant-index/internal"
 	"github.com/ttab/elephantine"
 	"github.com/ttab/elephantine/test"
@@ -123,6 +130,75 @@ func allFlatFields(res *index.GetFlatDocumentResponse) map[string][]string {
 	return out
 }
 
+type staticTransport struct {
+	statusCode int
+	body       string
+}
+
+func (t *staticTransport) RoundTrip(_ *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: t.statusCode,
+		Body:       io.NopCloser(strings.NewReader(t.body)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+type fakeActiveIndex struct {
+	client   *opensearch.Client
+	indexSet string
+}
+
+func (f *fakeActiveIndex) GetActiveIndex() (*opensearch.Client, string) {
+	return f.client, f.indexSet
+}
+
+func newTestSearchService(t *testing.T, statusCode int, body string) *indeximpl.SearchServiceV1 {
+	t.Helper()
+
+	client, err := opensearch.NewClient(opensearch.Config{
+		Addresses: []string{"http://localhost:9200"},
+		Transport: &staticTransport{statusCode: statusCode, body: body},
+	})
+	test.Mustf(t, err, "create opensearch client")
+
+	return indeximpl.NewSearchServiceV1(
+		slog.New(test.NewLogHandler(t, slog.LevelDebug)),
+		nil, nil,
+		&fakeActiveIndex{client: client, indexSet: "test"},
+		nil, nil, nil, nil, nil,
+		indeximpl.LanguageOptions{},
+	)
+}
+
+func searchAuthContext(t *testing.T) context.Context {
+	t.Helper()
+
+	return elephantine.SetAuthInfo(t.Context(), &elephantine.AuthInfo{
+		Claims: elephantine.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{Subject: testUser},
+			Scope:            "search",
+		},
+	})
+}
+
+const (
+	testUser     = "core://user/1"
+	testOrg      = "org://tt"
+	testIndexSet = "foo"
+	testLanguage = "sv-se"
+	testDocType  = "text"
+)
+
+var badRequestBody = `{"error":{"type":"search_phase_execution_exception","reason":"all shards failed"},"status":400}`
+
+var simpleQuery = &index.QueryRequestV1{
+	Query: &index.QueryV1{
+		Conditions: &index.QueryV1_Term{
+			Term: &index.TermQueryV1{Field: "id", Value: testIndexSet},
+		},
+	},
+}
+
 func TestIndexPattern(t *testing.T) {
 	test.Equalf(t, "documents-foo-*-*",
 		internal.IndexPattern("foo", &index.QueryRequestV1{}),
@@ -173,7 +249,7 @@ func TestSubscriptionsCannotBePaginated(t *testing.T) {
 		&index.QueryRequestV1{
 			Subscribe:    true,
 			From:         10,
-			DocumentType: "foo",
+			DocumentType: testIndexSet,
 			Query: &index.QueryV1{
 				Conditions: &index.QueryV1_Term{
 					Term: &index.TermQueryV1{},
@@ -205,10 +281,10 @@ func TestNewSearchRequest(t *testing.T) {
 		&elephantine.AuthInfo{
 			Claims: elephantine.JWTClaims{
 				RegisteredClaims: jwt.RegisteredClaims{
-					Subject: "core://user/1",
+					Subject: testUser,
 				},
 				Scope: "doc_read",
-				Units: []string{"org://tt"},
+				Units: []string{testOrg},
 			},
 		},
 		&index.QueryRequestV1{
@@ -216,12 +292,12 @@ func TestNewSearchRequest(t *testing.T) {
 				Conditions: &index.QueryV1_Term{
 					Term: &index.TermQueryV1{
 						Field: "id",
-						Value: "foo",
+						Value: testIndexSet,
 					},
 				},
 			},
 			DocumentType: "",
-			Language:     "sv-se",
+			Language:     testLanguage,
 			Fields: []string{
 				"id",
 			},
@@ -247,12 +323,12 @@ func TestNewSearchRequest(t *testing.T) {
 			Query: map[string]any{
 				"bool": internal.BoolConditionsV1{
 					Must: []map[string]any{{"term": map[string]any{
-						"id": map[string]string{"value": "foo"},
+						"id": map[string]string{"value": testIndexSet},
 					}}},
 					Filter: []map[string]any{{"terms": map[string]any{
 						"readers": []string{
-							"core://user/1",
-							"org://tt",
+							testUser,
+							testOrg,
 						},
 					}}},
 				},
@@ -268,15 +344,37 @@ func TestNewSearchRequest(t *testing.T) {
 	)
 }
 
+func TestQueryBadRequest(t *testing.T) {
+	svc := newTestSearchService(t, http.StatusBadRequest, badRequestBody)
+	ctx := searchAuthContext(t)
+
+	_, err := svc.Query(ctx, simpleQuery)
+	test.MustNotf(t, err, "query with bad request")
+
+	test.IsRPCError(t, err, connect.CodeInvalidArgument)
+}
+
+func TestMultiSearchBadRequest(t *testing.T) {
+	svc := newTestSearchService(t, http.StatusBadRequest, badRequestBody)
+	ctx := searchAuthContext(t)
+
+	_, err := svc.MultiSearch(ctx, &index.MultiSearchRequest{
+		Queries: []*index.QueryRequestV1{simpleQuery},
+	})
+	test.MustNotf(t, err, "multisearch with bad request")
+
+	test.IsRPCError(t, err, connect.CodeInvalidArgument)
+}
+
 func TestNewSearchRequestAsDocAdmin(t *testing.T) {
 	req, err := internal.NewSearchRequest(
 		&elephantine.AuthInfo{
 			Claims: elephantine.JWTClaims{
 				RegisteredClaims: jwt.RegisteredClaims{
-					Subject: "core://user/1",
+					Subject: testUser,
 				},
 				Scope: "doc_admin",
-				Units: []string{"org://tt"},
+				Units: []string{testOrg},
 			},
 		},
 		&index.QueryRequestV1{
@@ -284,12 +382,12 @@ func TestNewSearchRequestAsDocAdmin(t *testing.T) {
 				Conditions: &index.QueryV1_Term{
 					Term: &index.TermQueryV1{
 						Field: "id",
-						Value: "foo",
+						Value: testIndexSet,
 					},
 				},
 			},
 			DocumentType: "",
-			Language:     "sv-se",
+			Language:     testLanguage,
 			Fields: []string{
 				"id",
 			},
@@ -315,7 +413,7 @@ func TestNewSearchRequestAsDocAdmin(t *testing.T) {
 			Query: map[string]any{
 				"bool": internal.BoolConditionsV1{
 					Must: []map[string]any{{"term": map[string]any{
-						"id": map[string]string{"value": "foo"},
+						"id": map[string]string{"value": testIndexSet},
 					}}},
 				},
 			},
