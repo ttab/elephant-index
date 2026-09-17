@@ -4,6 +4,53 @@ Everything from v1.4.0 onwards is documented here; earlier releases are not
 reconstructed. The entries are derived from the release tags, and the linked
 pull requests hold the detail.
 
+## [v1.4.1] - 2026-09-17
+
+**New API surface (multi-type queries):** `SearchV1.Query` and
+`SearchV1.MultiSearch` accept a repeated `document_types` on
+`QueryRequestV1`, naming the document types a query should span. A query that
+spans several types searches several indices, which is what the field is for —
+`document_type` names one type and has not changed, and a query that names no
+type at all still searches every type. The two fields are unioned rather than
+exclusive, so `document_type: "core/article"` together with
+`document_types: ["core/planning-item"]` searches both, and a client can adopt
+the plural field without first removing the singular one. It needs
+elephant-api v0.25.1 or later.
+
+Two limits come with it, and this service enforces neither. Document types are
+indexed separately so that their mappings can differ, and a field name that
+carries different types in different document types cannot be queried or
+sorted on across them — OpenSearch rejects the whole search, not the offending
+index. `GetMappings` still answers for a single document type, so reconciling
+the mappings of several types before building such a query is the caller's
+job. A query may name at most 50 types; past that it is refused as an invalid
+argument, because the index list travels in the request path.
+
+Subscriptions stay single-type: a percolator is registered for one document
+type, so `subscribe` together with more than one type is refused as an invalid
+argument. The one type may come from either field.
+
+**Behaviour change (a document type with no index):** a query that names a
+document type with nothing indexed in the active set now returns no hits for
+it instead of failing. Searches are issued with `ignore_unavailable`, so a
+named index that does not exist is skipped. Previously such a query answered
+`internal` with the text of OpenSearch's `index_not_found_exception`, which
+this reached whenever the type and a region-qualified language named an index
+concretely rather than as a wildcard — a fresh index set, a type nothing has
+been written for yet, a typo. It is now indistinguishable from a type that
+exists and matches nothing. Anything that treated that error as "this type is
+not indexed yet" has to look at the index set instead.
+
+Changes:
+
+- `QueryRequestV1` gains `document_types`, and `IndexPattern` builds a
+  comma-separated index list from it, collapsing types that sanitize to the
+  same index name.
+- Searches and multi searches set `ignore_unavailable`.
+- `MultiSearch` validates each query before building its metadata line, so a
+  refused query no longer has an index list built for it first.
+- Dependency upgrades: elephant-api to v0.25.1.
+
 ## [v1.4.0] - 2026-09-16
 
 **New API surface (Connect):** every method of both services is now served on

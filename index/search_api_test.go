@@ -1,8 +1,10 @@
 package index_test
 
 import (
+	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -149,6 +151,83 @@ func TestIndexPattern(t *testing.T) {
 			DocumentType: "core/article#template",
 		}),
 		"index pattern with variant type")
+	test.Equalf(t, "documents-foo-text-*,documents-foo-image-*",
+		internal.IndexPattern("foo", &index.QueryRequestV1{
+			DocumentTypes: []string{"text", "image"},
+		}),
+		"index pattern with several document types")
+	test.Equalf(t, "documents-foo-text-sv-se,documents-foo-image-sv-se",
+		internal.IndexPattern("foo", &index.QueryRequestV1{
+			DocumentTypes: []string{"text", "image"},
+			Language:      "sv-se",
+		}),
+		"index pattern with several document types and a language")
+	test.Equalf(t, "documents-foo-text-*,documents-foo-image-*",
+		internal.IndexPattern("foo", &index.QueryRequestV1{
+			DocumentType:  "text",
+			DocumentTypes: []string{"image", "text"},
+		}),
+		"index pattern unions the singular and plural fields")
+	test.Equalf(t, "documents-foo-core_article-*",
+		internal.IndexPattern("foo", &index.QueryRequestV1{
+			DocumentTypes: []string{"core/article", "core+article"},
+		}),
+		"index pattern deduplicates types that sanitize alike")
+	test.Equalf(t, "documents-foo-*-*",
+		internal.IndexPattern("foo", &index.QueryRequestV1{
+			DocumentTypes: []string{""},
+		}),
+		"index pattern ignores empty document types")
+}
+
+func TestSubscriptionsCannotSpanDocumentTypes(t *testing.T) {
+	_, err := internal.NewSearchRequest(
+		&elephantine.AuthInfo{},
+		&index.QueryRequestV1{
+			Subscribe:     true,
+			DocumentTypes: []string{"text", "image"},
+			Query: &index.QueryV1{
+				Conditions: &index.QueryV1_Term{
+					Term: &index.TermQueryV1{},
+				},
+			},
+		},
+	)
+	test.MustNotf(t, err, "subscriptions cannot span document types")
+
+	_, err = internal.NewSearchRequest(
+		&elephantine.AuthInfo{},
+		&index.QueryRequestV1{
+			Subscribe:     true,
+			DocumentTypes: []string{"text"},
+			Query: &index.QueryV1{
+				Conditions: &index.QueryV1_Term{
+					Term: &index.TermQueryV1{},
+				},
+			},
+		},
+	)
+	test.Mustf(t, err, "subscribe using only the plural document type field")
+}
+
+func TestQueryDocumentTypesAreCapped(t *testing.T) {
+	types := make([]string, internal.MaxQueryDocumentTypes+1)
+	for i := range types {
+		types[i] = fmt.Sprintf("type%d", i)
+	}
+
+	_, err := internal.NewSearchRequest(
+		&elephantine.AuthInfo{},
+		&index.QueryRequestV1{
+			DocumentTypes: types,
+			Query: &index.QueryV1{
+				Conditions: &index.QueryV1_Term{
+					Term: &index.TermQueryV1{},
+				},
+			},
+		},
+	)
+	test.MustNotf(t, err, "a query cannot span unbounded document types")
 }
 
 func TestLoadDocumentHasSizeCap(t *testing.T) {
@@ -328,4 +407,111 @@ func TestNewSearchRequestAsDocAdmin(t *testing.T) {
 		req,
 		"new search request",
 	)
+}
+
+func TestQueryAcrossDocumentTypes(t *testing.T) {
+	ctx := t.Context()
+	logger := slog.New(test.NewLogHandler(t, slog.LevelWarn))
+
+	tc := testingAPIServer(t, logger)
+
+	documents := repository.NewDocumentsProtobufClient(
+		tc.Env.Repository.GetAPIEndpoint(),
+		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"))
+
+	search := tc.SearchClient(t, "doc_read", "search")
+
+	docDataDir := filepath.Join("..", "testdata", "documents")
+
+	// An article and a planning item, so the query has to reach two
+	// indices to see both.
+	loadDocuments(t, documents, docDataDir,
+		"cyber_v1.json", "russia_v1.json")
+
+	const (
+		cyberUUID  = "b3a96437-4f79-4cc4-84c2-5c659a00e428"
+		russiaUUID = "f5d2e4c5-01ba-4dae-9f09-a86701e06ecd"
+	)
+
+	want := []string{cyberUUID, russiaUUID}
+	slices.Sort(want)
+
+	hitIDs := func(req *index.QueryRequestV1) ([]string, error) {
+		res, err := search.Query(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("query the index: %w", err)
+		}
+
+		ids := make([]string, len(res.Hits.Hits))
+		for i, hit := range res.Hits.Hits {
+			ids[i] = hit.Id
+		}
+
+		slices.Sort(ids)
+
+		return ids, nil
+	}
+
+	query := func(t *testing.T, req *index.QueryRequestV1) []string {
+		t.Helper()
+
+		ids, err := hitIDs(req)
+		test.Mustf(t, err, "perform search")
+
+		return ids
+	}
+
+	deadline := time.After(20 * time.Second)
+
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("cancelled while waiting for documents to become searchable")
+		case <-deadline:
+			t.Fatal("timed out waiting for documents to become searchable")
+		case <-time.After(200 * time.Millisecond):
+		}
+
+		// The indices are still being created here, so a search can come
+		// back 503 until the shards are assigned. That is what we're
+		// waiting out, so it isn't a failure yet.
+		got, err := hitIDs(&index.QueryRequestV1{
+			DocumentTypes: []string{"core/article", "core/planning-item"},
+			Language:      "sv-se",
+			Query:         index.MatchAllQuery(),
+		})
+		if err != nil || len(got) < len(want) {
+			continue
+		}
+
+		test.EqualDiff(t, want, got,
+			"get both documents from a multi-type query")
+
+		break
+	}
+
+	// The singular and the plural field are unioned rather than
+	// exclusive.
+	test.EqualDiff(t, want, query(t, &index.QueryRequestV1{
+		DocumentType:  "core/article",
+		DocumentTypes: []string{"core/planning-item"},
+		Language:      "sv-se",
+		Query:         index.MatchAllQuery(),
+	}), "union the singular and plural document type fields")
+
+	// A type with nothing indexed has no index, and naming it must not
+	// take the rest of the query with it.
+	test.EqualDiff(t, want, query(t, &index.QueryRequestV1{
+		DocumentTypes: []string{
+			"core/article", "core/planning-item", "core/nonexistent",
+		},
+		Language: "sv-se",
+		Query:    index.MatchAllQuery(),
+	}), "ignore a document type that has no index")
+
+	test.EqualDiff(t, []string{}, query(t, &index.QueryRequestV1{
+		DocumentTypes: []string{"core/nonexistent"},
+		Language:      "sv-se",
+		Query:         index.MatchAllQuery(),
+	}), "an unknown document type alone gives no hits")
 }

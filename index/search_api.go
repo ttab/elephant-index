@@ -212,6 +212,7 @@ func (s *SearchServiceV1) storedFlatDocument(
 	res, err := client.Search(
 		client.Search.WithContext(ctx),
 		client.Search.WithIndex(internal.IndexPattern(indexSet, query)),
+		client.Search.WithIgnoreUnavailable(true),
 		client.Search.WithBody(bytes.NewReader(queryPayload)))
 	if err != nil {
 		return nil, rpc.Internalf(
@@ -857,6 +858,11 @@ func (s *SearchServiceV1) Query(
 	res, err := client.Search(
 		client.Search.WithContext(ctx),
 		client.Search.WithIndex(internal.IndexPattern(indexSet, req)),
+		// A document type that has nothing indexed in the active set has
+		// no index, and a fully qualified pattern names it concretely. We
+		// want that to contribute no hits rather than fail the search, so
+		// that one unknown type doesn't take the whole query with it.
+		client.Search.WithIgnoreUnavailable(true),
 		client.Search.WithBody(bytes.NewReader(queryPayload)))
 	if err != nil {
 		return nil, rpc.Internalf(
@@ -919,8 +925,19 @@ func (s *SearchServiceV1) MultiSearch(
 	var body bytes.Buffer
 
 	for i, q := range req.Queries {
+		// Validate before building the metadata line, so that a query
+		// naming too many document types is refused rather than turned
+		// into an oversized index list.
+		osReq, err := internal.NewSearchRequest(auth, q)
+		if err != nil {
+			return nil, err
+		}
+
+		requests[i] = osReq
+
 		metadata, err := json.Marshal(msearchMetadata{
-			Index: internal.IndexPattern(indexSet, q),
+			Index:             internal.IndexPattern(indexSet, q),
+			IgnoreUnavailable: true,
 		})
 		if err != nil {
 			return nil, rpc.Internalf("marshal metadata: %w", err)
@@ -928,13 +945,6 @@ func (s *SearchServiceV1) MultiSearch(
 
 		body.Write(metadata)
 		body.WriteString("\n")
-
-		osReq, err := internal.NewSearchRequest(auth, q)
-		if err != nil {
-			return nil, err
-		}
-
-		requests[i] = osReq
 
 		queryPayload, err := json.Marshal(osReq)
 		if err != nil {
@@ -1103,11 +1113,16 @@ func (s *SearchServiceV1) processSearchResponse(
 	}
 
 	if req.Subscribe {
+		// NewSearchRequest has already refused a subscription that
+		// doesn't name exactly one document type, and the type can come
+		// from either the singular or the plural field.
+		docTypes := internal.QueryDocumentTypes(req)
+
 		subID, cursor, err := s.createSubscription(
 			ctx,
 			auth.Claims.Subject,
 			req.Shared,
-			req.DocumentType,
+			docTypes[0],
 			req.Language,
 			request.Query,
 			postgres.SubscriptionSpec{
@@ -1307,6 +1322,9 @@ type responseHit struct {
 
 type msearchMetadata struct {
 	Index string `json:"index"`
+	// IgnoreUnavailable skips a named index that doesn't exist, see the
+	// matching option on the single search request.
+	IgnoreUnavailable bool `json:"ignore_unavailable,omitempty"`
 }
 
 type msearchResponse struct {

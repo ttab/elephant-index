@@ -111,7 +111,9 @@ gets `-unspecified`: `sv` gives `documents-factual-tiger-core_article-sv-unspeci
 
 **A separate index per type and language is what lets mappings differ without
 conflicting**, and what lets each index use a language-specific ICU analyzer
-(`index/language-settings.go`) instead of one analyzer for every language.
+(`index/language-settings.go`) instead of one analyzer for every language. It
+is also what a query has to work around when it spans several types — see
+[Selecting indices for a query](#selecting-indices-for-a-query).
 
 ## Index sets and re-indexing
 
@@ -322,6 +324,42 @@ seen, and adopting the shared helper would change both.
 Parity between the stacks is tested rather than assumed: `TestErrorParity`
 performs the same failing call on both and asserts the code, the message and
 the metadata match, and the wire golden files pin two error bodies per stack.
+
+### Selecting indices for a query
+
+`internal.IndexPattern` turns a `QueryRequestV1` into the index list that
+OpenSearch is asked to search, and searching several document types is
+searching several indices. The request names types in two fields:
+`document_type`, a single type, and `document_types`, a list. **They are
+unioned rather than exclusive**, so a client can start sending the plural
+field without first removing the singular one, and naming no type at all still
+means every type. Each type contributes one pattern, the patterns are
+comma-joined, and two types that sanitize to the same pattern are collapsed —
+naming an index twice would count its hits twice.
+
+The list is capped at `internal.MaxQueryDocumentTypes` types, because it
+travels in the request path and OpenSearch rejects a request line past
+`http.max_initial_line_length`.
+
+Searches are issued with `ignore_unavailable`, so a named type that has
+nothing indexed in the active set contributes no hits instead of failing the
+query with `index_not_found_exception`. Without it one unknown type would take
+the whole query with it, and a type that has no index is the normal state
+early in a re-index. The flag matters because a fully qualified pattern —
+a type plus a language with a region — names an index concretely rather than
+as a wildcard.
+
+**Two limits follow from one index per type, and neither is enforced by this
+service.** A field name can carry different types in different document types,
+and a query or a sort that crosses those indices is rejected by OpenSearch as
+a whole; the caller is the one who has to know. `GetMappings` answers for a
+single document type, so reconciling the mappings of several types is the
+caller's job as well.
+
+**A subscription is single-type.** A percolator is registered for one
+`(doc_type, language)` pair and lives in a per-type percolate index, so
+`NewSearchRequest` refuses a subscribing query that names more or less than
+one type. The type may come from either field.
 
 ### Scopes
 
