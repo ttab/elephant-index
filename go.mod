@@ -20,7 +20,7 @@ require (
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/prometheus/client_golang v1.24.1
-	github.com/ttab/elephant-api v0.25.1
+	github.com/ttab/elephant-api v0.25.2
 	github.com/ttab/elephantine v0.29.0
 	github.com/ttab/eltest v0.5.0
 	github.com/ttab/flerr v0.1.0

@@ -499,6 +499,25 @@ func TestQueryAcrossDocumentTypes(t *testing.T) {
 		Query:         index.MatchAllQuery(),
 	}), "union the singular and plural document type fields")
 
+	// Each hit says which document type it is, which is the only way to
+	// tell a mixed result set apart.
+	res, err := search.Query(ctx, &index.QueryRequestV1{
+		DocumentTypes: []string{"core/article", "core/planning-item"},
+		Language:      "sv-se",
+		Query:         index.MatchAllQuery(),
+	})
+	test.Mustf(t, err, "query for the document types of the hits")
+
+	byID := make(map[string]string, len(res.Hits.Hits))
+	for _, hit := range res.Hits.Hits {
+		byID[hit.Id] = hit.DocumentType
+	}
+
+	test.EqualDiff(t, map[string]string{
+		cyberUUID:  "core/article",
+		russiaUUID: "core/planning-item",
+	}, byID, "each hit carries its own document type")
+
 	// A type with nothing indexed has no index, and naming it must not
 	// take the rest of the query with it.
 	test.EqualDiff(t, want, query(t, &index.QueryRequestV1{

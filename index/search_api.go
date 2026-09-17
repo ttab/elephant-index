@@ -67,6 +67,16 @@ func NewSearchServiceV1(
 			5000, 5, 30*time.Minute, 10,
 			sturdyc.WithEvictionInterval(10*time.Second),
 		),
+		// An index's document type is set when the index is created and
+		// never changes, so this can be cached hard. Missing record
+		// storage is deliberately left off: an index name we haven't
+		// seen is looked up again rather than remembered as unknown,
+		// which is what makes a newly created index resolve without a
+		// restart.
+		indexTypes: sturdyc.New[string](
+			5000, 5, time.Hour, 10,
+			sturdyc.WithEvictionInterval(time.Minute),
+		),
 	}
 }
 
@@ -82,6 +92,7 @@ type SearchServiceV1 struct {
 	validator       ValidatorSource
 	languages       LanguageOptions
 	subscriptions   *sturdyc.Client[userSub]
+	indexTypes      *sturdyc.Client[string]
 }
 
 // GetFlatDocument implements index.SearchV1. By default it fetches a document
@@ -1017,6 +1028,42 @@ func (s *SearchServiceV1) MultiSearch(
 	return &mRes, nil
 }
 
+// documentTypes resolves the index names a search response refers to into the
+// document types the indices hold. An index name cannot be inverted back into
+// a document type on its own — SanitizeDocType maps "/", "+" and spaces all
+// onto "_" — so the answer comes from the document_index registry, which
+// records the type unsanitized as it creates each index.
+func (s *SearchServiceV1) documentTypes(
+	ctx context.Context, names []string,
+) (map[string]string, error) {
+	types, err := s.indexTypes.GetOrFetchBatch(ctx, names,
+		func(name string) string {
+			return name
+		},
+		func(ctx context.Context, missing []string) (map[string]string, error) {
+			q := postgres.New(s.db)
+
+			rows, err := q.GetIndexContentTypes(ctx, missing)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"read index content types: %w", err)
+			}
+
+			result := make(map[string]string, len(rows))
+
+			for _, row := range rows {
+				result[row.Name] = row.ContentType
+			}
+
+			return result, nil
+		})
+	if err != nil {
+		return nil, err //nolint: wrapcheck
+	}
+
+	return types, nil
+}
+
 func (s *SearchServiceV1) processSearchResponse(
 	ctx context.Context,
 	auth *elephantine.AuthInfo,
@@ -1075,10 +1122,27 @@ func (s *SearchServiceV1) processSearchResponse(
 		}
 	}
 
+	// A response can mix document types, and the index name is the only
+	// thing on a hit that says which one it is.
+	indexNames := make([]string, 0, len(response.Hits.Hits))
+
+	for _, hit := range response.Hits.Hits {
+		if hit.Index != "" && !slices.Contains(indexNames, hit.Index) {
+			indexNames = append(indexNames, hit.Index)
+		}
+	}
+
+	docTypes, err := s.documentTypes(ctx, indexNames)
+	if err != nil {
+		return nil, rpc.Internalf(
+			"resolve the document types of the hits: %w", err)
+	}
+
 	for i, hit := range response.Hits.Hits {
 		ph := index.HitV1{
-			Id:     hit.ID,
-			Fields: make(map[string]*index.FieldValuesV1, len(hit.Fields)),
+			Id:           hit.ID,
+			DocumentType: docTypes[hit.Index],
+			Fields:       make(map[string]*index.FieldValuesV1, len(hit.Fields)),
 		}
 
 		if documents != nil {

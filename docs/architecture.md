@@ -361,6 +361,26 @@ caller's job as well.
 `NewSearchRequest` refuses a subscribing query that names more or less than
 one type. The type may come from either field.
 
+### What a hit says it is
+
+A response to a multi-type query mixes types, so every hit carries a
+`document_type`. It is resolved rather than read off the hit: OpenSearch
+returns `_index`, and **an index name cannot be inverted back into a document
+type** — `SanitizeDocType` maps `/`, `+` and spaces all onto `_`, so
+`core/article` and `core_article` are the same index name. The answer comes
+from the `document_index` registry instead, which records `content_type`
+unsanitized as it creates each index.
+
+That means the type is right for documents indexed before this existed — it is
+derived from the index, not stored on the document, so nothing had to be
+re-indexed for it. It also means **the search path reads Postgres**, which it
+did not before. An index's type is fixed when the index is created, so the
+lookup is cached for an hour and per index name; the cache deliberately does
+not store missing records, so an index created after a replica started
+resolves on the next query rather than staying unknown until a restart. A
+failed lookup fails the query rather than returning hits with an empty type,
+since an empty type is indistinguishable from an answer.
+
 ### Scopes
 
 | Method | Scopes accepted |

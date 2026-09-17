@@ -105,6 +105,11 @@ FROM document_index
 WHERE set_name = @set_name
       AND content_type = @content_type;
 
+-- name: GetIndexContentTypes :many
+SELECT name, content_type
+FROM document_index
+WHERE name = ANY(@names::text[]);
+
 -- name: UpdateIndexMappings :exec
 UPDATE document_index
 SET mappings = @mappings

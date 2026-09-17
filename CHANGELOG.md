@@ -4,6 +4,39 @@ Everything from v1.4.0 onwards is documented here; earlier releases are not
 reconstructed. The entries are derived from the release tags, and the linked
 pull requests hold the detail.
 
+## [v1.4.2] - Unreleased
+
+**New API surface (a hit says what it is):** every `HitV1` in a `Query` or
+`MultiSearch` response now carries `document_type`. A query that spans several
+document types returns a mixed result set, and nothing on a hit told them
+apart before — a caller either inferred the type from a field it had indexed
+itself, or ran one query per type so that the type came from the query rather
+than the answer. It needs elephant-api v0.25.2 or later.
+
+The type is derived from the index a hit came from, not stored on the
+document, so **it is correct for everything already indexed and nothing has to
+be re-indexed for it**. An index name on its own is not enough — sanitizing a
+document type for use in an index name maps `/`, `+` and spaces all onto `_` —
+so the value is read from the `document_index` registry, which has recorded
+the unsanitized type since the index was created.
+
+**Behaviour change (search reads the database):** serving a search now
+involves a Postgres lookup, where it previously needed only OpenSearch. The
+result is cached per index name for an hour, because an index's document type
+is fixed when the index is created, so the query rate against the database is
+roughly one statement per index per hour and not one per search. A replica
+that cannot reach Postgres now fails searches that it would previously have
+served. Operators watching this service's database dependency should know that
+the read path, not just subscriptions and the management API, now depends on
+it.
+
+Changes:
+
+- `HitV1` gains `document_type`, resolved from the `document_index` registry
+  and cached per index name.
+- New query `GetIndexContentTypes`, which is the registry lookup behind it.
+- Dependency upgrades: elephant-api to v0.25.2.
+
 ## [v1.4.1] - 2026-09-17
 
 **New API surface (multi-type queries):** `SearchV1.Query` and
@@ -49,7 +82,7 @@ Changes:
 - Searches and multi searches set `ignore_unavailable`.
 - `MultiSearch` validates each query before building its metadata line, so a
   refused query no longer has an index list built for it first.
-- Dependency upgrades: elephant-api to v0.25.1.
+- Dependency upgrades: elephant-api to v0.25.1 and ttab/mage to v0.15.0.
 
 ## [v1.4.0] - 2026-09-16
 

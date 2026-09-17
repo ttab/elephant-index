@@ -488,6 +488,37 @@ func (q *Queries) GetIndexConfiguration(ctx context.Context, name string) (GetIn
 	return i, err
 }
 
+const getIndexContentTypes = `-- name: GetIndexContentTypes :many
+SELECT name, content_type
+FROM document_index
+WHERE name = ANY($1::text[])
+`
+
+type GetIndexContentTypesRow struct {
+	Name        string
+	ContentType string
+}
+
+func (q *Queries) GetIndexContentTypes(ctx context.Context, names []string) ([]GetIndexContentTypesRow, error) {
+	rows, err := q.db.Query(ctx, getIndexContentTypes, names)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetIndexContentTypesRow
+	for rows.Next() {
+		var i GetIndexContentTypesRow
+		if err := rows.Scan(&i.Name, &i.ContentType); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getIndexSet = `-- name: GetIndexSet :one
 SELECT name, position, cluster, active, enabled, deleted, modified, caught_up
 FROM index_set WHERE name = $1
