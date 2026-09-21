@@ -801,6 +801,26 @@ func (p *Percolator) percolateDocument(
 		return fmt.Errorf("marshal percolate document: %w", err)
 	}
 
+	// We want to collect all IDs of the percolators so that we know which
+	// didn't match the query.
+	//
+	// The snapshot has to be taken before the search runs, not after. A
+	// percolator that's registered while the search is in flight has a
+	// query that was evaluable when it was registered, but that wasn't
+	// necessarily in the index the search read. Including it in the
+	// snapshot would report the document as a non-match against a query
+	// that was never run. Taking the snapshot first means such a
+	// percolator either doesn't appear at all, which is a missed
+	// notification, or comes back as a hit and is recorded as a match.
+	p.pMutex.RLock()
+
+	allPercs := make(map[int64]bool, len(p.percolators[doc.Document.Type]))
+	for k := range p.percolators[doc.Document.Type] {
+		allPercs[k] = false
+	}
+
+	p.pMutex.RUnlock()
+
 	res, err := client.Search(
 		client.Search.WithContext(ctx),
 		client.Search.WithIndex(index),
@@ -835,17 +855,6 @@ func (p *Percolator) percolateDocument(
 		return fmt.Errorf("unmarshal opensearch response: %w", err)
 	}
 
-	p.pMutex.RLock()
-
-	// We want to collect all IDs of the percolators so that we know which
-	// didn't match the query.
-	allPercs := make(map[int64]bool, len(p.percolators[doc.Document.Type]))
-	for k := range p.percolators[doc.Document.Type] {
-		allPercs[k] = false
-	}
-
-	p.pMutex.RUnlock()
-
 	// Bulk insert arrays.
 	percolators := make([]int64, 0, len(allPercs))
 	matches := make([]bool, 0, len(allPercs))
@@ -856,6 +865,9 @@ func (p *Percolator) percolateDocument(
 			continue
 		}
 
+		// A hit that isn't in the snapshot is a percolator that was
+		// registered while the search was in flight. It matched, so
+		// record it as a match.
 		percolators = append(percolators, id)
 		matches = append(matches, true)
 

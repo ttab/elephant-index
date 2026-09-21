@@ -121,9 +121,11 @@ first thing to lag under load.
   `query-doc-error` cover creating percolator documents for a subscription's
   query — **`query-doc-error` climbing means subscriptions are registered whose
   queries never became percolator documents, so those subscriptions deliver
-  nothing** while looking healthy to the client. It counts both the write and
-  the refresh that makes the query evaluable, on the preseed path and the lazy
-  one, so it is the single signal for that failure however it happened.
+  nothing** while looking healthy to the client. It counts a failed write on
+  both the path that seeds a new subscription and the one that seeds lazily,
+  and a failed refresh on the first of those. A failed refresh on the lazy
+  path is not counted here: it stops the percolation loop, so it shows up as a
+  flat `elephant_indexer_percolator_position` instead.
 
 A `start` without a matching `stop`, repeatedly, is the percolator restarting
 under supervision; read `task_restarts_total` alongside it.

@@ -177,6 +177,16 @@ lock guarding that set. So percolation either does not see the subscription
 yet, or sees one whose query is already evaluable — never the state in
 between.
 
+**Percolating a document reads that set before it searches, not after.** The
+set of percolators a document is reported against — as a match or a
+non-match — is snapshotted before the percolate query goes to OpenSearch. A
+subscription registered while that search is in flight is evaluable but was
+not necessarily in the index the search read, so including it in the snapshot
+would report the document as a non-match against a query that was never run.
+Taking the snapshot first leaves the two outcomes above: the percolator is
+absent, a missed notification, or it comes back as a hit and is recorded as a
+match.
+
 That ordering also keeps the write off the critical path. Registration takes
 the write lock for a map insert alone; percolating a document takes the read
 lock, so doing the Postgres and OpenSearch work under the write lock would

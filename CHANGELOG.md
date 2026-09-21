@@ -52,10 +52,13 @@ Changes:
   visible, and the path that registers a subscription did not refresh at all.
   Every write of a percolator query now refreshes before anything percolates
   against it, and a new subscription is registered only once its query is
-  evaluable, so percolation never sees the state in between. A document
-  indexed before the subscription is registered is still not matched against
-  it — that is a missed notification, which the delivery contract allows,
-  rather than a wrong answer. (#299)
+  evaluable, so percolation never sees the state in between. The set of
+  percolators a document is reported against is likewise read before the
+  percolate search rather than after it, which closes the same wrong answer in
+  a window one search round trip wide. A document indexed before the
+  subscription is registered is still not matched against it — that is a
+  missed notification, which the delivery contract allows, rather than a wrong
+  answer. (#299)
 - Registering a subscription no longer stalls percolation while its query is
   written. The percolator held the lock that percolation needs across a
   Postgres transaction and the OpenSearch write, so every new subscription
