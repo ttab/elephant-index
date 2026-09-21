@@ -1,24 +1,10 @@
 # Changelog
 
-Everything from v1.4.0 onwards is documented here; earlier releases are not
+Everything from v1.0.0 onwards is documented here; earlier releases are not
 reconstructed. The entries are derived from the release tags, and the linked
 pull requests hold the detail.
 
-## [v1.4.2] - Unreleased
-
-**New API surface (a hit says what it is):** every `HitV1` in a `Query` or
-`MultiSearch` response now carries `document_type`. A query that spans several
-document types returns a mixed result set, and nothing on a hit told them
-apart before — a caller either inferred the type from a field it had indexed
-itself, or ran one query per type so that the type came from the query rather
-than the answer. It needs elephant-api v0.25.2 or later.
-
-The type is derived from the index a hit came from, not stored on the
-document, so **it is correct for everything already indexed and nothing has to
-be re-indexed for it**. An index name on its own is not enough — sanitizing a
-document type for use in an index name maps `/`, `+` and spaces all onto `_` —
-so the value is read from the `document_index` registry, which has recorded
-the unsanitized type since the index was created.
+## [v1.5.0] - Unreleased
 
 **Deploy order (requires a Connect-serving repository):** this service now
 calls the elephant repository with Connect clients, so **the repository has to
@@ -28,16 +14,6 @@ Against an older repository every call is answered `unimplemented` with a
 at all. There is no flag to fall back to the Twirp clients; the ordering is
 the mitigation. Nothing else about the calls changes: the same endpoint
 configuration, the same scopes, and the same token in the same place.
-
-**Behaviour change (search reads the database):** serving a search now
-involves a Postgres lookup, where it previously needed only OpenSearch. The
-result is cached per index name for an hour, because an index's document type
-is fixed when the index is created, so the query rate against the database is
-roughly one statement per index per hour and not one per search. A replica
-that cannot reach Postgres now fails searches that it would previously have
-served. Operators watching this service's database dependency should know that
-the read path, not just subscriptions and the management API, now depends on
-it.
 
 **Behaviour change (a failed refresh stalls percolation):** making a
 percolator query visible to search is now part of percolating an event, and an
@@ -51,15 +27,6 @@ non-match is worse than reporting it late — but it is a new way for
 
 Changes:
 
-- `HitV1` gains `document_type`, resolved from the `document_index` registry
-  and cached per index name.
-- New query `GetIndexContentTypes`, which is the registry lookup behind it.
-- The repository clients are Connect clients, so this service no longer speaks
-  Twirp to anything. `twitchtv/twirp` is gone from every source file here and
-  is an indirect dependency only, kept by the generated Twirp server this
-  service still mounts. The caller-token forwarding that `GetFlatDocument` and
-  document loading depend on moved from `twirp.WithHTTPRequestHeaders` to
-  `rpc.WithOutgoingHeaders` plus a `rpc.PropagateHeaders()` interceptor. (#298)
 - A new subscription no longer reports matching documents as non-matches for
   the first second of its life. A percolator query is an OpenSearch document
   and is only matched once a refresh has made it visible; the code refreshed
@@ -79,6 +46,44 @@ Changes:
   Postgres transaction and the OpenSearch write, so every new subscription
   blocked matching for the duration; the lock is now taken for the
   registration itself and nothing else. (#299)
+- The repository clients are Connect clients, so this service no longer speaks
+  Twirp to anything. `twitchtv/twirp` is gone from every source file here and
+  is an indirect dependency only, kept by the generated Twirp server this
+  service still mounts. The caller-token forwarding that `GetFlatDocument` and
+  document loading depend on moved from `twirp.WithHTTPRequestHeaders` to
+  `rpc.WithOutgoingHeaders` plus a `rpc.PropagateHeaders()` interceptor. (#298)
+
+## [v1.4.2] - 2026-09-17
+
+**New API surface (a hit says what it is):** every `HitV1` in a `Query` or
+`MultiSearch` response now carries `document_type`. A query that spans several
+document types returns a mixed result set, and nothing on a hit told them
+apart before — a caller either inferred the type from a field it had indexed
+itself, or ran one query per type so that the type came from the query rather
+than the answer. It needs elephant-api v0.25.2 or later.
+
+The type is derived from the index a hit came from, not stored on the
+document, so **it is correct for everything already indexed and nothing has to
+be re-indexed for it**. An index name on its own is not enough — sanitizing a
+document type for use in an index name maps `/`, `+` and spaces all onto `_`
+— so the value is read from the `document_index` registry, which has
+recorded the unsanitized type since the index was created.
+
+**Behaviour change (search reads the database):** serving a search now
+involves a Postgres lookup, where it previously needed only OpenSearch. The
+result is cached per index name for an hour, because an index's document type
+is fixed when the index is created, so the query rate against the database is
+roughly one statement per index per hour and not one per search. A replica
+that cannot reach Postgres now fails searches that it would previously have
+served. Operators watching this service's database dependency should know that
+the read path, not just subscriptions and the management API, now depends on
+it.
+
+Changes:
+
+- `HitV1` gains `document_type`, resolved from the `document_index` registry
+  and cached per index name.
+- New query `GetIndexContentTypes`, which is the registry lookup behind it.
 - Dependency upgrades: elephant-api to v0.25.2.
 
 ## [v1.4.1] - 2026-09-17
@@ -277,3 +282,410 @@ Changes:
 - The repository gained this changelog, and a documentation set alongside it:
   `docs/architecture.md`, `docs/ops.md` and `docs/observability.md`, with the
   README reorganised around them. (#297)
+
+## [v1.3.2] - 2026-05-22
+
+**Behaviour change (an unhealthy cluster no longer fails readiness):**
+the OpenSearch check on `/health/ready` is now optional, so a replica whose
+active cluster is unreachable or unhealthy stays ready and keeps serving. It
+was a hard readiness function before, which meant a cluster wobble rolled the
+whole deployment out of the load balancer at once — including the replicas
+that were only proxying or answering subscription polls, neither of which
+needs the cluster to be healthy. The check still runs and still reports, so
+`/health/ready` output names it; what changed is that it no longer gates the
+endpoint's status. Anything alerting on pods leaving readiness during an
+OpenSearch incident has to watch the check itself, or the indexing lag,
+instead.
+
+Changes:
+
+- The readiness request to OpenSearch is given its own 500 ms timeout, so a
+  cluster that accepts connections and then hangs cannot hold a readiness
+  probe open until the probe's own deadline.
+- Dependency upgrades: Go to 1.26.3 (image `golang:1.26.3-alpine3.23`),
+  elephantine to v0.26.2, elephant-api to v0.22.4, revisor to v1.0.0,
+  revisorschemas to v1.5.0, tern to v2.4.1, mage to v0.9.1 and the AWS SDK
+  suite. revisorschemas v1.5.0 renames its schema files to reverse-domain
+  style (`core.json` to `se.ecms.json`, and so on) and restructures the eidos
+  block, which reaches this repository only as test fixtures.
+- The GitHub Actions build and lint workflows are updated.
+
+## [v1.3.1] - 2026-04-29
+
+**New configuration (serving TLS directly):** `--tls-addr`/`TLS_ADDR`,
+`--cert-file`/`TLS_CERT_PATH` and `--key-file`/`TLS_KEY_PATH` make the service
+serve HTTPS on a second listener, defaulting to `:1443`. Nothing happens
+unless `--cert-file` is set, so an installation that terminates TLS at the
+ingress is unaffected.
+
+Changes:
+
+- Dependency upgrades: elephantine to v0.26.1.
+
+## [v1.3.0] - 2026-04-13
+
+**Behaviour change (fuzzy search actually fuzzes):** `fuzziness` and
+`prefix_length` on `MultiMatchQueryV1` are translated into the OpenSearch
+`multi_match` query. Both fields existed on the request and neither reached
+OpenSearch, so a caller asking for fuzzy matching silently got exact matching;
+those queries now return more hits, and in a different order. A client that
+has been compensating for the old behaviour — widening the query itself, or
+sending a fuzziness it knew was ignored — sees the difference first. It needs
+elephant-api v0.22.1 or later.
+
+`fuzziness` carries either an edit distance or an `auto` sub-message. `auto`
+with no thresholds becomes OpenSearch's `AUTO`, and `auto` with a low or high
+term length becomes `AUTO:low,high`; an edit distance is passed through as the
+integer. (#274)
+
+Changes:
+
+- Dependency upgrades: elephant-api to v0.22.1.
+
+## [v1.2.6] - 2026-03-06
+
+**Breaking (index names change for document types with a variant):** a
+document type may now carry a `#` variant suffix, as in
+`core/article#template`, and the variant is separated by `--` in the index
+name rather than collapsed into `_`: `core/article#template` indexes into
+`documents-<set>-core_article--template-<language>` where it previously
+indexed into `documents-<set>-core_article_template-<language>`. Sanitizing
+maps every other non-alphanumeric character onto `_`, so without the separate
+treatment `core/article#template` and a hypothetical `core/article_template`
+share one index and mix unrelated documents into one mapping.
+
+**A document type whose index name changes loses everything already indexed
+under it.** The indexer writes to the new name and creates the index on
+demand, the old index keeps the documents and nothing deletes it, and a query
+builds its index pattern with the same sanitizer — so it looks at the new,
+nearly empty index and the old documents are simply not found. A query that
+names the type without a region-qualified language builds a wildcard pattern,
+which matches the new index and nothing else: it returns far fewer hits than
+it should, with no error and nothing logged. One that pins a region-qualified
+language names the index concretely and is answered `internal` with
+OpenSearch's `index_not_found_exception` until the first document lands under
+the new name. Types with no `#` in them are spelled exactly as before and are
+unaffected, so the blast radius is the set of types carrying a variant suffix.
+**If any of those have been indexed, re-index into a new index set and cut
+over** — the mapping cannot be moved in place, and there is no flag that keeps
+the old names. Both the indexing path and the index pattern a query is turned
+into use the same sanitizer, so the two agree with each other either way; what
+they cannot do is agree with what an earlier release wrote. (#255, #264)
+
+**Behaviour change (block field names have a fallback):** a meta or content
+block with no `type`, or a link block with no `rel`, used to flatten to a
+field name with an empty key — `meta.` — which put unrelated blocks in one
+bucket. The key now falls back through `type`, `rel`, `role` and `name`, and
+the value is prefixed with the attribute it came from, so a link with no `rel`
+but a `type` of `text/html` becomes `rel.type__text_html`; with nothing to
+fall back on the key is `__unknown`. These are new field names, so they need
+new mappings, and **the blocks that were indexed under the old empty key stay
+that way until they are re-indexed into a new index set**. (#256)
+
+**Build (Go 1.26.0, Alpine 3.23):** the image builds on
+`golang:1.26.0-alpine3.23` and ships on `alpine:3.23`, up from Go 1.25.4 and
+Alpine 3.22.
+
+Changes:
+
+- A CA certificate registered on a cluster is appended to the system
+  certificate pool instead of replacing it. `ca_cert` previously became the
+  client's entire set of roots, so registering a cluster's private CA broke
+  verification of every publicly signed endpoint the same client reached.
+  (#263)
+- `scripts/set-encryption-key` generates a password encryption key, and the
+  README documents what the key is for and that it cannot be rotated.
+- Dependency upgrades: Go to 1.26.0, elephantine to v0.25.0, elephant-api to
+  v0.21.3, revisor to v0.11.1, revisorschemas to v1.2.0-pre6, `urfave/cli`
+  from v2 to v3, golangci-lint to v2.9, and the AWS SDK suite.
+
+## [v1.2.5] - 2025-11-25
+
+**New API surface (TLS options on a cluster):** `RegisterCluster` accepts
+`auth.ca_cert`, a PEM bundle to verify the cluster's certificate against, and
+`auth.insecure_tls`, which turns verification off entirely. A `ca_cert` that
+is not a PEM bundle of `CERTIFICATE` blocks is refused as an invalid argument
+rather than failing later, when a client is built. It needs elephant-api
+v0.19.3 or later.
+
+Changes:
+
+- The OpenSearch HTTP client is given explicit connection settings: a 3 s TLS
+  handshake timeout, 10 idle and 10 total connections per host, and a 90 s
+  idle connection timeout.
+- Dependency upgrades: elephantine to v0.22.1 and elephant-api to v0.19.3.
+
+## [v1.2.4] - 2025-11-24
+
+**Behaviour change (searching before there is an index set):** `Query` answers
+`failed_precondition` with "no active index" when no index set is active,
+where it previously panicked on a nil client and the caller read a `500`.
+This is the state a fresh installation is in between coming up and having its
+first index set activated.
+
+Changes:
+
+- Activating an index set on an installation that has none no longer fails.
+  The check for a currently active set treated "no rows" as an error, so the
+  first activation could not complete.
+
+## [v1.2.3] - 2025-11-24
+
+**Behaviour change (readiness before there is an index set):**
+`/health/ready` passes when no index set is active, where the OpenSearch check
+previously failed on the missing row and held a fresh installation out of the
+load balancer — which also kept the management API it needs to register a
+cluster and create the first set out of reach.
+
+## [v1.2.2] - 2025-11-24
+
+**Breaking (a password encryption key is required):** `--password-key`, from
+`PASSWORD_ENCRYPTION_KEY`, is a required flag and the service does not start
+without it. It is a 32-byte hex-encoded key, and it encrypts the cluster
+passwords stored in the database. **Nothing re-encrypts stored passwords, so
+the key cannot be rotated**, and a wrong key is not detected at startup but
+when a client for the cluster is built. Generate one and put it in the
+deployment before this release goes out.
+
+**New API surface (username and password on a cluster):** `RegisterCluster`
+accepts `auth.username` and `auth.password` alongside `auth.iam`, and refuses
+the two together as an invalid argument. `ListClusters` reports the username,
+never the password. It needs elephant-api v0.19.2 or later.
+
+**Behaviour change (`--opensearch-endpoint` is optional):** the service starts
+with no cluster registered, so an installation can be brought up and its
+cluster registered over the API instead of passing credentials in the
+environment. Credentials given in the endpoint's userinfo select password
+authentication over IAM signing and are moved out of the URL before the
+cluster row is written, so the stored row carries no secret.
+
+## [v1.2.1] - 2025-11-14
+
+Test infrastructure only: the suite starts its backing services in a way that
+works with Docker Desktop on macOS, and brings up its own OIDC container.
+Nothing here changes what the service does. (#231)
+
+## [v1.2.0] - 2025-11-11
+
+**Behaviour change (a panic no longer takes the process down):** the indexer,
+the cleanup loop and the server goroutines run through elephantine's
+`ErrGroup` and `CallWithRecover`, so a panic in one of them is recovered,
+logged and turned into an error for the supervising group rather than
+unwinding the whole process. A panicking indexer now looks like an indexer
+that stopped — its job lock is released and another replica picks the index
+set up — instead of a crash loop across every replica. (#223)
+
+**Build (Go 1.25.4):** the module's `go` directive is `1.25.4`, up from
+`1.24.6`, and the image builds on `golang:1.25.4-alpine3.22`. (#229, #230)
+
+Changes:
+
+- The repository clients are built with elephantine's HTTP client helpers, so
+  the long-polling event log client gets the timeouts meant for long polls
+  rather than the ten-second response header timeout the hand-rolled client
+  used.
+- Dependency upgrades: Go to 1.25.4, elephantine to v0.22.0, elephant-api to
+  v0.18.2, revisorschemas to v1.0.7, eltest to v0.2.1, howdah to v0.0.3 and
+  the AWS SDK suite. (#229)
+
+## [v1.1.3] - 2025-10-01
+
+Changes:
+
+- The subscription cache evicts expired entries every ten seconds instead of
+  only when it runs out of room, so a long-running replica releases the memory
+  of subscriptions nobody has polled for half an hour.
+
+## [v1.1.2] - 2025-09-30
+
+Changes:
+
+- The percolator document cache is cut from 5 000 entries held for an hour to
+  500 held for ten minutes, with eviction running every ten seconds. It caches
+  the flattened documents a poll response reads, which are already in Postgres
+  and expire there after 90 minutes, so the cache was holding far more, for
+  far longer, than a poll can use. Replica memory drops; a poll for an
+  evicted document reads it from the database instead. (#214)
+
+## [v1.1.1] - 2025-09-22
+
+**Behaviour change (a delete no longer stops the indexer):** an event log
+batch containing a delete crashed the indexer on a nil dereference when
+percolation was enabled, which took every index set on that replica down with
+it and left the batch to be replayed into the same crash. Deletes are now
+skipped when the batch is queued for percolation, so **a delete is not
+percolated at all** and a subscription is not notified of one. That is a
+missed notification, which the delivery contract allows, in place of a
+stalled indexer. (#209)
+
+## [v1.1.0] - 2025-09-16
+
+**New API surface (`MultiSearch`):** `SearchV1.MultiSearch` runs several
+queries in one request, through OpenSearch's msearch, and returns a response
+per query in the order they were given. It takes the same scopes and builds
+each query exactly as `Query` does — the request translation moved into a
+shared `internal` package so that the two cannot drift. It needs elephant-api
+v0.18.1 or later. (#191)
+
+**Behaviour change (a percolator is per document type and language):** a
+subscription's percolator is now registered for a language as well as a
+document type, and the uniqueness of a stored percolator is keyed on
+`(doc_type, language, hash, owner)` rather than `(hash, owner)`. Two
+subscriptions with the same query text against different languages used to
+share one percolator and one set of notifications. **Percolators that existed
+before the upgrade are migrated with an empty language**, which does not match
+any subscription registered afterwards, so they are replaced as clients
+resubscribe and cleaned up once nothing references them. A subscription is
+short-lived, so this settles within the half hour a subscription lives without
+being polled. (#207)
+
+**Migrations:**
+
+- `schema/005_percolation_language.sql` adds `percolator.language` with a
+  default of `''` and replaces the `pcl_unique_hash` constraint with one that
+  includes `doc_type` and `language`. It must run **before** the deploy, needs
+  no maintenance window, and takes no meaningful time — the table holds only
+  live subscriptions' percolators. Note that the migration's rollback half is
+  not valid SQL, so `mage sql:rollback` past it fails; a rollback has to drop
+  the column and restore the constraint by hand.
+
+Changes:
+
+- Percolation events are queued once per indexed batch, in event order,
+  instead of one at a time as each index worker finishes. Workers run
+  concurrently per document type and language, so the events reached the
+  percolator out of order and the percolator, which advances a single
+  position, skipped everything that arrived behind that position. Under load
+  this is a subscription silently missing documents. (#207)
+- A percolator query is written to OpenSearch as soon as the percolator is
+  registered, for a percolator with a known language, rather than lazily on
+  the first document of that type. (#207)
+- The README describes what happened upgrading OpenSearch in place: a
+  blue/green v2.5 to v2.19 upgrade in stage lost documents and indices, so the
+  practice is to stand up a new cluster, re-index into it and switch over —
+  which is also reversible.
+- Dependency upgrades: Go to 1.24.6, elephantine to v0.20.4, elephant-api to
+  v0.18.1, revisor to v0.9.4 and revisorschemas to v1.0.5.
+
+## [v1.0.10] - 2025-06-18
+
+Changes:
+
+- Dependency upgrades: Go to 1.24.4 (image `golang:1.24.4-alpine3.22`, shipped
+  on `alpine:3.22`), elephantine to v0.19.2, pgx to v5.7.5, `urfave/cli` to
+  v2.27.7 and the AWS SDK suite.
+
+## [v1.0.9] - 2025-06-03
+
+**Behaviour change (`doc_read_all` bypasses the readers filter):** a `Query`
+from a client holding `doc_read_all` is no longer restricted to documents the
+caller is named a reader of. Only `doc_admin` bypassed the filter before, so a
+client with `doc_read_all` — which the repository honours as read access to
+everything — got a silently narrowed result set from search. A shared query
+still applies the restriction for both scopes, because a shared query's
+results are seen by someone other than the caller.
+
+## [v1.0.8] - 2025-05-20
+
+Internal naming and comments only. Nothing here changes what the service does.
+
+## [v1.0.7] - 2025-05-19
+
+Changes:
+
+- A subscription poll result no longer carries an item whose document could
+  not be loaded. The load failure was logged and the item appended anyway,
+  with an empty document, so a client read a notification about a document
+  with no type, no language and no fields. Such an item is now left out, and
+  the event is a missed notification rather than an empty one.
+
+## [v1.0.6] - 2025-05-18
+
+**Behaviour change (a percolator is per document type):** an existing
+percolator is reused for a new subscription only when the document type
+matches, as well as the query hash and the owner. Two subscriptions with the
+same query text against different document types used to share one percolator,
+so the second subscriber was notified about the first one's document type and
+never about its own.
+
+Changes:
+
+- `elephant_indexer_percolator_lifecycle_total` gains the `query-doc` and
+  `query-doc-error` events, counting percolator queries written to OpenSearch
+  and the writes that failed.
+
+## [v1.0.5] - 2025-05-18
+
+**Behaviour change (percolation recovers from a lost notification):** the
+percolation loop wakes on its own every five seconds as well as on a
+notification, and percolates up to the last event id in the database rather
+than up to the id the notification happened to carry. Notifications have no
+delivery guarantee, so a lost one used to leave its events unpercolated until
+another notification arrived to carry the position past them — and with
+nothing being written, that could be indefinitely. Subscriptions now see those
+documents within five seconds instead of not at all.
+
+Changes:
+
+- New metric `elephant_indexer_percolator_lifecycle_total{event}`, counting
+  the percolation loop's own progress: `acquire-lock`, `start`, `stop`,
+  `triggered`, `poll`, `no-work` and `end-iteration`. A loop that is running
+  but finding nothing to do is `poll` and `no-work` climbing together, which
+  is the ordinary idle shape and not a stall.
+
+## [v1.0.4] - 2025-05-15
+
+Changes:
+
+- `elephant_indexer_percolator_position` is exported. It was created but never
+  registered, so it never appeared in `/metrics` at all.
+- `elephant_indexer_percolation_total{event="percolate-event"}` counts events
+  the percolator has finished, not events it has picked up, so it can no
+  longer run ahead of the position gauge.
+
+## [v1.0.3] - 2025-05-15
+
+Changes:
+
+- `elephant_indexer_percolation_total` gains the `percolate-event` event,
+  counted on the percolator's side of the queue with a `location` of
+  `percolator`. The metric only reported what was queued before, so there was
+  nothing to compare it against; the gap between `queued` and
+  `percolate-event` is the backlog.
+
+## [v1.0.2] - 2025-05-15
+
+Changes:
+
+- New metric `elephant_indexer_percolation_total{event,location}`, counting
+  percolation events by what happened to them and where. `requested` is an
+  indexed document offered for percolation and names the index it came from;
+  `queued`, `queue_failed` and `inactive_set` are what the coordinator did
+  with it and name the index set. `inactive_set` is routinely non-zero for the
+  whole duration of a re-index and means nothing on its own — only the active
+  index set's percolation requests are honoured.
+- New metric `elephant_indexer_percolator_position`, the event log position
+  the percolator has reached. This is the gauge to alert on for a stalled
+  percolator: it is flat whenever percolation is not advancing, whatever the
+  reason. It is not actually exported in this release — the collector was
+  never registered, which v1.0.4 fixes.
+
+## [v1.0.1] - 2025-05-10
+
+Changes:
+
+- Dependency upgrades: elephantine to v0.18.1.
+
+## [v1.0.0] - 2025-05-10
+
+The first release under v1. The service follows the repository event log,
+flattens each document into a flat property structure and indexes it into
+OpenSearch, serves search over what it has indexed plus a management API for
+index sets and clusters, and matches newly indexed documents against stored
+subscription queries so that clients can long-poll for changes.
+
+Changes:
+
+- `--cors-host`/`CORS_HOSTS` sets the origins the API answers CORS requests
+  for, repeatable and supporting wildcards. It was not configurable before.
+  (#176)
