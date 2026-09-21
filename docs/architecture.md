@@ -156,6 +156,54 @@ would mean guessing the languages; instead the document is created the first
 time a document of that type and language is indexed, and a new language index
 appears while a subscription is already running.
 
+### A percolator query is refreshed before it is percolated against
+
+A percolator query is an ordinary OpenSearch document, so it is matched only
+once a **refresh** has made it visible to search. Every path that writes one
+therefore refreshes the index before anything percolates against it, and the
+error is propagated rather than logged: the percolator retries the event from
+its last position, because reporting a document that matches as a non-match is
+worse than reporting it late.
+
+**A flush is not a substitute.** A flush is a Lucene commit — it makes the
+write durable without reopening the searcher — so a query that has only been
+flushed stays invisible until the next periodic refresh, which is a second
+away by default.
+
+**The order is what gives the guarantee, not a lock.** A new subscription's
+query document is written and refreshed *before* the percolator is registered
+in the in-memory set that percolation reads, and none of that work holds the
+lock guarding that set. So percolation either does not see the subscription
+yet, or sees one whose query is already evaluable — never the state in
+between.
+
+**Percolating a document reads that set before it searches, not after.** The
+set of percolators a document is reported against — as a match or a
+non-match — is snapshotted before the percolate query goes to OpenSearch. A
+subscription registered while that search is in flight is evaluable but was
+not necessarily in the index the search read, so including it in the snapshot
+would report the document as a non-match against a query that was never run.
+Taking the snapshot first leaves the two outcomes above: the percolator is
+absent, a missed notification, or it comes back as a hit and is recorded as a
+match.
+
+That ordering also keeps the write off the critical path. Registration takes
+the write lock for a map insert alone; percolating a document takes the read
+lock, so doing the Postgres and OpenSearch work under the write lock would
+stall percolation for every new subscription.
+
+This closes one window and deliberately leaves another. A document indexed
+before the subscription is registered is not matched against it at all, and
+the client hears nothing about it. That is a missed notification, which the
+delivery contract below already allows; a query registered but not yet visible
+would instead have produced a *wrong* answer, reporting the document as a
+non-match.
+
+A subscription whose query could not be written is still registered, without
+an index recorded against it, so the lazy path writes and refreshes it before
+the next document is percolated. It is counted on
+`query-doc-error` either way.
+
 ### Flow
 
 ```

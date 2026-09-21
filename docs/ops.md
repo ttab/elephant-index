@@ -285,6 +285,17 @@ on that replica, so aggregate with `max` before concluding it is flat. If
 percolation is merely behind rather than stopped, that is the known serial
 bottleneck — see [Pending work](architecture.md#pending-work).
 
+A lock holder that is running and still not advancing is failing on one event
+and retrying it. **Refreshing the percolator index is part of percolating an
+event**, so a cluster that refuses the refresh stalls percolation for the
+whole index set rather than degrading a single subscription — the error is
+returned instead of logged and skipped, because percolating against an index
+whose queries are not all visible reports matching documents as non-matches.
+That is the deliberate trade, and it means one cluster-level fault is
+fleet-wide for subscriptions while it lasts. The percolator's logs name the
+index and the error; the fix is at the cluster, and percolation resumes from
+where it stopped once the refresh succeeds.
+
 ### Subscriptions look healthy but deliver nothing
 
 A subscription registered whose query never became a percolator document.
@@ -295,6 +306,12 @@ climbing.
 *Action:* the client sees a valid subscription and an empty stream, so nothing
 will be reported from that side. Read the percolator's logs for the query that
 failed.
+
+This counter is for a query document that could not be *written*, on either
+the path that seeds a new subscription or the one that seeds lazily, plus a
+refresh that failed while seeding a new subscription — all of which leave the
+rest of percolation running. A refresh that fails on the lazy path is the
+other failure above, a flat position, and is not counted here.
 
 ### Percolation events were dropped
 

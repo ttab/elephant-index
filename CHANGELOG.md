@@ -30,11 +30,40 @@ served. Operators watching this service's database dependency should know that
 the read path, not just subscriptions and the management API, now depends on
 it.
 
+**Behaviour change (a failed refresh stalls percolation):** making a
+percolator query visible to search is now part of percolating an event, and an
+error doing it is returned rather than logged and skipped. The percolation
+loop retries the event from its last position, so a cluster that persistently
+refuses the refresh stalls percolation for the whole index set, where it
+previously degraded only the one subscription whose query never became
+visible. The trade is deliberate — reporting a matching document as a
+non-match is worse than reporting it late — but it is a new way for
+`elephant_indexer_percolator_position` to go flat, and the runbook names it.
+
 Changes:
 
 - `HitV1` gains `document_type`, resolved from the `document_index` registry
   and cached per index name.
 - New query `GetIndexContentTypes`, which is the registry lookup behind it.
+- A new subscription no longer reports matching documents as non-matches for
+  the first second of its life. A percolator query is an OpenSearch document
+  and is only matched once a refresh has made it visible; the code refreshed
+  the index with a flush, which makes the write durable without making it
+  visible, and the path that registers a subscription did not refresh at all.
+  Every write of a percolator query now refreshes before anything percolates
+  against it, and a new subscription is registered only once its query is
+  evaluable, so percolation never sees the state in between. The set of
+  percolators a document is reported against is likewise read before the
+  percolate search rather than after it, which closes the same wrong answer in
+  a window one search round trip wide. A document indexed before the
+  subscription is registered is still not matched against it — that is a
+  missed notification, which the delivery contract allows, rather than a wrong
+  answer. (#299)
+- Registering a subscription no longer stalls percolation while its query is
+  written. The percolator held the lock that percolation needs across a
+  Postgres transaction and the OpenSearch write, so every new subscription
+  blocked matching for the duration; the lock is now taken for the
+  registration itself and nothing else. (#299)
 - Dependency upgrades: elephant-api to v0.25.2.
 
 ## [v1.4.1] - 2026-09-17
