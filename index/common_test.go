@@ -12,14 +12,17 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/index/indexconnect"
 	"github.com/ttab/elephant-api/repository"
+	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	indexsvc "github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/rpc"
 	"github.com/ttab/elephantine/test"
 	"github.com/ttab/revisorschemas"
 	"golang.org/x/oauth2"
@@ -90,12 +93,12 @@ func testingAPIServer(
 	adminSrc, err := auth.NewTokenSource(ctx, []string{"schema_admin"})
 	test.Mustf(t, err, "create a schema admin token source")
 
-	registerCoreSchemas(ctx, t, repository.NewSchemasProtobufClient(
-		env.Repository.GetAPIEndpoint(),
-		oauth2.NewClient(ctx, adminSrc)))
+	registerCoreSchemas(ctx, t, repositoryconnect.NewSchemasServiceClient(
+		oauth2.NewClient(ctx, adminSrc),
+		env.Repository.GetAPIEndpoint()))
 
-	schemas := repository.NewSchemasProtobufClient(
-		env.Repository.GetAPIEndpoint(), client)
+	schemas := repositoryconnect.NewSchemasServiceClient(
+		client, env.Repository.GetAPIEndpoint())
 
 	loader, err := indexsvc.NewSchemaLoader(ctx, logger.With(
 		elephantine.LogKeyComponent, "schema-loader"), schemas)
@@ -128,10 +131,16 @@ func testingAPIServer(
 				return searchClient, nil
 			},
 			DefaultCluster: openSearchURL,
-			Documents: repository.NewDocumentsProtobufClient(
-				env.Repository.GetAPIEndpoint(), client),
-			AnonymousDocuments: repository.NewDocumentsProtobufClient(
-				env.Repository.GetAPIEndpoint(), http.DefaultClient),
+			Documents: repositoryconnect.NewDocumentsServiceClient(
+				client, env.Repository.GetAPIEndpoint()),
+			// PropagateHeaders as in cmd/index: the handlers that
+			// serve a caller forward the caller's own token on
+			// this client, so without the interceptor the call
+			// goes out anonymous and the repository refuses it.
+			// TestGetFlatDocument is what notices.
+			AnonymousDocuments: repositoryconnect.NewDocumentsServiceClient(
+				http.DefaultClient, env.Repository.GetAPIEndpoint(),
+				connect.WithInterceptors(rpc.PropagateHeaders())),
 			Validator:      loader,
 			Metrics:        metrics,
 			Languages:      indexsvc.StandardLanguageOptions("sv-se"),
