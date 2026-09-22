@@ -38,7 +38,7 @@ Changes:
   fifteen minutes of an index set activation; and the percolator, which
   resolves subscription languages from two of its own goroutines and so needed
   neither a re-index nor a second index set. The cache is now safe for
-  concurrent use by construction.
+  concurrent use by construction. (#306)
 - A new subscription no longer reports matching documents as non-matches for
   the first second of its life. A percolator query is an OpenSearch document
   and is only matched once a refresh has made it visible; the code refreshed
