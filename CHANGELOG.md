@@ -25,6 +25,17 @@ visible. The trade is deliberate — reporting a matching document as a
 non-match is worse than reporting it late — but it is a new way for
 `elephant_indexer_percolator_position` to go flat, and the runbook names it.
 
+**Behaviour change (a replica no longer exits over an index set change):**
+failing to apply an `index_status_change` notification used to stop the
+coordinator's event loop, which took the process down and restarted the pod.
+It now logs `failed to apply an index set change, reconciling instead`, counts
+`elephant_indexer_index_set_sync_total{trigger="notification",result="failed"}`
+and queues a full reconciliation, which corrects the replica in less time than
+a restart would have. **A restart is no longer the symptom to expect** for a
+cluster this service cannot reach, so an alert keyed on pod restarts will stop
+firing for it; the counter and the log line replace it. The reconciliation at
+startup is still fatal, because there is no state to keep serving.
+
 Changes:
 
 - A crash that could kill a replica is fixed. The in-memory cache of language
@@ -39,6 +50,37 @@ Changes:
   resolves subscription languages from two of its own goroutines and so needed
   neither a re-index nor a second index set. The cache is now safe for
   concurrent use by construction. (#306)
+- An activation whose notification is lost no longer needs a restart to take
+  effect. Which index set a replica serves is per-replica in-memory state,
+  and the `index_status_change` notification was the only thing that ever
+  updated it after startup. LISTEN/NOTIFY has no redelivery, so a
+  notification published while a replica's listen connection was silently
+  dead was lost for good and that replica served the old set indefinitely —
+  which is what happened in stage, where the activation was committed,
+  `ListIndexSets` reported the new set, and searches kept coming from the old
+  one until a rollout restart. Every replica now re-reads the index sets
+  every 30 seconds, and on every reconnect of the notification listener, so a
+  lost notification costs up to half a minute instead of being unrecoverable.
+  The same sweep stops an indexer whose set was deleted while its
+  notification was missed. **`kubectl rollout restart` is no longer part of a
+  re-index cutover**, and a replica that has not followed an activation is
+  now a reason to read its logs rather than to restart it. (#307)
+- Where a replica sends its searches is observable. Each one logs `switched
+  active index set` at info with the set it came from and the set it moved
+  to, and exports `elephant_indexer_active_index_set{set_name,cluster}` for
+  where it is now. More than one distinct `set_name` across replicas means
+  they disagree about which set serves search, which is expected for the
+  first half-minute after an activation and a fault after that. (#307)
+- Whether a replica is keeping up with the index sets at all is now
+  measurable, through `elephant_indexer_index_set_sync_total{trigger,result}`.
+  The successes matter as much as the failures: a `tick` success rate of zero
+  on one replica is the only signal that its coordinator event loop has
+  stopped, and its routing is frozen. (#307)
+- The active index set's OpenSearch client now follows a change of cluster
+  under an unchanged set name. No supported operation moves a set between
+  clusters, so this is defence rather than a fix for anything seen in the
+  wild, but the read path silently kept talking to the old cluster if one
+  ever did. (#307)
 - A new subscription no longer reports matching documents as non-matches for
   the first second of its life. A percolator query is an OpenSearch document
   and is only matched once a refresh has made it visible; the code refreshed

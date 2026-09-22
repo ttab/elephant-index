@@ -51,6 +51,75 @@ call site, so the safety belongs to the type rather than to the caller.
 scale: the coordinator then sets up only an OpenSearch client for the active
 set and starts no indexers, so the process is a read-only search frontend.
 
+### How an index set activation reaches a replica
+
+**Which index set a replica serves is per-replica in-memory state**: the
+coordinator holds an active set name and an OpenSearch client for it, and
+search, `GetFlatDocument` and the elastic proxy all resolve that pair per
+request. Activation writes `index_set.active` in Postgres, so the database is
+the authority, but a replica only acts on it when something tells it to look.
+
+Two things tell it, and they are not equals. The `index_status_change`
+notification, published in the same transaction as the status write, is the
+fast path and normally lands in milliseconds. A **reconciliation every 30
+seconds** re-reads every index set and is the path that is authoritative: it
+starts indexers for sets that have none, stops those whose set has been
+disabled or deleted, and resolves the active set and its client. Sets are
+applied independently and their failures reported together, so one set whose
+cluster is unreachable cannot hold up the active-set switch. The read is
+bounded at ten seconds, so a dead Postgres connection surfaces as a logged
+failure rather than as a loop that has quietly stopped ticking. The notification subscriber also asks
+for a reconciliation on every connect and reconnect, so a listener that has
+just come back does not wait out the interval — the callback runs just before
+the `LISTEN` is issued, so a change committed in that gap waits for the next
+tick rather than the reconnect.
+
+The reconciliation is there because the notification is lossy at both ends.
+LISTEN/NOTIFY has no redelivery, so one published while the LISTEN connection
+is silently dead — a TCP drop, PgBouncer, a failover — is lost for good, and
+the listener's own ping takes up to seven minutes to notice. It is lossy
+locally as well: `c.changes` is unbuffered and the fan-out sends to it without
+blocking, so a notification arriving while the event loop is inside
+`handleChange` or a sweep is simply dropped. While the notification was the only path,
+a replica that missed the one notification served the old index set until it
+was restarted: in stage the activation was committed, `ListIndexSets` showed
+the new set as active, and searches kept coming from the old one until a
+rollout restart. Because the state is per-replica the failure is per-pod, so
+search flips between the old and the new set depending on which replica
+answers.
+
+**Nothing here takes the process down once it is running.** A failure on
+either path is logged, counted on
+`elephant_indexer_index_set_sync_total{trigger,result}` and retried; a failed
+notification additionally queues a reconciliation immediately rather than
+waiting out the interval, since the sweep reads every set and is a strictly
+better attempt at the same work. Applying a notification used to be fatal, on
+the reasoning that a replica which knew it was drifted should be replaced
+rather than left to serve the old set — but with a reconciliation 30 seconds
+behind it, crashing bought at most that much less drift in exchange for every
+in-flight search and long poll on the replica, and it would have turned a
+Postgres failover into a simultaneous crash loop across the fleet. The one
+fatal case left is the reconciliation at startup, where there is no state to
+keep serving.
+
+**Nothing clears the active set.** When a reconciliation finds no set marked
+active it warns and leaves the read path pointing where it was. That state is
+only reachable by hand — an active set can only be replaced by another through
+the API — and serving slightly stale results beats the alternative: dropping
+the client makes `GetActiveIndex` return nil, which the percolator's cleanup
+and subscription goroutines dereference with no nil check and no recover, so
+every replica would exit instead.
+
+Both paths run in the coordinator's event loop goroutine, which is what lets
+the map of running indexers be an ordinary map. The reconnect callback and the
+ticker only signal the loop; they never touch the state themselves.
+
+The switch is observable. Each replica logs `switched active index set` at
+info with the set it came from and the set it moved to, and exports
+`elephant_indexer_active_index_set{set_name,cluster}` for where it is now, so
+a replica that did not follow an activation shows up as a second series rather
+than as a mystery.
+
 ## Data flow
 
 ### 1. Following the event log
@@ -135,7 +204,10 @@ anything about it.
 Re-indexing is blue-green: create a new set, optionally in another cluster,
 let it catch up, then activate it. **Activation is a read-path switch only, so
 it is reversible** — the old set keeps its documents and can be made active
-again as long as it has not been deleted.
+again as long as it has not been deleted. Every replica switches on its own,
+normally on the notification and at worst within the reconciliation interval;
+[how an activation reaches a replica](#how-an-index-set-activation-reaches-a-replica)
+covers what that means when it does not.
 
 `SetIndexSetStatus` refuses to activate a set that lags the active one by more
 than 10 events unless `force_active` is set. The lag check is the guard

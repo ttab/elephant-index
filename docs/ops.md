@@ -248,7 +248,11 @@ operation as a routine re-index and is described in the
    against the active set's, or `ListIndexSets`.
 3. `SetIndexSetStatus` with `active: true` — a read-path switch, and
    reversible. It refuses a set lagging by more than 10 events unless
-   `force_active` is set.
+   `force_active` is set. **The switch is per replica and asynchronous**:
+   each one takes it on the `index_status_change` notification, or within 30
+   seconds on its own reconciliation if the notification never arrived.
+   Confirm it landed everywhere before moving on — see
+   [Search is answered from the old index set](#search-is-answered-from-the-old-index-set).
 4. Disable the old set, then `DeleteIndexSet`.
 
 **Do not delete the old set until the new one has been verified**, because
@@ -268,6 +272,62 @@ absent and queries on it match nothing.
 *Action:* for failed documents, re-index into a new set. For a dropped
 mapping, a re-index is the only fix — the mapping cannot be widened in place,
 which is why the counter matters more than it looks.
+
+### Search is answered from the old index set
+
+An activation was committed — `ListIndexSets` shows the new set as active —
+but searches still return what the old set holds, or flip between the two
+depending on which replica answers.
+
+*Signal:* `elephant_indexer_active_index_set{set_name}` reporting more than
+one distinct `set_name` across the replicas, or one that is not the set
+`ListIndexSets` calls active. The log line is `switched active index set`,
+logged once per replica per switch; a replica with no such line after an
+activation never took it.
+
+*Action:* nothing, for up to 30 seconds. Every replica re-reads the index sets
+on that interval, so a lost `index_status_change` notification costs a delay
+and not a restart. A replica still on the old set after a minute is failing to
+reconcile, and `failed to reconcile index sets` in its log names why. **The
+error there is not always about the set you activated**: the sweep applies
+every set and reports all their failures together, so an unrelated set whose
+cluster is unreachable shows up in the same line. Read the whole error.
+
+A stale replica with no such line is the case to escalate, and
+`rate(elephant_indexer_index_set_sync_total{trigger="tick",result="ok"}[5m])`
+tells the two apart: still climbing means the replica is reconciling and
+genuinely believes the old set is active, which points at the database rather
+than at the replica; at zero means its coordinator event loop has stopped
+ticking. The database read is bounded at ten seconds so the sweep cannot hang
+on it silently, which leaves a ticker starved by a sweep blocked on stopping
+an indexer, or an event loop that has exited — and that exits the process, so
+the pod would be restarting. Check `listener ping timeout, reconnecting` and
+`notification subscriber stopped` around the activation for how the
+notification came to be lost in the first place.
+
+Before this reconciliation existed a lost notification was unrecoverable and
+`kubectl rollout restart` was the only cure; that is no longer the first
+thing to reach for.
+
+### A replica could not apply an index set change
+
+*Signal:* `elephant_indexer_index_set_sync_total{trigger="notification",result="failed"}`
+non-zero, with `failed to apply an index set change, reconciling instead` in
+the log naming the set and the underlying error.
+
+*Action:* usually none. The replica queues a full reconciliation on the spot,
+so it corrects itself within the time one sweep takes; the error names what it
+could not do, which is normally an OpenSearch cluster it cannot build a client
+for. **Read it against
+`{trigger="tick",result="ok"}` on the same replica** — if that is climbing,
+the replica is reconciling and the change has landed by some other route. If
+the same set keeps failing on every sweep, the cluster or the database fault
+behind it is real and the replica is serving the old set until it is fixed.
+
+This was fatal before v1.5.0: the process exited and the pod restarted. It no
+longer does, because the reconciliation corrects it in less time than a
+restart takes, so **a replica restarting is no longer the expected symptom**
+of this.
 
 ### Indexing has stopped advancing
 
@@ -368,6 +428,14 @@ version and re-index into it. See
    subscription delivery backlog, and the first thing to lag under load.
 5. **`health_check_up{name="opensearch"}`** — the optional check nothing else
    reacts to, so it is invisible unless it is on this list.
+6. **`elephant_indexer_active_index_set`** — more than one distinct
+   `set_name` across replicas means they disagree about which set serves
+   search. Expected for the first half-minute after an activation, a fault
+   after that.
+7. **`elephant_indexer_index_set_sync_total{trigger="tick",result="ok"}`** —
+   a per-replica heartbeat for the coordinator event loop. A rate of zero on
+   one replica means its index set routing is frozen and nothing else will
+   say so.
 
 ## Common operations
 
