@@ -106,6 +106,13 @@ Changes:
   service still mounts. The caller-token forwarding that `GetFlatDocument` and
   document loading depend on moved from `twirp.WithHTTPRequestHeaders` to
   `rpc.WithOutgoingHeaders` plus a `rpc.PropagateHeaders()` interceptor. (#298)
+- Dependency upgrades: elephantine to v0.29.1, pgx to v5.11.0, connect to
+  v1.21.0, the AWS SDK suite, `urfave/cli` to v3.13.0 and the `golang.org/x`
+  modules. The elephantine bump fixes a test log handler that could kill a
+  whole test binary with `panic: Log in goroutine after TestX has completed`,
+  which this suite is exposed to wherever it logs from a worker on a
+  cancelled context. Also `actions/checkout` and `actions/setup-go` to v7.
+  (#308)
 
 ## [v1.4.2] - 2026-09-17
 
