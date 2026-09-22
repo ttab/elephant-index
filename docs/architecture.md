@@ -38,6 +38,15 @@ proxies, and still answers subscription polls — it is only the indexing and
 percolation that wait. That is the property that makes replicas useful at all,
 and it is why the readiness check must not fail on a lock it does not hold.
 
+**The indexer lock is per index set, so a replica can hold several at once.**
+During a re-index two sets are enabled and one process runs both indexers
+concurrently. The percolator is concurrent within itself as well: the goroutine
+that handles percolator updates and the one that percolates events are separate
+and both resolve languages. So state the coordinator constructs once and shares
+— the language resolver behind the per-language analyzers is the one that
+matters — has to be safe for concurrent use. The sharing is invisible at the
+call site, so the safety belongs to the type rather than to the caller.
+
 `--no-indexer` is the one switch that changes the shape rather than the
 scale: the coordinator then sets up only an OpenSearch client for the active
 set and starts no indexers, so the process is a read-only search frontend.

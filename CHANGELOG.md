@@ -27,6 +27,18 @@ non-match is worse than reporting it late — but it is a new way for
 
 Changes:
 
+- A crash that could kill a replica is fixed. The in-memory cache of language
+  settings was unguarded, so two goroutines resolving a language neither had
+  seen before could abort the process with `fatal error: concurrent map
+  writes`. That is a runtime throw rather than a panic, so nothing recovered
+  it — the process exited and the pod restarted, taking search, indexing and
+  subscription delivery on that replica with it. Two paths reached it: a
+  re-index, where two index sets follow the event log side by side and both
+  indexers shared one cache, which is how two production replicas died within
+  fifteen minutes of an index set activation; and the percolator, which
+  resolves subscription languages from two of its own goroutines and so needed
+  neither a re-index nor a second index set. The cache is now safe for
+  concurrent use by construction.
 - A new subscription no longer reports matching documents as non-matches for
   the first second of its life. A percolator query is an OpenSearch document
   and is only matched once a refresh has made it visible; the code refreshed
