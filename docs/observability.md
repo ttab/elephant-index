@@ -88,6 +88,43 @@ usually a job lock held by a replica that has wedged.
   read a flat line as "no mapping updates". Mapping updates happen; they are
   simply not counted.
 
+## Index set routing
+
+* `elephant_indexer_active_index_set{set_name,cluster}` — the index set this
+  replica currently answers searches from, always `1`, with the previous
+  series dropped on a switch. It is per replica and there is deliberately no
+  series when nothing is active, so **the query that means something is a
+  count of distinct `set_name` across replicas**: more than one and they
+  disagree about which set serves search, none and the read path is refusing
+  everything. A disagreement is normal for the first half-minute after an
+  activation, since each replica switches on its own notification or, failing
+  that, on its next reconciliation. Read it alongside the `switched active
+  index set` log line, which is the only after-the-fact record of which
+  replica moved when.
+* `elephant_indexer_index_set_sync_total{trigger,result}` — attempts to bring
+  a replica in line with the index sets in the database. `trigger` is
+  `startup`, `notification` for an `index_status_change`, and `reconnect` or
+  `tick` for the two ways a reconciliation is asked for; `result` is `ok` or
+  `failed`.
+
+  **The successes are the useful half.** They are the only thing that reports
+  that a replica's coordinator event loop is running at all, so
+  `rate(elephant_indexer_index_set_sync_total{trigger="tick",result="ok"}[5m])`
+  at zero for one replica means that replica's routing is frozen wherever it
+  happened to be — which nothing else will tell you, because the gauge above
+  keeps reporting the set it froze on.
+
+  The failures are routinely zero, and neither is fatal.
+  `{trigger="tick",result="failed"}` is the drift signal: that replica is
+  behind and knows it, and the reason is in the `failed to reconcile index
+  sets` log line. `{trigger="notification",result="failed"}` is a replica
+  that could not apply a change it was told about; it queues a reconciliation
+  on the spot, so the cost is a moment of staleness rather than a restart,
+  and the log line is `failed to apply an index set change, reconciling
+  instead` with the set name. **Watch it anyway** — it was fatal until v1.5.0,
+  so a non-zero rate is both new information and the thing that has to keep
+  self-correcting for the change to have been the right call.
+
 ## Percolation
 
 **The pair to watch is `elephant_indexer_percolator_position` against the
@@ -158,7 +195,9 @@ Two conventions apply to everything above.
 position and the follower positions are set by whichever replica holds the
 relevant job lock. Every other replica reports a stale value or zero, and
 neither is an error. Aggregate with `max`, and treat a single replica's flat
-gauge as no evidence at all.
+gauge as no evidence at all. `elephant_indexer_active_index_set` is the
+exception that proves it: it is true on every replica, about that replica
+only, which is why disagreement between them is the thing it is for.
 
 **A counter that is routinely non-zero is not an alert.**
 `elephant_indexer_unknown_events_total`, `percolation_total{event="inactive_set"}`

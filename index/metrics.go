@@ -17,6 +17,8 @@ type Metrics struct {
 	percolatorLife   *prometheus.CounterVec
 	indexedDocument  *prometheus.CounterVec
 	enrichErrors     *prometheus.CounterVec
+	activeIndexSet   *prometheus.GaugeVec
+	indexSetSync     *prometheus.CounterVec
 	logPos           *koonkie.PrometheusFollowerMetrics
 
 	Registerer prometheus.Registerer
@@ -119,6 +121,28 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		return nil, fmt.Errorf("register enrich errors metric: %w", err)
 	}
 
+	activeIndexSet := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "elephant_indexer_active_index_set",
+			Help: "The index set this replica currently answers searches from, as a label.",
+		},
+		[]string{"set_name", "cluster"},
+	)
+	if err := reg.Register(activeIndexSet); err != nil {
+		return nil, fmt.Errorf("register active index set metric: %w", err)
+	}
+
+	indexSetSync := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "elephant_indexer_index_set_sync_total",
+			Help: "Attempts to bring a replica in line with the index sets in the database, by trigger and outcome.",
+		},
+		[]string{"trigger", "result"},
+	)
+	if err := reg.Register(indexSetSync); err != nil {
+		return nil, fmt.Errorf("register index set sync metric: %w", err)
+	}
+
 	logPos, err := koonkie.NewPrometheusFollowerMetrics(reg, "elephant-index")
 	if err != nil {
 		return nil, fmt.Errorf("register follower metrics: %w", err)
@@ -135,6 +159,8 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		percolatorLife:   percolatorLifecycle,
 		indexedDocument:  indexedDocument,
 		enrichErrors:     enrichErrors,
+		activeIndexSet:   activeIndexSet,
+		indexSetSync:     indexSetSync,
 		Registerer:       reg,
 	}
 
