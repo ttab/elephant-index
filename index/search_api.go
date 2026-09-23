@@ -61,7 +61,14 @@ func NewSearchServiceV1(
 		percChanges:     percChanges,
 		eventPercolated: eventPercolated,
 		validator:       validator,
-		languages:       languages,
+		// A long-lived resolver. getLanguageInfo is deterministic in
+		// the code and the options, so caching a failure is as correct
+		// as caching a success. A document's language is free-form
+		// rather than a closed set, so the keys are whatever languages
+		// documents actually carry — bounded in practice, and each
+		// entry is four strings and an error. The indexer's shared
+		// resolver has had the same property all along.
+		lang: NewLanguageResolver(languages),
 		subscriptions: sturdyc.New[userSub](
 			5000, 5, 30*time.Minute, 10,
 			sturdyc.WithEvictionInterval(10*time.Second),
@@ -89,7 +96,7 @@ type SearchServiceV1 struct {
 	percChanges     *pg.FanOut[PercolatorUpdate]
 	eventPercolated *pg.FanOut[EventPercolated]
 	validator       ValidatorSource
-	languages       LanguageOptions
+	lang            *LanguageResolver
 	subscriptions   *sturdyc.Client[userSub]
 	indexTypes      *sturdyc.Client[string]
 }
@@ -156,10 +163,7 @@ func (s *SearchServiceV1) convertFlatDocument(
 		return nil, rpc.Internalf("build document state: %w", err)
 	}
 
-	// Use a per-request resolver as the cache it maintains isn't safe for
-	// concurrent use.
-	language, err := NewLanguageResolver(s.languages).GetLanguageInfo(
-		state.Document.Language)
+	language, err := s.lang.GetLanguageInfo(state.Document.Language)
 	if err != nil {
 		return nil, rpc.InvalidArgument("language",
 			fmt.Sprintf("could not resolve document language %q: %v",

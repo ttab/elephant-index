@@ -3,6 +3,7 @@ package index
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/ttab/langos"
 )
@@ -82,8 +83,20 @@ func NewLanguageResolver(opts LanguageOptions) *LanguageResolver {
 	}
 }
 
+// LanguageResolver resolves language codes to the information the indexer and
+// the search API need, memoising the result.
+//
+// It is safe for concurrent use, and must stay that way: the sharing is
+// invisible at the call sites. The coordinator creates one resolver and hands
+// that same pointer to every indexer it starts, and a re-index runs two
+// indexers side by side in one process; the percolator's resolver is likewise
+// used from both its update and its percolation goroutine.
 type LanguageResolver struct {
-	opts   LanguageOptions
+	opts LanguageOptions
+
+	// m guards lTable, which is the only mutable state here. The
+	// LanguageOptions maps are never written after construction.
+	m      sync.Mutex
 	lTable map[string]lrItem
 }
 
@@ -93,6 +106,12 @@ type lrItem struct {
 }
 
 func (lr *LanguageResolver) GetLanguageInfo(code string) (LanguageInfo, error) {
+	// The lock is held across both the lookup and the store. The critical
+	// section is three map lookups and some string work, so there is
+	// nothing to win by letting two goroutines resolve the same code.
+	lr.m.Lock()
+	defer lr.m.Unlock()
+
 	item, ok := lr.lTable[code]
 	if ok {
 		return item.Info, item.Err
