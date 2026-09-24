@@ -72,6 +72,7 @@ Changes:
   hour. Both jobs now return to contending for the lock, and the percolator
   resumes from the persisted position rather than from its own. See
   [Indexing has stopped advancing](docs/ops.md#indexing-has-stopped-advancing).
+  (#311)
 - Where a replica sends its searches is observable. Each one logs `switched
   active index set` at info with the set it came from and the set it moved
   to, and exports `elephant_indexer_active_index_set{set_name,cluster}` for
