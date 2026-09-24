@@ -334,43 +334,40 @@ func (p *Percolator) purgePercolator(
 }
 
 func (p *Percolator) percolationLoop(ctx context.Context) {
-	for {
-		p.metrics.percolatorLife.WithLabelValues("acquire-lock").Inc()
-
-		lock, err := joblock.New(
-			p.db, p.log, "percolator",
-			joblock.Options{})
-		if err != nil {
-			p.log.ErrorContext(ctx, "failed to create percolator job lock",
-				elephantine.LogKeyError, err)
-
-			time.Sleep(1 * time.Second)
-
-			continue
-		}
-
-		err = lock.RunWithContext(ctx, p.percolateEvents)
-		if err != nil {
-			p.log.ErrorContext(ctx, "failed to percolate events",
-				elephantine.LogKeyError, err)
-
-			time.Sleep(1 * time.Second)
-
-			continue
-		}
-
-		break
+	// percolateEvents returns nil when the lock is lost, so this has to
+	// keep contending for it rather than treat a nil return as done. See
+	// Indexer.Run.
+	err := joblock.Run(ctx, p.db, p.log,
+		"percolator", "percolator",
+		joblock.Options{
+			MetricsRegisterer: p.metrics.Registerer,
+		}, p.percolateEvents)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		p.log.ErrorContext(ctx, "percolator stopped",
+			elephantine.LogKeyError, err)
 	}
 }
 
 const minPercolateInterval = 5 * time.Second
 
 func (p *Percolator) percolateEvents(ctx context.Context) error {
+	p.metrics.percolatorLife.WithLabelValues("acquire-lock").Inc()
 	p.metrics.percolatorLife.WithLabelValues("start").Inc()
 
 	defer p.metrics.percolatorLife.WithLabelValues("stop").Inc()
 
 	q := postgres.New(p.db)
+
+	// Another replica may have held the lock since we last did, so resume
+	// from the persisted position rather than from our own.
+	state, err := q.GetAppState(ctx, "percolator")
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("read percolator state: %w", err)
+	}
+
+	if state.Percolator != nil {
+		p.lastEvent = state.Percolator.CurrentPosition
+	}
 
 	timer := time.NewTicker(minPercolateInterval)
 

@@ -65,6 +65,14 @@ Changes:
   notification was missed. **`kubectl rollout restart` is no longer part of a
   re-index cutover**, and a replica that has not followed an activation is
   now a reason to read its logs rather than to restart it. (#307)
+- A Postgres blip no longer stops indexing until a restart. A replica that
+  lost the `indexer-<set>` or `percolator` job lock stopped that job for good
+  and never contended for the lock again, so each blip took out one more
+  replica, until stage had no indexer left and search stayed stale for over an
+  hour. Both jobs now return to contending for the lock, and the percolator
+  resumes from the persisted position rather than from its own. See
+  [Indexing has stopped advancing](docs/ops.md#indexing-has-stopped-advancing).
+  (#311)
 - Where a replica sends its searches is observable. Each one logs `switched
   active index set` at info with the set it came from and the set it moved
   to, and exports `elephant_indexer_active_index_set{set_name,cluster}` for
