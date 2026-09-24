@@ -15,6 +15,14 @@ at all. There is no flag to fall back to the Twirp clients; the ordering is
 the mitigation. Nothing else about the calls changes: the same endpoint
 configuration, the same scopes, and the same token in the same place.
 
+**Behaviour change (Postgres pool size):** the connection pool is now 8
+connections by default, set by `DB_MAX_CONNS` (`--db-max-conns`). It used to
+be left to pgx, which sizes it as `max(4, NumCPU())` from the node's CPU count,
+so the pool changed size with the node the pod landed on. `DB_MAX_CONNS` also
+**overrides `pool_max_conns` in `CONN_STRING`**, so a deployment that sized the
+pool in the connection string has to move that number to `DB_MAX_CONNS`; zero
+or less restores the old behaviour.
+
 **Behaviour change (a failed refresh stalls percolation):** making a
 percolator query visible to search is now part of percolating an event, and an
 error doing it is returned rather than logged and skipped. The percolation
@@ -100,6 +108,16 @@ Changes:
   Postgres transaction and the OpenSearch write, so every new subscription
   blocked matching for the duration; the lock is now taken for the
   registration itself and nothing else. (#299)
+- The service can use a PgBouncer transaction pooler. With
+  `BOUNCER_CONN_STRING` (`--db-bouncer`) set, every query goes through it and
+  `CONN_STRING` keeps a direct pool of two connections for the coordinator's
+  `LISTEN` session, which a transaction pooler cannot carry; `DB_MAX_CONNS`
+  then sizes the bouncer pool. Unset, the service runs on a single direct pool
+  as before.
+- The connection pools are exported as the `pgxpool_*` metrics, labelled
+  `pool="main"`, plus `pool="pubsub"` for the direct pool when a bouncer is in
+  use. `pgxpool_empty_acquire_wait_seconds_total` is the one that says the pool
+  is too small.
 - The repository clients are Connect clients, so this service no longer speaks
   Twirp to anything. `twitchtv/twirp` is gone from every source file here and
   is an indirect dependency only, kept by the generated Twirp server this
