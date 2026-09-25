@@ -13,16 +13,37 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ttab/elephant-api/repository/repositoryconnect"
 	"github.com/ttab/elephant-index/index"
 	"github.com/ttab/elephant-index/postgres"
 	"github.com/ttab/elephantine"
+	"github.com/ttab/elephantine/pg"
 	"github.com/ttab/elephantine/rpc"
 	"github.com/urfave/cli/v3"
 )
+
+// defaultDBMaxConns is the size of the query pool, set here rather than left
+// to pgx: its default is max(4, NumCPU()) read from the node's cpuset rather
+// than the cgroup quota, so an unset pool tracks whichever node the pod lands
+// on and changes size invisibly on reschedule.
+//
+// The background work holds about four connections at its busiest. Each
+// indexer — one per enabled index set, so two during a re-index — runs one
+// short statement at a time, the percolator's event loop and its update
+// handler can each hold a transaction across an OpenSearch write, and the job
+// locks (one per indexer plus the percolator's), the coordinator's
+// reconciliation and the cleanup loops run a statement every few seconds or
+// less often. The search API runs one to three
+// short queries per request and holds no connection while a subscription long
+// poll waits. Eight covers the background work with as much again for a burst
+// of requests. The one thing that can exceed it is a schema change reaching
+// many document types in the same batch, where each index worker holds a
+// transaction across its OpenSearch mapping update; those queue for a
+// connection rather than fail, and are rare. Revisit once
+// pgxpool_empty_acquire_wait_seconds_total says what the pool actually needs.
+const defaultDBMaxConns = 8
 
 func main() {
 	err := godotenv.Load()
@@ -98,6 +119,21 @@ func main() {
 				Sources: cli.EnvVars("CONN_STRING"),
 			},
 			&cli.StringFlag{
+				Name:    "db-bouncer",
+				Usage:   "Connection string routed through PgBouncer, used for all DB operations except the LISTEN session",
+				Sources: cli.EnvVars("BOUNCER_CONN_STRING"),
+			},
+			&cli.IntFlag{
+				Name:    "db-max-conns",
+				Sources: cli.EnvVars("DB_MAX_CONNS"),
+				Value:   defaultDBMaxConns,
+				Usage: `Maximum size of the Postgres connection pool used for
+queries. Overrides pool_max_conns in the connection string. Zero or less leaves
+the pool to size itself, which means max(4, NumCPU()) read from the node's
+cpuset. With a bouncer configured the direct pool is fixed at 2 and this applies
+to the bouncer pool.`,
+			},
+			&cli.StringFlag{
 				Name:    "db-parameter",
 				Sources: cli.EnvVars("CONN_STRING_PARAMETER"),
 			},
@@ -150,6 +186,8 @@ func runIndexer(ctx context.Context, cmd *cli.Command) error {
 		logLevel           = cmd.String("log-level")
 		defaultLanguage    = cmd.String("default-language")
 		connString         = cmd.String("db")
+		bouncerConnString  = cmd.String("db-bouncer")
+		dbMaxConns         = cmd.Int("db-max-conns")
 		opensearchEndpoint = cmd.String("opensearch-endpoint")
 		repositoryEndpoint = cmd.String("repository-endpoint")
 		managedOS          = cmd.Bool("managed-opensearch")
@@ -198,20 +236,30 @@ func runIndexer(ctx context.Context, cmd *cli.Command) error {
 
 	langOpts := index.StandardLanguageOptions(defaultLanguage)
 
-	dbpool, err := pgxpool.New(ctx, connString)
+	// NewPools sizes and pings the pools and registers a
+	// PoolStatCollector for each. An empty bouncer connection string, or
+	// one equal to the direct one, leaves the service on a single direct
+	// pool, so the flag is passed through unconditionally. WithPubSub is
+	// what keeps the coordinator's LISTEN session off the bouncer: behind
+	// one it gets a direct pool of pg.DefaultPubSubMaxConns of its own,
+	// without one it is the main pool.
+	pools, err := pg.NewPools(ctx, prometheus.DefaultRegisterer,
+		connString, dbMaxConns,
+		pg.WithBouncer(bouncerConnString),
+		pg.WithPubSub(),
+	)
 	if err != nil {
-		return fmt.Errorf("create connection pool: %w", err)
+		return fmt.Errorf("create database pools: %w", err)
 	}
 
 	defer func() {
 		// Don't block for close
-		go dbpool.Close()
+		go pools.Close()
 	}()
 
-	err = dbpool.Ping(ctx)
-	if err != nil {
-		return fmt.Errorf("connect to database: %w", err)
-	}
+	logger.InfoContext(ctx, "created connection pools",
+		"max_conns", dbMaxConns,
+		"bouncer", pools.PubSub != pools.Main)
 
 	auth, err := elephantine.AuthenticationConfigFromCLI(ctx, cmd, Scopes)
 	if err != nil {
@@ -246,7 +294,7 @@ func runIndexer(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("create schema loader: %w", err)
 	}
 
-	clients := index.NewOSClientProvider(postgres.New(dbpool), passwordKey)
+	clients := index.NewOSClientProvider(postgres.New(pools.Main), passwordKey)
 
 	metrics, err := index.NewMetrics(prometheus.DefaultRegisterer)
 	if err != nil {
@@ -273,7 +321,8 @@ func runIndexer(ctx context.Context, cmd *cli.Command) error {
 	err = index.RunIndex(ctx, index.Parameters{
 		APIServer:          server,
 		Logger:             logger,
-		Database:           dbpool,
+		Database:           pools.Main,
+		ListenDatabase:     pools.PubSub,
 		Client:             clients.GetClientForCluster,
 		DefaultCluster:     osURL,
 		DefaultClusterAuth: defaultAuth,

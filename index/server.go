@@ -19,9 +19,13 @@ import (
 )
 
 type Parameters struct {
-	APIServer          *elephantine.APIServer
-	Logger             *slog.Logger
-	Database           *pgxpool.Pool
+	APIServer *elephantine.APIServer
+	Logger    *slog.Logger
+	Database  *pgxpool.Pool
+	// ListenDatabase is a direct pool for the coordinator's LISTEN
+	// session, for when Database goes through a transaction pooler. Nil
+	// means Database.
+	ListenDatabase     *pgxpool.Pool
 	DefaultCluster     *url.URL
 	DefaultClusterAuth ClusterAuth
 	Client             OpenSearchClientFunc
@@ -59,6 +63,7 @@ func RunIndex(ctx context.Context, p Parameters) error {
 		Sharding:        p.Sharding,
 		NoIndexing:      p.NoIndexer,
 		PercolatorCache: percDocs,
+		ListenDatabase:  p.ListenDatabase,
 	})
 	if err != nil {
 		return fmt.Errorf("create coordinator: %w", err)
