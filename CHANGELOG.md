@@ -113,7 +113,8 @@ Changes:
   `CONN_STRING` keeps a direct pool of two connections for the coordinator's
   `LISTEN` session, which a transaction pooler cannot carry; `DB_MAX_CONNS`
   then sizes the bouncer pool. Unset, the service runs on a single direct pool
-  as before.
+  as before. Both pools are built by elephantine's `pg.NewPools`, which is
+  what makes the split, the sizing and the metrics below one call.
 - The connection pools are exported as the `pgxpool_*` metrics, labelled
   `pool="main"`, plus `pool="pubsub"` for the direct pool when a bouncer is in
   use. `pgxpool_empty_acquire_wait_seconds_total` is the one that says the pool
@@ -124,7 +125,7 @@ Changes:
   service still mounts. The caller-token forwarding that `GetFlatDocument` and
   document loading depend on moved from `twirp.WithHTTPRequestHeaders` to
   `rpc.WithOutgoingHeaders` plus a `rpc.PropagateHeaders()` interceptor. (#298)
-- Dependency upgrades: elephantine to v0.29.1, pgx to v5.11.0, connect to
+- Dependency upgrades: elephantine to v0.30.1, pgx to v5.11.0, connect to
   v1.21.0, the AWS SDK suite, `urfave/cli` to v3.13.0 and the `golang.org/x`
   modules. The elephantine bump fixes a test log handler that could kill a
   whole test binary with `panic: Log in goroutine after TestX has completed`,
