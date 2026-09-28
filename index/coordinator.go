@@ -81,6 +81,12 @@ type CoordinatorOptions struct {
 	PercolatorCache *PercolatorDocCache
 	NoIndexing      bool
 
+	// ListenDatabase is the pool the notification subscriber takes its
+	// LISTEN connection from. It has to be a direct connection to
+	// PostgreSQL, as LISTEN does not work through a transaction pooler.
+	// Nil means the pool the coordinator was created with.
+	ListenDatabase *pgxpool.Pool
+
 	// ReconcileInterval overrides how often the index sets are re-read from
 	// the database. Zero means DefaultIndexSetReconcileInterval.
 	ReconcileInterval time.Duration
@@ -238,7 +244,12 @@ func (c *Coordinator) Run(ctx context.Context) error {
 	// dead is lost for good, so every connect and reconnect asks the event
 	// loop for a full reconciliation rather than trusting that nothing
 	// happened while we were away.
-	sub := pg.NewSubscriber(c.logger, c.db, fanOuts,
+	listenDB := c.opt.ListenDatabase
+	if listenDB == nil {
+		listenDB = c.db
+	}
+
+	sub := pg.NewSubscriber(c.logger, listenDB, fanOuts,
 		pg.WithOnReconnect(func(_ context.Context) error {
 			c.requestReconcile()
 

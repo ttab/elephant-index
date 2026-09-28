@@ -179,7 +179,9 @@ client is built, not at startup.
 
 | Flag | Env | Default | What it does |
 |---|---|---|---|
-| `--db` | `CONN_STRING` | `postgres://elephant-index:pass@localhost/elephant-index` | The default is for local development only. **Set `pool_max_conns` explicitly in any hosted environment** — pgx otherwise sizes the pool from the node's CPU count, which changes invisibly on reschedule. |
+| `--db` | `CONN_STRING` | `postgres://elephant-index:pass@localhost/elephant-index` | Direct connection to Postgres. The default is for local development only. Without `--db-bouncer` everything runs on this pool; with it, this pool carries only the coordinator's `LISTEN` session and is fixed at 2 connections. |
+| `--db-bouncer` | `BOUNCER_CONN_STRING` | — | Connection string through a PgBouncer transaction pooler. When set, and different from `--db`, every query goes through it except the `LISTEN` session, which a transaction pooler cannot carry. Unset means a single direct pool, as before. |
+| `--db-max-conns` | `DB_MAX_CONNS` | `8` | Size of the pool queries run on: the direct pool without a bouncer, the bouncer pool with one. Overrides `pool_max_conns` in the connection string. Zero or less leaves it to pgx, which sizes the pool from the node's CPU count and so changes invisibly on reschedule. |
 | `--db-parameter` | `CONN_STRING_PARAMETER` | — | Reads the connection string from a parameter source instead. |
 | `--repository-endpoint` | `REPOSITORY_ENDPOINT` | — | **Required.** The event log, documents and revisor schemas. |
 | `--parameter-source` | `PARAMETER_SOURCE` | — | Where `*-parameter` flags resolve from. |
