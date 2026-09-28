@@ -346,9 +346,10 @@ minute is not a handover in progress. **Before v1.5.0 a lost lock stopped that
 replica's indexer for good**, logged as `out of sync: no matching job lock to
 ping` followed by `indexer has stopped`, and each Postgres blip took one more
 replica out until none was left; stage stopped indexing for over an hour that
-way. On those versions a rollout restart is the fix. The lock is lost more
-easily than it should be, because a ping that commits after its timeout has
-expired is read as a lost lock on the next ping.
+way. On those versions a rollout restart is the fix. They also lost the lock
+more easily than they should have: before elephantine v0.30.2, a ping that
+committed after its timeout had expired was read as a lost lock on the next
+ping.
 
 ### Subscriptions stop delivering, indexing is fine
 

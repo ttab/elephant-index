@@ -70,7 +70,9 @@ Changes:
   and never contended for the lock again, so each blip took out one more
   replica, until stage had no indexer left and search stayed stale for over an
   hour. Both jobs now return to contending for the lock, and the percolator
-  resumes from the persisted position rather than from its own. See
+  resumes from the persisted position rather than from its own. The
+  elephantine bump also stops a slow ping from costing the lock in the first
+  place. See
   [Indexing has stopped advancing](docs/ops.md#indexing-has-stopped-advancing).
   (#311)
 - Where a replica sends its searches is observable. Each one logs `switched
@@ -114,7 +116,7 @@ Changes:
   service still mounts. The caller-token forwarding that `GetFlatDocument` and
   document loading depend on moved from `twirp.WithHTTPRequestHeaders` to
   `rpc.WithOutgoingHeaders` plus a `rpc.PropagateHeaders()` interceptor. (#298)
-- Dependency upgrades: elephantine to v0.29.1, pgx to v5.11.0, connect to
+- Dependency upgrades: elephantine to v0.30.2, pgx to v5.11.0, connect to
   v1.21.0, the AWS SDK suite, `urfave/cli` to v3.13.0 and the `golang.org/x`
   modules. The elephantine bump fixes a test log handler that could kill a
   whole test binary with `panic: Log in goroutine after TestX has completed`,
