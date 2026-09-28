@@ -151,7 +151,9 @@ first thing to lag under load.
     here that is loss.
   * `percolate-event` (`location` is `percolator`) — an event was percolated.
 * `elephant_indexer_percolator_lifecycle_total{event}` — the percolator's own
-  loop. `acquire-lock`, `start` and `stop` trace the lock changing hands;
+  loop. `acquire-lock`, `start` and `stop` trace the lock changing hands, and
+  since v1.5.0 `acquire-lock` counts acquisitions rather than attempts, so it
+  moves with `start`;
   `triggered` counts wakeups from a notification and `poll` counts timer-driven
   passes; `no-work` is the idle case and is routinely the largest.
   `end-iteration` closes each pass. `query-doc-preseed`, `query-doc` and

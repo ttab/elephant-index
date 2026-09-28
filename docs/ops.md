@@ -340,6 +340,17 @@ or the cluster. If nothing is running it, check `pg_job_lock_*` and
 `task_restarts_total`: a wedged holder keeps the lock until it stops touching
 it.
 
+A replica that loses the lock goes back to contending for it, so every replica
+reporting `pg_job_lock_held{name="indexer-<set>"}` at 0 for longer than a
+minute is not a handover in progress. **Before v1.5.0 a lost lock stopped that
+replica's indexer for good**, logged as `out of sync: no matching job lock to
+ping` followed by `indexer has stopped`, and each Postgres blip took one more
+replica out until none was left; stage stopped indexing for over an hour that
+way. On those versions a rollout restart is the fix. They also lost the lock
+more easily than they should have: before elephantine v0.30.2, a ping that
+committed after its timeout had expired was read as a lost lock on the next
+ping.
+
 ### Subscriptions stop delivering, indexing is fine
 
 *Signal:* `elephant_indexer_percolator_position` flat while the active

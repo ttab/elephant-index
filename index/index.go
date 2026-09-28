@@ -127,13 +127,6 @@ func (idx *Indexer) Run(ctx context.Context) error {
 		idx.logger.Info("indexer has stopped")
 	}()
 
-	lock, err := joblock.New(idx.database, idx.logger,
-		"indexer-"+idx.name,
-		joblock.Options{})
-	if err != nil {
-		return fmt.Errorf("create job lock: %w", err)
-	}
-
 	// Set up a context that will be cancelled if we're asked to stop.
 	lockContext, cancel := context.WithCancel(ctx)
 
@@ -142,7 +135,17 @@ func (idx *Indexer) Run(ctx context.Context) error {
 		cancel()
 	}()
 
-	err = lock.RunWithContext(lockContext, idx.indexerLoop)
+	// joblock.Run re-acquires the lock whenever the loop returns, which it
+	// does when the lock is lost. A single RunWithContext would leave the
+	// indexer stopped but still registered with the coordinator, so the
+	// replica never contends for the lock again and reconciliation sees
+	// nothing to fix. A Postgres blip that cost every replica its lock in
+	// turn has stopped indexing that way.
+	err := joblock.Run(lockContext, idx.database, idx.logger,
+		"indexer", "indexer-"+idx.name,
+		joblock.Options{
+			MetricsRegisterer: idx.metrics.Registerer,
+		}, idx.indexerLoop)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("run indexer loop: %w", err)
 	}
