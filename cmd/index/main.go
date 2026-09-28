@@ -258,7 +258,8 @@ func runIndexer(ctx context.Context, cmd *cli.Command) error {
 	}()
 
 	logger.InfoContext(ctx, "created connection pools",
-		"max_conns", dbMaxConns,
+		"max_conns", pools.Main.Config().MaxConns,
+		"pubsub_max_conns", pools.PubSub.Config().MaxConns,
 		"bouncer", pools.PubSub != pools.Main)
 
 	auth, err := elephantine.AuthenticationConfigFromCLI(ctx, cmd, Scopes)
