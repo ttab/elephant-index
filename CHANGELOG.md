@@ -63,7 +63,7 @@ Changes:
 - The notification subscriber is restarted after a failure instead of
   stopping the coordinator, and the coordinator's event loop no longer logs a
   misleading error about an index set with no name when the subscriber's
-  fan-out is stopped.
+  fan-out is stopped. (#318)
 
 - A crash that could kill a replica is fixed. The in-memory cache of language
   settings was unguarded, so two goroutines resolving a language neither had
