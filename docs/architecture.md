@@ -26,6 +26,7 @@ by `RunIndex` in `index/server.go`, under an `elephantine.ErrGroup` with a
 |---|---|---|
 | `server` — HTTP listener, both RPC stacks and the elastic proxy | no | always |
 | `coordinator` — index set lifecycle and the notification subscriber | no | always |
+| `pubsub` — the notification subscriber, restarted every five seconds while it fails | no | always, inside the coordinator |
 | One `Indexer` per enabled index set | `indexer-<set name>` | `--no-indexer` unset |
 | One index worker per type × language, inside each indexer | no (owned by its indexer) | documents of that type arriving |
 | `percolator` | `percolator` | always, created by the coordinator |
@@ -88,8 +89,13 @@ rollout restart. Because the state is per-replica the failure is per-pod, so
 search flips between the old and the new set depending on which replica
 answers.
 
-**Nothing here takes the process down once it is running.** A failure on
-either path is logged, counted on
+**Nothing here takes the process down once it is running.** The subscriber
+reconnects by itself when its own pings stop arriving, and when it fails for
+any other reason — a database failover resetting the `LISTEN` connection — it
+is restarted about every five seconds for as long as it keeps failing, with
+each restart queuing a reconciliation; it used to stop the coordinator, and
+with it the process, which turned a failover into a restart of every replica.
+A failure on either path is logged, counted on
 `elephant_indexer_index_set_sync_total{trigger,result}` and retried; a failed
 notification additionally queues a reconciliation immediately rather than
 waiting out the interval, since the sweep reads every set and is a strictly

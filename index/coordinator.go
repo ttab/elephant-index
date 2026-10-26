@@ -25,6 +25,21 @@ import (
 
 const IndexerStopTimeout = 10 * time.Second
 
+// subscriberRetryOptions restarts the notification subscriber about every
+// five seconds for as long as it keeps failing, the same pacing elephant-user
+// and elephant-repository give theirs. Pinning the floor, the ceiling and the
+// minimum runtime to the same value flattens the library's exponential curve
+// into a static five second backoff: while the subscriber is down, index set
+// changes wait for the next reconciliation and percolation for its poll, so a
+// restart that backed off towards the default one minute ceiling would
+// stretch an outage for the price of one connection attempt per replica every
+// five seconds. GiveUpAfter is left at zero, so it never gives up.
+var subscriberRetryOptions = elephantine.RetryOptions{
+	BackoffFloor: 5 * time.Second,
+	BackoffCeil:  5 * time.Second,
+	MinRuntime:   5 * time.Second,
+}
+
 // DefaultIndexSetReconcileInterval is how often the coordinator re-reads the
 // index sets from the database. The index_status_change notification is a
 // latency optimisation on top of this, not the only way an activation reaches
@@ -257,18 +272,32 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		}),
 	)
 
-	go func() {
-		err := sub.Run(stopCtx)
-		if err != nil && !errors.Is(err, context.Canceled) {
-			// Stop if the subscriber fails.
-			c.stopOnce.Do(func() {
-				close(c.stop)
-			})
+	// The subscriber reconnects by itself when its own pings stop
+	// arriving, but returns on other connection errors, such as a database
+	// failover resetting the LISTEN connection. Restart it for as long as
+	// it keeps failing rather than stopping the coordinator, and with it
+	// the process, over a connection that can be re-established: every
+	// restart runs the reconnect hook above, so whatever was missed while
+	// it was down is reconciled on the way back.
+	listenerOpts := []elephantine.ErrGroupOption{}
 
-			c.logger.ErrorContext(stopCtx, "notification subscriber stopped",
-				elephantine.LogKeyError, err)
-		}
-	}()
+	if c.opt.Metrics != nil && c.opt.Metrics.Registerer != nil {
+		listenerOpts = append(listenerOpts,
+			elephantine.WithErrGroupMetricsRegisterer(
+				c.opt.Metrics.Registerer))
+	}
+
+	listener := elephantine.NewErrGroup(stopCtx, c.logger, listenerOpts...)
+
+	listener.GoWithRetries("pubsub", subscriberRetryOptions,
+		func(ctx context.Context) error {
+			err := sub.Run(ctx)
+			if err != nil && ctx.Err() == nil {
+				return fmt.Errorf("run subscriber: %w", err)
+			}
+
+			return nil
+		})
 
 	go func() {
 		c.indexStatuses.ListenAll(stopCtx, c.changes)
@@ -304,6 +333,15 @@ func (c *Coordinator) Run(ctx context.Context) error {
 			elephantine.LogKeyError, err)
 
 		errs = append(errs, err)
+	}
+
+	// The event loop has returned, so either the context is done or the
+	// coordinator was asked to stop; both cancel stopCtx and with it the
+	// subscriber, which makes this a wait rather than a stop.
+	err = listener.Wait()
+	if err != nil {
+		errs = append(errs,
+			fmt.Errorf("notification subscriber: %w", err))
 	}
 
 	err = c.finalise()
@@ -365,7 +403,16 @@ func (c *Coordinator) runEventloop(
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case change := <-c.changes:
+		case change, ok := <-c.changes:
+			if !ok {
+				// The fan-out listener has been stopped, which
+				// only happens once the coordinator is stopping.
+				// Reading on would hand handleChange a zero
+				// value and have it fail on an index set with
+				// no name.
+				return ctx.Err()
+			}
+
 			err := c.handleChange(ctx, change)
 
 			c.recordSetSync(syncTriggerNotification, err)
