@@ -4,7 +4,7 @@ Everything from v1.0.0 onwards is documented here; earlier releases are not
 reconstructed. The entries are derived from the release tags, and the linked
 pull requests hold the detail.
 
-## [v1.5.0] - Unreleased
+## [v1.5.0] - 2026-10-29
 
 **Deploy order (requires a Connect-serving repository):** this service now
 calls the elephant repository with Connect clients, so **the repository has to
