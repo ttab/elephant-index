@@ -29,7 +29,7 @@ documented by them:
 |---|---|---|
 | `rpc_*` | `elephantine` | Request, duration, response and per-protocol response counters for both RPC stacks. |
 | `eventlog_follower_position` | `koonkie` | The event log position per follower. |
-| `pg_job_lock_*`, `pgxpool_*`, `task_restarts_total`, `client_*` | `elephantine` | Job lock state, connection pools, task supervision, outbound HTTP clients. The pools are labelled `pool="main"`, the one queries run on, and `pool="pubsub"`, the direct pool for the `LISTEN` session, which exists only when a bouncer is configured. |
+| `pg_job_lock_*`, `pgxpool_*`, `task_restarts_total`, `client_*` | `elephantine` | Job lock state, connection pools, task supervision, outbound HTTP clients. The pools are labelled `pool="main"`, the one queries run on, and `pool="pubsub"`, the direct pool for the `LISTEN` session, which exists only when a bouncer is configured. `task_restarts_total{task="pubsub"}` is the notification subscriber being restarted after losing that session; one restart is a dropped connection coming back, a climbing count is a subscriber that cannot stay connected. |
 
 The service's own metrics are prefixed `elephant_indexer_`. That does not
 match the fleet convention of a short service-name prefix, but they are

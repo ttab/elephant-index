@@ -44,7 +44,26 @@ cluster this service cannot reach, so an alert keyed on pod restarts will stop
 firing for it; the counter and the log line replace it. The reconciliation at
 startup is still fatal, because there is no state to keep serving.
 
+**Behaviour change (a replica no longer exits when the notification
+subscriber fails):** the `LISTEN`/`NOTIFY` subscriber reconnects by itself
+when its own pings stop arriving, but any other connection error — a database
+failover resetting the connection — made it return, which stopped the
+coordinator and with it the process, and the exit logged `read status of
+changed index set "": no rows in result set` rather than the connection error.
+It is now restarted about every five seconds for as long as it keeps failing,
+the same pacing as elephant-user and elephant-repository, and every restart
+queues an index set reconciliation. Restarts count on
+`task_restarts_total{task="pubsub"}` and log `task failure, restarting` with
+`name=pubsub`. As with the change above, **a restart is no longer the symptom
+to expect** for a lost database connection; the counter and the log line
+replace it.
+
 Changes:
+
+- The notification subscriber is restarted after a failure instead of
+  stopping the coordinator, and the coordinator's event loop no longer logs a
+  misleading error about an index set with no name when the subscriber's
+  fan-out is stopped. (#318)
 
 - A crash that could kill a replica is fixed. The in-memory cache of language
   settings was unguarded, so two goroutines resolving a language neither had

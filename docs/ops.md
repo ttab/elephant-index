@@ -302,8 +302,17 @@ ticking. The database read is bounded at ten seconds so the sweep cannot hang
 on it silently, which leaves a ticker starved by a sweep blocked on stopping
 an indexer, or an event loop that has exited — and that exits the process, so
 the pod would be restarting. Check `listener ping timeout, reconnecting` and
-`notification subscriber stopped` around the activation for how the
-notification came to be lost in the first place.
+`task failure, restarting` with `name=pubsub` around the activation for how
+the notification came to be lost in the first place. The subscriber is
+restarted about every five seconds for as long as it fails, and every restart
+queues a reconciliation, so a dropped connection costs a few seconds of lost
+notifications and then corrects itself; `task_restarts_total{task="pubsub"}`
+climbing is a subscriber that cannot stay connected, and the error is on the
+log line. Before v1.5.0 a subscriber failure that was not its own ping
+timeout — a database failover resetting the connection — stopped the
+coordinator and with it the process, and the exit logged
+`read status of changed index set "": no rows in result set` rather than the
+connection error that caused it.
 
 Before this reconciliation existed a lost notification was unrecoverable and
 `kubectl rollout restart` was the only cure; that is no longer the first
