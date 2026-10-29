@@ -160,6 +160,10 @@ Changes:
   which this suite is exposed to wherever it logs from a worker on a
   cancelled context. Also `actions/checkout` and `actions/setup-go` to v7.
   (#308)
+- Dependency upgrades: Go to 1.27.3, elephant-api to v0.28.3, elephantine to
+  v0.31.0, koonkie to v0.2.0, connect to v1.21.1, the AWS SDK suite,
+  `urfave/cli` to v3.14.0, prometheus client to v1.25.0 and the `golang.org/x`
+  modules. golangci-lint in CI to v2.15.
 
 ## [v1.4.2] - 2026-09-17
 

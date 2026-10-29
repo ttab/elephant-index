@@ -153,8 +153,6 @@ func TestPercolate(t *testing.T) {
 		)
 
 		// Always drain got batch until its closed.
-		//
-		//nolint: revive
 		for range gotBatch {
 		}
 	}()
