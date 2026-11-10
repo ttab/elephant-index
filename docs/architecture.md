@@ -362,6 +362,16 @@ handler and not after, so a successful empty response returned past the
 deadline is not corrected on the way out — it would be recorded as a `200` for
 a call that timed out.
 
+**A poll where none of the subscriptions exist is held back and refused.**
+Subscriptions that go unpolled for 30 minutes are pruned, so a client that
+was away comes back holding references to nothing. Such a poll waits 5
+seconds, or until 200ms before the request deadline if that comes sooner, and
+is then answered `not_found`, without touching anything. It used
+to be an immediate empty success listing the IDs in `unknown_subscriptions`,
+and a client that re-polled on every success without reading that field spun
+on it with no delay at all. A poll that names at least one live subscription
+is served as before, with the dead ones in `unknown_subscriptions`.
+
 ### Retention
 
 The percolator's own cleanup goroutine runs every minute and expires by age:

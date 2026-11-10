@@ -402,11 +402,25 @@ func (s *SearchServiceV1) PollSubscription(
 		percSubs[def.Percolator] = append(percSubs[def.Percolator], subID)
 	}
 
-	// All subscriptions were unknown.
+	// All subscriptions were unknown. Hold the answer back so that a
+	// client that re-polls on a successful response without reading
+	// unknown_subscriptions can't spin on us. The wait stops short of the
+	// request deadline, so a caller with a short timeout still gets
+	// the not_found rather than deadline_exceeded.
 	if len(cursorCollect) == 0 {
-		return &index.PollSubscriptionResponse{
-			UnknownSubscriptions: unknownSubs,
-		}, nil
+		wait := unknownSubscriptionsDelay
+
+		if deadline, ok := ctx.Deadline(); ok {
+			wait = min(wait, time.Until(deadline)-unknownSubscriptionsMargin)
+		}
+
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			return nil, pollWaitError(ctx)
+		}
+
+		return nil, rpc.NotFound("none of the subscriptions exist")
 	}
 
 	err = q.TouchSubscriptions(ctx, postgres.TouchSubscriptionsParams{
@@ -520,6 +534,18 @@ func (s *SearchServiceV1) PollSubscription(
 
 	return &res, nil
 }
+
+// unknownSubscriptionsDelay is how long PollSubscription holds back its
+// not_found answer when none of the requested subscriptions exist. A client
+// that re-polls immediately on any answer would otherwise turn a set of
+// expired subscriptions into a hot loop of instant responses.
+const unknownSubscriptionsDelay = 5 * time.Second
+
+// unknownSubscriptionsMargin is how far ahead of the request deadline the
+// hold-back stops. The answer still has to reach the caller before its own
+// deadline, which runs slightly ahead of ours, so stopping a hair short of
+// the server-side deadline is not enough.
+const unknownSubscriptionsMargin = 200 * time.Millisecond
 
 // waitOutcome says why a long poll stopped waiting. The service's own
 // max_wait_ms elapsing is a successful empty response, but a request context

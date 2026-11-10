@@ -4,6 +4,18 @@ Everything from v1.0.0 onwards is documented here; earlier releases are not
 reconstructed. The entries are derived from the release tags, and the linked
 pull requests hold the detail.
 
+## [v1.6.0] - Unreleased
+
+**Behaviour change (`PollSubscription` with only unknown subscriptions):** a
+poll where none of the requested subscriptions exist — typically because they
+went 30 minutes unpolled and were pruned — is now held for 5 seconds (less on
+a Connect call whose deadline is nearer) and then answered `not_found`. It used to return an immediate empty success with the
+IDs in `unknown_subscriptions`, which a client that re-polls on every success
+turned into a hot loop. A client should treat `not_found` as "subscribe
+again" by re-running its query with `subscribe` set. Polls naming at least one
+live subscription are unchanged. See
+[long-poll deadlines](docs/architecture.md#long-poll-deadlines).
+
 ## [v1.5.0] - 2026-10-29
 
 **Deploy order (requires a Connect-serving repository):** this service now

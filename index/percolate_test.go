@@ -1,12 +1,15 @@
 package index_test
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/ttab/elephant-api/index"
 	"github.com/ttab/elephant-api/newsdoc"
 	"github.com/ttab/elephant-api/repository"
@@ -199,6 +202,61 @@ func TestPercolate(t *testing.T) {
 	}
 
 	test.MessageAgainstGolden(t, regenerateTestFixtures(), &items, filepath.Join(testDataDir, "poll-result.json"))
+
+	// A poll where every subscription is unknown is held back and then
+	// refused, so that a client re-polling on every answer can't spin.
+	pollStart := time.Now()
+
+	_, err = search.PollSubscription(ctx,
+		&index.PollSubscriptionRequest{
+			Subscriptions: []*index.SubscriptionReference{
+				{Id: subPos.Id + 1000},
+			},
+		})
+	test.IsRPCError(t, err, connect.CodeNotFound)
+
+	if elapsed := time.Since(pollStart); elapsed < 5*time.Second {
+		t.Fatalf("expected the unknown subscription poll to be held back, answered after %v", elapsed)
+	}
+
+	// The hold-back stops short of the request deadline, so a caller with
+	// a short timeout still learns that its subscriptions are gone. Only
+	// Connect carries the caller's deadline to the server.
+	connectSearch := tc.SearchClientOn(t, stackConnect, "doc_read", "search")
+	shortCtx, cancel := context.WithTimeout(ctx, time.Second)
+
+	defer cancel()
+
+	pollStart = time.Now()
+
+	_, err = connectSearch.PollSubscription(shortCtx,
+		&index.PollSubscriptionRequest{
+			Subscriptions: []*index.SubscriptionReference{
+				{Id: subPos.Id + 1000},
+			},
+		})
+	test.IsRPCError(t, err, connect.CodeNotFound)
+
+	if elapsed := time.Since(pollStart); elapsed > 2*time.Second {
+		t.Fatalf("expected the hold-back to respect the deadline, answered after %v", elapsed)
+	}
+
+	// A known subscription alongside an unknown one is still served, and
+	// the unknown one is reported back.
+	pollRes, err := search.PollSubscription(ctx,
+		&index.PollSubscriptionRequest{
+			Subscriptions: []*index.SubscriptionReference{
+				subPos,
+				{Id: subPos.Id + 1000},
+			},
+			MaxWaitMs: 100,
+		})
+	test.Mustf(t, err, "poll a known and an unknown subscription")
+
+	if !slices.Equal([]int64{subPos.Id + 1000}, pollRes.UnknownSubscriptions) {
+		t.Fatalf("expected the unknown subscription to be reported, got %v",
+			pollRes.UnknownSubscriptions)
+	}
 }
 
 func loadDocuments(
