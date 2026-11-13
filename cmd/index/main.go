@@ -69,19 +69,6 @@ func main() {
 				Value:   ":1081",
 			},
 			&cli.StringFlag{
-				Name:    "tls-addr",
-				Value:   ":1443",
-				Sources: cli.EnvVars("TLS_ADDR", "TLS_LISTEN_ADDR"),
-			},
-			&cli.StringFlag{
-				Name:    "cert-file",
-				Sources: cli.EnvVars("TLS_CERT_PATH"),
-			},
-			&cli.StringFlag{
-				Name:    "key-file",
-				Sources: cli.EnvVars("TLS_KEY_PATH"),
-			},
-			&cli.StringFlag{
 				Name:    "log-level",
 				Sources: cli.EnvVars("LOG_LEVEL"),
 				Value:   "debug",
@@ -158,6 +145,7 @@ to the bouncer pool.`,
 	}
 
 	runCmd.Flags = append(runCmd.Flags, elephantine.AuthenticationCLIFlags()...)
+	runCmd.Flags = append(runCmd.Flags, elephantine.TLSCLIFlags()...)
 
 	app := cli.Command{
 		Name:  "index",
@@ -180,9 +168,6 @@ func runIndexer(ctx context.Context, cmd *cli.Command) error {
 	var (
 		addr               = cmd.String("addr")
 		profileAddr        = cmd.String("profile-addr")
-		tlsAddr            = cmd.String("tls-addr")
-		certFile           = cmd.String("cert-file")
-		keyFile            = cmd.String("key-file")
 		logLevel           = cmd.String("log-level")
 		defaultLanguage    = cmd.String("default-language")
 		connString         = cmd.String("db")
@@ -302,16 +287,12 @@ func runIndexer(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("set up metrics: %w", err)
 	}
 
-	serverOpts := []elephantine.APIServerOption{
+	// tls-addr, cert-file and key-file are elephantine's, so that the
+	// listener is configured the same way in every service.
+	server := elephantine.NewAPIServer(logger, addr, profileAddr,
 		elephantine.APIServerCORSHosts(corsHosts...),
-	}
-
-	if certFile != "" {
-		serverOpts = append(serverOpts,
-			elephantine.APIServerTLS(tlsAddr, certFile, keyFile))
-	}
-
-	server := elephantine.NewAPIServer(logger, addr, profileAddr, serverOpts...)
+		elephantine.APIServerTLSFromCLI(cmd),
+	)
 
 	osURL, defaultAuth, err := parseDefaultCluster(
 		opensearchEndpoint, managedOS, passwordKey)

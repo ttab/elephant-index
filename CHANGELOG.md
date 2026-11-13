@@ -46,6 +46,11 @@ Changes:
   the active index set read the cluster from Postgres with no time limit
   while holding the lock every search takes, and queueing documents for
   percolation held the same lock across a transaction.
+- The HTTPS listener flags `tls-addr`, `cert-file` and `key-file` are now the
+  ones elephantine declares. Names, environment variables and defaults are
+  unchanged.
+- Dependency upgrades: elephantine to v0.32.0, elephant-api to v0.29.0,
+  revisorschemas to v1.6.1, pgx to v5.13.0, and the AWS SDK suite.
 
 ## [v1.5.0] - 2026-10-29
 
