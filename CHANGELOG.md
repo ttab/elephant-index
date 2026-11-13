@@ -42,6 +42,10 @@ Changes:
   [the indexing metrics](docs/observability.md#indexing).
 - Percolating one event is bounded to a minute, so a percolation that hangs
   releases the `percolator` lock instead of holding it.
+- A database that has stopped answering no longer stalls search. Switching
+  the active index set read the cluster from Postgres with no time limit
+  while holding the lock every search takes, and queueing documents for
+  percolation held the same lock across a transaction.
 
 ## [v1.5.0] - 2026-10-29
 

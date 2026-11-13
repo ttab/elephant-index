@@ -40,16 +40,20 @@ func TestPercolate(t *testing.T) {
 	loadDocuments(t, documents, docDataDir,
 		"russia_v1.json", "cyber_v1.json")
 
-	deadline := time.After(3 * time.Second)
+	deadline := time.After(30 * time.Second)
 
-	var found bool
+	var (
+		found   bool
+		lastErr error
+	)
 
 	for !found {
 		select {
 		case <-ctx.Done():
 			t.Fatal("cancelled while waiting for documents to become searchable")
 		case <-deadline:
-			t.Fatal("timed out waiting for documents to become searchable")
+			t.Fatalf("timed out waiting for documents to become searchable, last error: %v",
+				lastErr)
 		case <-time.After(200 * time.Millisecond):
 		}
 
@@ -66,7 +70,14 @@ func TestPercolate(t *testing.T) {
 				Lte:   "2025-08-29T23:59:59.999Z",
 			}),
 		})
-		test.Mustf(t, err, "perform search")
+		if err != nil {
+			// An index that was just created answers 503 until
+			// its primary shard has been allocated, which is part
+			// of what is being waited for here.
+			lastErr = err
+
+			continue
+		}
 
 		if len(res.Hits.Hits) == 0 {
 			continue
@@ -91,7 +102,9 @@ func TestPercolate(t *testing.T) {
 	// point from which we start the actual percolation test.
 	q := postgres.New(tc.IndexDB)
 
-	pSyncDeadline := time.After(3 * time.Second)
+	// Longer than the percolator's fallback poll interval, which is what
+	// picks the events up when the notification for them was missed.
+	pSyncDeadline := time.After(15 * time.Second)
 
 	for {
 		select {

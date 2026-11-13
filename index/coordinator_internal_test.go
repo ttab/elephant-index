@@ -88,7 +88,7 @@ func TestEnsureActiveClientClusterChange(t *testing.T) {
 
 	c, clusters := testCoordinator(t)
 
-	err := c.ensureActiveClient(indexSet("factual-tiger", "a"))
+	err := c.ensureActiveClient(t.Context(), indexSet("factual-tiger", "a"))
 	test.Mustf(t, err, "set the initial active client")
 
 	first, set := c.GetActiveIndex()
@@ -97,7 +97,7 @@ func TestEnsureActiveClientClusterChange(t *testing.T) {
 	}
 
 	// Same set, same cluster: nothing to do, and no new client.
-	err = c.ensureActiveClient(indexSet("factual-tiger", "a"))
+	err = c.ensureActiveClient(t.Context(), indexSet("factual-tiger", "a"))
 	test.Mustf(t, err, "re-assert the active client")
 
 	again, _ := c.GetActiveIndex()
@@ -106,7 +106,7 @@ func TestEnsureActiveClientClusterChange(t *testing.T) {
 	}
 
 	// Same set, different cluster: the client has to follow the set.
-	err = c.ensureActiveClient(indexSet("factual-tiger", "b"))
+	err = c.ensureActiveClient(t.Context(), indexSet("factual-tiger", "b"))
 	test.Mustf(t, err, "move the active set to another cluster")
 
 	moved, set := c.GetActiveIndex()
@@ -183,7 +183,7 @@ func TestApplyIndexSetsKeepsServingWithoutAnActiveSet(t *testing.T) {
 
 	c, _ := testCoordinator(t)
 
-	err := c.ensureActiveClient(indexSet("vivid-otter", "a"))
+	err := c.ensureActiveClient(t.Context(), indexSet("vivid-otter", "a"))
 	test.Mustf(t, err, "set the initial active client")
 
 	inactive := indexSet("vivid-otter", "a")

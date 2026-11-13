@@ -682,7 +682,7 @@ func (idx *Indexer) ensureIndex(
 	}
 
 	for _, alias := range aliases {
-		err = idx.ensureAlias(index, alias)
+		err = idx.ensureAlias(ctx, index, alias)
 		if err != nil {
 			return "", fmt.Errorf(
 				"could not ensure alias %q for index %q: %w",
@@ -693,8 +693,11 @@ func (idx *Indexer) ensureIndex(
 	return index, nil
 }
 
-func (idx *Indexer) ensureAlias(index string, alias string) (outErr error) {
-	res, err := idx.client.Indices.PutAlias([]string{index}, alias)
+func (idx *Indexer) ensureAlias(
+	ctx context.Context, index string, alias string,
+) (outErr error) {
+	res, err := idx.client.Indices.PutAlias([]string{index}, alias,
+		idx.client.Indices.PutAlias.WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("could not create alias %s for index %s: %w", alias, index, err)
 	}

@@ -604,7 +604,7 @@ func (c *Coordinator) applyIndexSets(
 
 		if c.opt.NoIndexing {
 			if set.Active {
-				err := c.ensureActiveClient(set)
+				err := c.ensureActiveClient(ctx, set)
 				if err != nil {
 					errs = append(errs, fmt.Errorf(
 						"failed to ensure active client %q: %w",
@@ -685,7 +685,11 @@ func (c *Coordinator) noteActiveSetPresence(activeFound bool) {
 func (c *Coordinator) handleChange(
 	ctx context.Context, change IndexStatusChange,
 ) error {
-	set, err := c.q.GetIndexSet(ctx, change.Name)
+	// Bounded for the same reason as the read in reconcileSets.
+	readCtx, cancel := context.WithTimeout(ctx, indexSetQueryTimeout)
+	defer cancel()
+
+	set, err := c.q.GetIndexSet(readCtx, change.Name)
 	if err != nil {
 		return fmt.Errorf(
 			"read status of changed index set %q: %w",
@@ -695,7 +699,7 @@ func (c *Coordinator) handleChange(
 
 	if c.opt.NoIndexing {
 		if set.Active {
-			err := c.ensureActiveClient(set)
+			err := c.ensureActiveClient(ctx, set)
 			if err != nil {
 				return fmt.Errorf(
 					"failed to ensure active client %q: %w",
@@ -745,7 +749,7 @@ func (c *Coordinator) setUpdate(ctx context.Context, set postgres.IndexSet) erro
 	}
 
 	if set.Active {
-		err := c.ensureActiveClient(set)
+		err := c.ensureActiveClient(ctx, set)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to ensure active client %q: %w",
@@ -855,20 +859,39 @@ func (c *Coordinator) finaliseSetDelete(
 // is part of the comparison, not just the name: a set that is moved to another
 // cluster keeps its name, and reacting only to the name would leave every
 // search going to the cluster the set no longer lives in.
-func (c *Coordinator) ensureActiveClient(set postgres.IndexSet) error {
-	c.activeMut.Lock()
-	defer c.activeMut.Unlock()
+//
+// It must only be called from the coordinator event loop, which is the only
+// writer of the active set. That is what makes it safe to compare, fetch the
+// client and then swap without holding the lock across all three.
+func (c *Coordinator) ensureActiveClient(
+	ctx context.Context, set postgres.IndexSet,
+) error {
+	c.activeMut.RLock()
+	current := c.activeSet == set.Name &&
+		c.activeCluster == set.Cluster.String
+	c.activeMut.RUnlock()
 
-	if c.activeSet == set.Name && c.activeCluster == set.Cluster.String {
+	if current {
 		return nil
 	}
 
-	client, err := c.opt.ClientGetter(context.Background(), set.Cluster.String)
+	// The client is built from a cluster row read from Postgres. Read it
+	// before taking the write lock, and with a bound: every search takes
+	// the read lock, so a database that had stopped answering used to
+	// stall the whole read path here along with the event loop, for as
+	// long as the connection took to fail.
+	getCtx, cancel := context.WithTimeout(ctx, indexSetQueryTimeout)
+	defer cancel()
+
+	client, err := c.opt.ClientGetter(getCtx, set.Cluster.String)
 	if err != nil {
 		return fmt.Errorf(
 			"get client for cluster %q: %w",
 			set.Cluster.String, err)
 	}
+
+	c.activeMut.Lock()
+	defer c.activeMut.Unlock()
 
 	previousSet := c.activeSet
 	previousCluster := c.activeCluster
@@ -906,10 +929,17 @@ func (c *Coordinator) RequestDocumentPercolation(
 		return
 	}
 
+	// The lock covers the comparison and nothing after it. Holding it
+	// across the transaction below let a slow database block an
+	// activation, and a waiting writer blocks every new reader, so search
+	// stalled behind it too. A set that stops being active between the
+	// check and the insert queues one batch too many, which the delivery
+	// contract allows.
 	c.activeMut.RLock()
-	defer c.activeMut.RUnlock()
+	active := c.activeSet
+	c.activeMut.RUnlock()
 
-	if setName != c.activeSet {
+	if setName != active {
 		c.opt.Metrics.percolationEvent.WithLabelValues(
 			"inactive_set", setName,
 		).Inc()
@@ -965,14 +995,19 @@ func (c *Coordinator) RequestDocumentPercolation(
 func (c *Coordinator) startIndexer(
 	ctx context.Context, set postgres.IndexSet,
 ) (*Indexer, error) {
-	client, err := c.opt.ClientGetter(ctx, set.Cluster.String)
+	// Covers the cluster read and the index set row NewIndexer creates.
+	// The indexer itself runs on c.indexerCtx.
+	setupCtx, cancel := context.WithTimeout(ctx, indexSetQueryTimeout)
+	defer cancel()
+
+	client, err := c.opt.ClientGetter(setupCtx, set.Cluster.String)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"get client for cluster %q: %w",
 			set.Cluster.String, err)
 	}
 
-	i, err := NewIndexer(ctx, IndexerOptions{
+	i, err := NewIndexer(setupCtx, IndexerOptions{
 		Logger: c.logger.With(
 			"cluster_name", set.Cluster.String,
 			"indexer_name", set.Name,
