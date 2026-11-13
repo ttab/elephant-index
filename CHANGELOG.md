@@ -4,7 +4,7 @@ Everything from v1.0.0 onwards is documented here; earlier releases are not
 reconstructed. The entries are derived from the release tags, and the linked
 pull requests hold the detail.
 
-## [v1.6.0] - Unreleased
+## [v1.6.0] - 2026-11-13
 
 **Behaviour change (`PollSubscription` with only unknown subscriptions):** a
 poll where none of the requested subscriptions exist — typically because they
