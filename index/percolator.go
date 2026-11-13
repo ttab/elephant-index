@@ -367,7 +367,10 @@ func (p *Percolator) percolateEvents(ctx context.Context) error {
 
 	// Another replica may have held the lock since we last did, so resume
 	// from the persisted position rather than from our own.
-	state, err := q.GetAppState(ctx, "percolator")
+	readCtx, cancel := context.WithTimeout(ctx, indexSetQueryTimeout)
+	defer cancel()
+
+	state, err := q.GetAppState(readCtx, "percolator")
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("read percolator state: %w", err)
 	}
@@ -403,8 +406,11 @@ func (p *Percolator) percolateEvents(ctx context.Context) error {
 			start = p.lastEvent + 1
 		}
 
-		// Same deal here, process to the last known event.
-		end, err := q.GetLastPercolatorEventID(ctx)
+		// Same deal here, process to the last known event. The state
+		// queries are bounded like the percolation of an event is, as
+		// they run with the lock held as well.
+		end, err := withTimeout(ctx, indexSetQueryTimeout,
+			q.GetLastPercolatorEventID)
 		if err != nil {
 			return fmt.Errorf("get last event ID: %w", err)
 		}
@@ -431,20 +437,35 @@ func (p *Percolator) percolateEvents(ctx context.Context) error {
 
 		p.metrics.percolatorPos.Set(float64(p.lastEvent))
 
-		err = q.SetAppState(ctx, postgres.SetAppStateParams{
-			Name: "percolator",
-			Data: postgres.AppStateData{
-				Percolator: &postgres.PercolatorState{
-					CurrentPosition: p.lastEvent,
-				},
-			},
-		})
+		_, err = withTimeout(ctx, indexSetQueryTimeout,
+			func(ctx context.Context) (struct{}, error) {
+				return struct{}{}, q.SetAppState(ctx,
+					postgres.SetAppStateParams{
+						Name: "percolator",
+						Data: postgres.AppStateData{
+							Percolator: &postgres.PercolatorState{
+								CurrentPosition: p.lastEvent,
+							},
+						},
+					})
+			})
 		if err != nil {
 			return fmt.Errorf("persist percolator state: %w", err)
 		}
 
 		p.metrics.percolatorLife.WithLabelValues("end-iteration").Inc()
 	}
+}
+
+// withTimeout calls fn with a context that ends after the timeout.
+func withTimeout[T any](
+	ctx context.Context, timeout time.Duration,
+	fn func(ctx context.Context) (T, error),
+) (T, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	return fn(ctx)
 }
 
 func (p *Percolator) handleEventPercolation(ctx context.Context, id int64) error {

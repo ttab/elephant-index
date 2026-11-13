@@ -142,6 +142,14 @@ const (
 	// indexerHealthyRuntime is how long a tenure has to last for the
 	// indexer to count as working again.
 	indexerHealthyRuntime = 5 * time.Minute
+	// indexerReleaseBackoff is the least the indexer waits before it
+	// contends for a lock it released over a failure, as a backoff floor:
+	// the wait is drawn from between half of it and all of it. Half of it
+	// has to be longer than the interval at which the other replicas look
+	// for a free lock, twice the ping interval and so twenty seconds, or
+	// the replica that released the lock is back for it before anyone
+	// else has looked and "another replica takes over" never happens.
+	indexerReleaseBackoff = 45 * time.Second
 	// IndexerGiveUpAfter is how long an indexer may spend failing, across
 	// lock tenures and the waits between them, before it gives up and
 	// takes the process down to be restarted.
@@ -193,6 +201,8 @@ func (idx *Indexer) Run(ctx context.Context) error {
 			MetricsRegisterer: idx.metrics.Registerer,
 			HealthyRuntime:    indexerHealthyRuntime,
 			GiveUpAfter:       IndexerGiveUpAfter,
+			BackoffFloor:      indexerReleaseBackoff,
+			BackoffCeil:       2 * indexerReleaseBackoff,
 		}, idx.indexerLoop)
 	if err != nil && lockContext.Err() == nil {
 		return fmt.Errorf("run indexer loop: %w", err)
@@ -272,9 +282,14 @@ func (idx *Indexer) indexerLoop(ctx context.Context) error {
 	idx.indexes = make(map[string]*indexWorker)
 	idx.tenureCtx = ctx
 
-	state, err := idx.q.GetIndexSetPosition(ctx, idx.name)
+	// Bounded like the passes are: this runs with the lock held too.
+	readCtx, cancel := context.WithTimeout(ctx, indexSetQueryTimeout)
+	defer cancel()
+
+	state, err := idx.q.GetIndexSetPosition(readCtx, idx.name)
 	if err != nil {
-		return fmt.Errorf("fetching current index set position: %w", err)
+		return releaseError(
+			fmt.Errorf("fetching current index set position: %w", err))
 	}
 
 	pos := state.Position
@@ -328,9 +343,9 @@ func (idx *Indexer) indexerLoop(ctx context.Context) error {
 		// Measured from the start of the pass, so one that ran into
 		// its timeout is past the limit as soon as it fails.
 		if time.Since(failingSince) >= indexerRetryInPlace {
-			return fmt.Errorf(
-				"indexing has been failing since %s, releasing the lock: %w",
-				failingSince.Format(time.RFC3339), err)
+			return releaseError(fmt.Errorf(
+				"indexing has been failing since %s: %w",
+				failingSince.Format(time.RFC3339), err))
 		}
 
 		select {
@@ -376,6 +391,20 @@ func (idx *Indexer) boundedIteration(
 	}
 
 	return nil
+}
+
+// releaseError is what the indexer loop returns to give up its lock over a
+// failure of its own. The cause is flattened into the message on purpose.
+//
+// joblock.Run reads an error that matches context.Canceled or
+// context.DeadlineExceeded as a run cut short by the loss of the lock: not a
+// failure, and nothing spent from the give up budget. A pass that ran into its
+// timeout fails with exactly such an error, as does any call that ended on a
+// deadline of its own, so wrapping it would exempt a hanging dependency — the
+// failure the budget is there for — from ever exhausting it. The loop only
+// gets here with its lock still held, so the error is never the loss of it.
+func releaseError(err error) error {
+	return errors.New("releasing the lock: " + err.Error())
 }
 
 // withTimeoutCause names the timeout in an error it caused, which otherwise

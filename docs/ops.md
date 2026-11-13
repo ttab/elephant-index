@@ -351,13 +351,20 @@ it.
 
 An indexer that keeps failing does not hold on to its lock. After a minute it
 releases it, logged as `failed to run indexer in job lock` and counted on
-`pg_job_lock_restarts_total{name="indexer-<set>"}`, and the replicas take
-turns. **After 30 minutes of that the replica exits**, logged as `indexer gave
-up`, so a pod restarting every half hour is an indexer that cannot make
-progress, not a crash to chase in its own right — read the error it logged
-before it went. A pass that hangs is failed after two minutes and takes the
-same route. See
+`pg_job_lock_restarts_total{name="indexer-<set>"}`, and leaves it alone long
+enough for another replica to take it. **After 30 minutes of that the replica
+exits**, logged as `indexer gave up`, so a pod restarting every half hour is
+an indexer that cannot make progress, not a crash to chase in its own right —
+read the error it logged before it went. A pass that hangs is failed after two
+minutes and takes the same route. See
 [following the event log](architecture.md#1-following-the-event-log).
+
+**The exit takes the whole replica**, not just that indexer: its other
+indexers, the percolator if it holds that lock, and its in-flight requests.
+If the failing set is a re-index target, or the error is one a restart cannot
+fix — a document that cannot be built, a request the cluster rejects every
+time — **disable the set** with `SetIndexSetStatus` and `enabled: false`
+rather than let the replicas cycle, and re-enable it once the cause is gone.
 
 **On v1.5.0 an indexer that lost its lock and took it back stopped for good
 while holding it**: `pg_job_lock_held` at 1, the `job_lock` row touched every
@@ -456,11 +463,12 @@ version and re-index into it. See
 
 1. **`elephant_indexer_doc_total{result=~".*_err"}`** — the only signal for
    silently missing documents, and the position moves past them regardless.
-2. **`elephant_indexer_index_set_lag` for the active set** — how many events
-   it is behind the repository, and the one to alert on: it is reported by
-   every replica, so it keeps climbing when the indexer itself has gone
-   quiet. `eventlog_follower_position` going flat is the same fault seen from
-   the indexer's side.
+2. **`elephant_indexer_index_set_lag` and `elephant_indexer_index_set_position`
+   for the active set** — how far it is behind the repository and whether it
+   is moving, and the pair to alert on: every replica reports them, so they
+   keep telling the truth when the indexer itself has gone quiet.
+   `eventlog_follower_position` going flat is the same fault seen from the
+   indexer's side.
 3. **`elephant_indexer_ignored_mapping_total`** — each increment is a field
    that is permanently unqueryable in that index until a re-index.
 4. **`elephant_indexer_percolator_position` versus the active follower** — the

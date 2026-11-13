@@ -7,6 +7,9 @@ import (
 	"github.com/ttab/koonkie"
 )
 
+// labelSetName is the metric label that holds an index set name.
+const labelSetName = "set_name"
+
 type Metrics struct {
 	indexerFailures  *prometheus.CounterVec
 	unknownEvents    *prometheus.CounterVec
@@ -20,6 +23,7 @@ type Metrics struct {
 	activeIndexSet   *prometheus.GaugeVec
 	indexSetSync     *prometheus.CounterVec
 	indexSetLag      *prometheus.GaugeVec
+	indexSetPosition *prometheus.GaugeVec
 	eventlogHead     prometheus.Gauge
 	logPos           *koonkie.PrometheusFollowerMetrics
 
@@ -128,7 +132,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 			Name: "elephant_indexer_active_index_set",
 			Help: "The index set this replica currently answers searches from, as a label.",
 		},
-		[]string{"set_name", "cluster"},
+		[]string{labelSetName, "cluster"},
 	)
 	if err := reg.Register(activeIndexSet); err != nil {
 		return nil, fmt.Errorf("register active index set metric: %w", err)
@@ -151,10 +155,22 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 			Help: "How many events an enabled index set is behind the head of the event log, " +
 				"as read from the database by every replica.",
 		},
-		[]string{"set_name"},
+		[]string{labelSetName},
 	)
 	if err := reg.Register(indexSetLag); err != nil {
 		return nil, fmt.Errorf("register index set lag metric: %w", err)
+	}
+
+	indexSetPosition := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "elephant_indexer_index_set_position",
+			Help: "The event log position persisted for an enabled index set, " +
+				"as read from the database by every replica.",
+		},
+		[]string{labelSetName},
+	)
+	if err := reg.Register(indexSetPosition); err != nil {
+		return nil, fmt.Errorf("register index set position metric: %w", err)
 	}
 
 	eventlogHead := prometheus.NewGauge(prometheus.GaugeOpts{
@@ -184,6 +200,7 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		activeIndexSet:   activeIndexSet,
 		indexSetSync:     indexSetSync,
 		indexSetLag:      indexSetLag,
+		indexSetPosition: indexSetPosition,
 		eventlogHead:     eventlogHead,
 		Registerer:       reg,
 	}

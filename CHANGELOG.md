@@ -22,10 +22,12 @@ held its lock, which was indefinitely. It now releases the lock after a minute
 of failing so another replica can take over, and **exits the process after 30
 minutes of that**, logged as `indexer gave up`. A pass that hangs is failed
 after two minutes and takes the same route. A pod restarting every half hour
-is therefore the symptom of a repository or cluster the indexer cannot work
-against, where it used to be a flat position and a climbing
-`elephant_indexer_failures_total`; search is served throughout apart from the
-restart itself. See
+is therefore the symptom of an indexer that cannot make progress, where it
+used to be a flat position and a climbing `elephant_indexer_failures_total`.
+The exit takes the replica's other indexers and in-flight requests with it,
+and a restart does not cure a failure that is in the data, so **disable an
+index set that fails this way** (`SetIndexSetStatus`, `enabled: false`) until
+the cause is fixed — a re-index target in particular. See
 [following the event log](docs/architecture.md#1-following-the-event-log).
 
 Changes:
@@ -37,9 +39,10 @@ Changes:
   days that way.
 - New gauges for alerting on an index set that has fallen behind:
   `elephant_indexer_index_set_lag{set_name}`, the number of events an enabled
-  set is behind the repository, and `elephant_indexer_eventlog_head`. Every
-  replica reports them, so they keep working when the indexer does not. See
-  [the indexing metrics](docs/observability.md#indexing).
+  set is behind the repository, `elephant_indexer_index_set_position{set_name}`
+  and `elephant_indexer_eventlog_head`. Every replica reports them, so they
+  keep working when the indexer does not. See
+  [the indexing metrics](docs/observability.md#indexing) for the alerts.
 - Percolating one event is bounded to a minute, so a percolation that hangs
   releases the `percolator` lock instead of holding it.
 - A database that has stopped answering no longer stalls search. Switching

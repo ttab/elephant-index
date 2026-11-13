@@ -529,11 +529,26 @@ func (c *Coordinator) reconcileSets(ctx context.Context) error {
 // not, so the lag is reported for as long as a single replica is running its
 // event loop.
 //
-// A failure to read the head is logged and nothing else. The lag is then left
-// at its last value, and an unreachable repository has its own alerts.
+// The positions come from the database alone and are always exported. The lag
+// needs the head of the event log, and when that cannot be read the lag series
+// are dropped rather than left at their last value: the head is read with the
+// client the indexer uses, so the two fail together, and a lag frozen at the
+// small number it had before the indexer stopped is the one reading that must
+// not be exported.
 func (c *Coordinator) recordIndexSetLag(
 	ctx context.Context, sets []postgres.IndexSet,
 ) {
+	// Only enabled sets are meant to keep up, so a disabled one is
+	// dropped rather than left to report a lag that grows by design.
+	c.opt.Metrics.indexSetPosition.Reset()
+
+	for _, set := range sets {
+		if set.Enabled {
+			c.opt.Metrics.indexSetPosition.WithLabelValues(
+				set.Name).Set(float64(set.Position))
+		}
+	}
+
 	if c.opt.Documents == nil {
 		return
 	}
@@ -544,8 +559,10 @@ func (c *Coordinator) recordIndexSetLag(
 	res, err := c.opt.Documents.Eventlog(readCtx,
 		&repository.GetEventlogRequest{After: -1})
 	if err != nil {
+		c.opt.Metrics.indexSetLag.Reset()
+
 		c.logger.WarnContext(ctx,
-			"failed to read the head of the event log, index set lag is not updated",
+			"failed to read the head of the event log, index set lag is not reported",
 			elephantine.LogKeyError, err)
 
 		return
@@ -559,8 +576,6 @@ func (c *Coordinator) recordIndexSetLag(
 
 	c.opt.Metrics.eventlogHead.Set(float64(head))
 
-	// Only enabled sets are meant to keep up, so a disabled one is
-	// dropped rather than left to report a lag that grows by design.
 	c.opt.Metrics.indexSetLag.Reset()
 
 	for _, set := range sets {

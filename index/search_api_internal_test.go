@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -130,4 +131,28 @@ func TestPollWaitError(t *testing.T) {
 			t.Fatal("a cancelled context must not read as a deadline")
 		}
 	})
+}
+
+// TestReleaseErrorCountsAsFailure pins what the give up budget depends on:
+// joblock.Run reads an error matching a context error as the loss of the lock
+// and does not count it, so the error the indexer releases its lock with must
+// not match one even when a timeout is what caused it.
+func TestReleaseErrorCountsAsFailure(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Nanosecond)
+	defer cancel()
+
+	<-ctx.Done()
+
+	cause := withTimeoutCause(ctx,
+		fmt.Errorf("index all types: %w", ctx.Err()))
+
+	if !errors.Is(cause, context.DeadlineExceeded) {
+		t.Fatalf("the test needs a deadline error to flatten, got: %v", cause)
+	}
+
+	err := releaseError(cause)
+
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		t.Fatalf("release error matches a context error and would not be counted: %v", err)
+	}
 }

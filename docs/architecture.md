@@ -151,17 +151,35 @@ climbing with the position gauge flat is what that looks like from outside.
    so a pass that hangs does not cost the indexer its lock, and without the
    bound a hung indexer is indistinguishable from an idle one.
 2. **After a minute of failing the indexer releases its lock**
-   (`indexerRetryInPlace`), by returning the error to `joblock.Run`. Another
-   replica can then take over, and whichever takes the lock next starts from
-   fresh state. `joblock.Run` paces the attempts and counts them on
+   (`indexerRetryInPlace`), by returning the error to `joblock.Run`, and
+   stays away from it for 22 to 45 seconds (`indexerReleaseBackoff`). The
+   other replicas look for a free lock every 20 seconds, so one of them takes
+   it if there is one, and whichever takes it starts from fresh state. The
+   attempts are counted on
    `pg_job_lock_restarts_total{name="indexer-<set>"}`.
 3. **After 30 minutes of that the indexer gives up and the process exits**
-   (`IndexerGiveUpAfter`). By then the failure has survived fresh state and a
-   turn on every replica, so a new process is the remedy left, and a
-   restarting pod is something an operator is told about. This is the one
-   failure that stops a running coordinator. A tenure of five minutes
-   (`indexerHealthyRuntime`) clears the budget, and time spent waiting for a
-   lock another replica holds is not counted against it.
+   (`IndexerGiveUpAfter`). The budget is per replica and counts its own
+   failing tenures and the waits between them; a tenure of five minutes
+   (`indexerHealthyRuntime`) clears it. By then the failure has survived
+   fresh state and turns on other replicas, so a new process is the remedy
+   left, and a restarting pod is something an operator is told about. This is
+   the one failure that stops a running coordinator, and it takes everything
+   else on the replica with it: the indexers for other sets, the percolator
+   if it is held there, and the requests in flight.
+
+**The error that releases the lock never matches a context error**
+(`releaseError`). `joblock.Run` reads `context.Canceled` and
+`context.DeadlineExceeded` as a run cut short by the loss of the lock, which
+is not a failure and spends nothing from the budget — and a pass that ran
+into its timeout fails with exactly that. Wrapped rather than flattened, a
+dependency that hangs would never exhaust the budget, which is the case it is
+there for.
+
+**A restart does not help a failure that is in the data**, such as an event
+that cannot be built into a document, and the give-up turns one into a
+restart every half hour for as long as the set stays enabled. For a re-index
+target that is the cue to disable the set (`SetIndexSetStatus` with
+`enabled: false`) until the cause is fixed.
 
 **Nothing an indexer builds while it holds the lock outlives the tenure.**
 `indexerLoop` is started anew each time the lock is acquired and recreates its

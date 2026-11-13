@@ -55,17 +55,34 @@ matter.
   holds a lock or not, so unlike the follower position it is true everywhere
   and does not go quiet with the indexer. It is zero for a set that has caught
   up and sits idle, large and falling during a re-index, and absent for a
-  disabled set. Aggregate with `max by (set_name)`. The alert is a lag that
-  stays up:
+  disabled set. Aggregate with `max by (set_name)`. **The series is dropped
+  when the head cannot be read**, logged as `failed to read the head of the
+  event log`, rather than left at its last value: the head is read with the
+  client the indexer uses, so a lag frozen at the small number it had before
+  both stopped working would be the most misleading reading available.
+* `elephant_indexer_index_set_position{set_name}` — the position persisted in
+  `index_set` for an enabled set, from the same read and so also true on
+  every replica. It needs only the database, so it is still reported when the
+  lag is not.
+
+  Three alerts cover an index set that is not keeping up, each held
+  `for: 15m`. Scope them to the active set by joining on
+  `elephant_indexer_active_index_set` if a re-index should not page.
 
   ```promql
+  # Far behind, whatever the reason.
   max by (set_name) (elephant_indexer_index_set_lag) > 1000
-  ```
 
-  held `for: 15m`, scoped to the active set by joining on
-  `elephant_indexer_active_index_set` if a re-index should not page. The lag
-  is left at its last value when the repository cannot be asked for its head,
-  logged as `failed to read the head of the event log`.
+  # Stopped: events are waiting and the position has not moved. This is the
+  # one that fires on a quiet set, where a stall takes hours to reach 1000.
+  max by (set_name) (elephant_indexer_index_set_lag) > 0
+    and changes((max by (set_name) (elephant_indexer_index_set_position))[15m:1m]) == 0
+
+  # Blind: the position is reported and the lag is not, so this service
+  # cannot read the event log and is not indexing either.
+  max by (set_name) (elephant_indexer_index_set_position)
+    unless max by (set_name) (elephant_indexer_index_set_lag)
+  ```
 * `elephant_indexer_eventlog_head` — the newest event ID in the repository, as
   last read by the replica. It is what the lag is measured against, and a
   head that stops moving while documents are being written is the repository's
