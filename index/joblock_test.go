@@ -23,7 +23,27 @@ func TestIndexerSurvivesLockLoss(t *testing.T) {
 
 	tc := testingAPIServer(t, logger)
 
+	documents := repositoryconnect.NewDocumentsServiceClient(
+		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"),
+		tc.Env.Repository.GetAPIEndpoint())
+
+	search := tc.SearchClient(t, "doc_read", "search")
+
 	lockName, holder := waitForIndexerLock(t, tc, "")
+
+	// Index a document before the lock is lost, so that the indexer has
+	// state from its first tenure to carry into the second: a worker for
+	// the index the documents below share. A worker that outlived the lock
+	// it was started under had no goroutines left to do its work, and the
+	// first batch routed to it after the lock was re-acquired blocked for
+	// good, with the lock held and pinged the whole time.
+	const lionsUUID = "7bf0c4e7-aff7-4ddd-97b0-e4d5aca7d3eb"
+
+	loadDocuments(t, documents,
+		filepath.Join("..", "testdata", "documents"), "lions_v1.json")
+
+	waitForIndexedDocument(t, search, lionsUUID,
+		"before the lock was lost")
 
 	// Delete the row out from under the holder: its next ping updates
 	// nothing and it reads the lock as lost.
@@ -34,34 +54,50 @@ func TestIndexerSurvivesLockLoss(t *testing.T) {
 
 	waitForIndexerLock(t, tc, holder)
 
-	documents := repositoryconnect.NewDocumentsServiceClient(
-		tc.AuthenticatedClient(t, "doc_read", "doc_write", "eventlog_read"),
-		tc.Env.Repository.GetAPIEndpoint())
-
-	search := tc.SearchClient(t, "doc_read", "search")
+	const russiaUUID = "f5d2e4c5-01ba-4dae-9f09-a86701e06ecd"
 
 	loadDocuments(t, documents,
 		filepath.Join("..", "testdata", "documents"), "russia_v1.json")
 
-	const russiaUUID = "f5d2e4c5-01ba-4dae-9f09-a86701e06ecd"
+	waitForIndexedDocument(t, search, russiaUUID,
+		"after the lock was re-acquired")
+
+	// And once more, for the same index: a worker has to last for the
+	// whole tenure and not just for the pass that created it.
+	const ericssonUUID = "9b774de2-9d16-4b9d-91e1-a598ad675455"
+
+	loadDocuments(t, documents,
+		filepath.Join("..", "testdata", "documents"), "ericsson_v1.json")
+
+	waitForIndexedDocument(t, search, ericssonUUID,
+		"in a later pass of the same tenure")
+}
+
+// waitForIndexedDocument waits for a document to be readable from the index.
+func waitForIndexedDocument(
+	t *testing.T, search index.SearchV1,
+	docUUID string, when string,
+) {
+	t.Helper()
 
 	deadline := time.After(30 * time.Second)
 
 	for {
-		_, err = search.GetFlatDocument(ctx, &index.GetFlatDocumentRequest{
-			Uuid:   russiaUUID,
-			Stored: true,
-		})
+		_, err := search.GetFlatDocument(t.Context(),
+			&index.GetFlatDocumentRequest{
+				Uuid:   docUUID,
+				Stored: true,
+			})
 		if err == nil {
 			return
 		}
 
 		select {
-		case <-ctx.Done():
+		case <-t.Context().Done():
 			t.Fatal("cancelled while waiting for the document to be indexed")
 		case <-deadline:
-			t.Fatalf("the document was not indexed after the lock was"+
-				" re-acquired, last error: %v", err)
+			t.Fatalf("document %s was not indexed %s, last error: %v",
+				docUUID, when, err)
 		case <-time.After(200 * time.Millisecond):
 		}
 	}

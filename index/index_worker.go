@@ -21,8 +21,11 @@ import (
 	"github.com/ttab/elephantine/rpc"
 )
 
+// newIndexWorker sets up a worker for an index and starts its goroutines on
+// workerCtx. That is the context of the lock tenure and not ctx, which is the
+// context of the pass that happened to need the worker first and ends with it.
 func newIndexWorker(
-	ctx context.Context, idx *Indexer,
+	ctx context.Context, workerCtx context.Context, idx *Indexer,
 	name, percolateIndex, contentType string,
 	idxConf OpenSearchIndexConfig,
 	concurrency int, percolator PercolatorWorker,
@@ -88,7 +91,7 @@ func newIndexWorker(
 	}
 
 	for range concurrency {
-		go iw.loop(ctx)
+		go iw.loop(workerCtx)
 	}
 
 	return &iw, nil
@@ -238,7 +241,13 @@ func (iw *indexWorker) Process(
 
 			job.ctx = ctx
 
-			iw.jobQueue <- job
+			// Give up with the batch rather than block on a queue
+			// that nothing reads from any more.
+			select {
+			case iw.jobQueue <- job:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 

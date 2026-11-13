@@ -151,6 +151,9 @@ type Coordinator struct {
 	indexers     map[string]*Indexer
 	indexerCtx   context.Context
 	indexerGroup *errgroup.Group
+	// indexerFailed carries the error of an indexer that gave up to the
+	// event loop, which stops the coordinator over it.
+	indexerFailed chan error
 
 	// activeMissing records that the last reconciliation found no active
 	// index set, so the warning is logged on the transition rather than on
@@ -210,6 +213,7 @@ func NewCoordinator(
 		indexers:         make(map[string]*Indexer),
 		indexerCtx:       gCtx,
 		indexerGroup:     indexGrp,
+		indexerFailed:    make(chan error, 1),
 		percDocs:         opt.PercolatorCache,
 		stop:             make(chan struct{}),
 		stopped:          make(chan struct{}),
@@ -432,6 +436,16 @@ func (c *Coordinator) runEventloop(
 				// waiting behind this one is handled first.
 				c.requestReconcile()
 			}
+		case err := <-c.indexerFailed:
+			// The one failure that is allowed to stop a running
+			// coordinator. An indexer only returns an error once
+			// it has spent IndexerGiveUpAfter failing, with the
+			// lock released between attempts for another replica
+			// to try, so what is left is state in this process
+			// that a new one would not have. Carrying on would
+			// leave a replica that never contends for that lock
+			// again, with nothing reporting it.
+			return fmt.Errorf("indexer gave up: %w", err)
 		case <-c.reconcile:
 			c.reconcileOrLog(ctx, syncTriggerReconnect)
 		case <-ticker.C:
@@ -496,7 +510,67 @@ func (c *Coordinator) reconcileSets(ctx context.Context) error {
 		return fmt.Errorf("failed to get the current index sets: %w", err)
 	}
 
-	return c.applyIndexSets(ctx, sets)
+	err = c.applyIndexSets(ctx, sets)
+
+	// After the sets are applied, so that a repository that is slow to
+	// answer never delays an active set switch.
+	c.recordIndexSetLag(ctx, sets)
+
+	return err
+}
+
+// recordIndexSetLag exports how far each enabled index set is behind the head
+// of the event log.
+//
+// It is measured here rather than by the indexer because the indexer is the
+// thing being watched: one that has stalled reports nothing, and its follower
+// position gauge goes on exporting the last value it set. Every replica reads
+// the persisted positions on every reconciliation whether it holds a lock or
+// not, so the lag is reported for as long as a single replica is running its
+// event loop.
+//
+// A failure to read the head is logged and nothing else. The lag is then left
+// at its last value, and an unreachable repository has its own alerts.
+func (c *Coordinator) recordIndexSetLag(
+	ctx context.Context, sets []postgres.IndexSet,
+) {
+	if c.opt.Documents == nil {
+		return
+	}
+
+	readCtx, cancel := context.WithTimeout(ctx, indexSetQueryTimeout)
+	defer cancel()
+
+	res, err := c.opt.Documents.Eventlog(readCtx,
+		&repository.GetEventlogRequest{After: -1})
+	if err != nil {
+		c.logger.WarnContext(ctx,
+			"failed to read the head of the event log, index set lag is not updated",
+			elephantine.LogKeyError, err)
+
+		return
+	}
+
+	var head int64
+
+	if len(res.Items) > 0 {
+		head = res.Items[0].Id
+	}
+
+	c.opt.Metrics.eventlogHead.Set(float64(head))
+
+	// Only enabled sets are meant to keep up, so a disabled one is
+	// dropped rather than left to report a lag that grows by design.
+	c.opt.Metrics.indexSetLag.Reset()
+
+	for _, set := range sets {
+		if !set.Enabled {
+			continue
+		}
+
+		c.opt.Metrics.indexSetLag.WithLabelValues(set.Name).Set(
+			float64(max(0, head-set.Position)))
+	}
 }
 
 // applyIndexSets is the half of a reconciliation that acts on what the
@@ -924,8 +998,17 @@ func (c *Coordinator) startIndexer(
 			// Don't treat cancel as an error.
 			return nil
 		} else if err != nil {
-			return fmt.Errorf("run indexer for set %q: %w",
+			err = fmt.Errorf("run indexer for set %q: %w",
 				set.Name, err)
+
+			// Never blocks: the first indexer to give up stops
+			// the coordinator, and a second has nothing to add.
+			select {
+			case c.indexerFailed <- err:
+			default:
+			}
+
+			return err
 		}
 
 		return nil

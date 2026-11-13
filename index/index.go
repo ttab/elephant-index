@@ -106,7 +106,13 @@ type Indexer struct {
 
 	q *postgres.Queries
 
-	indexes map[string]*indexWorker
+	// indexes and tenureCtx belong to the current lock tenure and are
+	// replaced by indexerLoop each time it starts. tenureCtx is what the
+	// index workers run on: they have to outlive the pass that created
+	// them, whose own context ends with the pass, and must not outlive
+	// the lock.
+	indexes   map[string]*indexWorker
+	tenureCtx context.Context //nolint: containedctx
 
 	stopOnce sync.Once
 	stop     chan struct{}
@@ -117,15 +123,47 @@ func (idx *Indexer) Stopping() <-chan struct{} {
 	return idx.stop
 }
 
-func (idx *Indexer) Run(ctx context.Context) error {
-	if idx.askedToStop() {
-		return errors.New("indexer has been stopped")
-	}
+const (
+	// indexerIterationTimeout bounds one pass of the indexer loop: a poll
+	// of the event log, which waits for up to ten seconds, and indexing
+	// what it returned. A pass that is still going after this is not slow
+	// but stuck, and nothing else would notice: the lock is pinged from
+	// its own goroutine, so a stuck holder keeps it indefinitely.
+	//
+	// Keep it well under indexerHealthyRuntime. A run that stalls from its
+	// first pass must end as a failure that counts against the give up
+	// budget, and a run that lasts a healthy runtime clears it.
+	indexerIterationTimeout = 2 * time.Minute
+	// indexerRetryInPlace is how long the indexer retries a failing batch
+	// while holding on to its lock. Past it the lock is released, so that
+	// a replica that might fare better can take over, and the next tenure
+	// starts from fresh state.
+	indexerRetryInPlace = 1 * time.Minute
+	// indexerHealthyRuntime is how long a tenure has to last for the
+	// indexer to count as working again.
+	indexerHealthyRuntime = 5 * time.Minute
+	// IndexerGiveUpAfter is how long an indexer may spend failing, across
+	// lock tenures and the waits between them, before it gives up and
+	// takes the process down to be restarted.
+	IndexerGiveUpAfter = 30 * time.Minute
+)
 
+// Run the indexer. It returns nil when the indexer is stopped or the context
+// is cancelled, and an error when it has given up after failing for
+// IndexerGiveUpAfter.
+func (idx *Indexer) Run(ctx context.Context) error {
+	// Closed on every path out, so that a Stop that raced with the start
+	// returns instead of running into its timeout.
 	defer func() {
 		close(idx.stopped)
 		idx.logger.Info("indexer has stopped")
 	}()
+
+	// Not an error: an indexer that was stopped before it got to run is
+	// in the state it was asked to be in.
+	if idx.askedToStop() {
+		return nil
+	}
 
 	// Set up a context that will be cancelled if we're asked to stop.
 	lockContext, cancel := context.WithCancel(ctx)
@@ -141,12 +179,22 @@ func (idx *Indexer) Run(ctx context.Context) error {
 	// replica never contends for the lock again and reconciliation sees
 	// nothing to fix. A Postgres blip that cost every replica its lock in
 	// turn has stopped indexing that way.
+	//
+	// The loop returns an error once it has failed for longer than it is
+	// willing to retry in place, which releases the lock between attempts.
+	// The give up budget bounds how long that may go on for: a failure
+	// that outlasts it has survived fresh state and a turn on every
+	// replica that could take the lock, so the remaining remedy is a new
+	// process, and a restarting pod is something an operator is told
+	// about where a quietly failing indexer is not.
 	err := joblock.Run(lockContext, idx.database, idx.logger,
 		"indexer", "indexer-"+idx.name,
 		joblock.Options{
 			MetricsRegisterer: idx.metrics.Registerer,
+			HealthyRuntime:    indexerHealthyRuntime,
+			GiveUpAfter:       IndexerGiveUpAfter,
 		}, idx.indexerLoop)
-	if err != nil && !errors.Is(err, context.Canceled) {
+	if err != nil && lockContext.Err() == nil {
 		return fmt.Errorf("run indexer loop: %w", err)
 	}
 
@@ -209,7 +257,21 @@ func (ij *enrichJob) Finish(state *DocumentState, err error) {
 	close(ij.done)
 }
 
+// indexerLoop follows the event log for as long as the lock is held. It is
+// started anew for every lock tenure and carries nothing over from the last
+// one.
 func (idx *Indexer) indexerLoop(ctx context.Context) error {
+	// The index workers belong to the tenure, not to the indexer. Their
+	// goroutines run on this context and exit with it, so a worker that
+	// was kept across tenures would accept a batch that nothing is left
+	// to process, and Process would wait on it for as long as the lock
+	// was held: an indexer that had lost its lock once stopped indexing
+	// the moment it got it back, with a healthy lock to show for it.
+	// Starting over also re-reads the mappings, which another replica may
+	// have extended while it held the lock.
+	idx.indexes = make(map[string]*indexWorker)
+	idx.tenureCtx = ctx
+
 	state, err := idx.q.GetIndexSetPosition(ctx, idx.name)
 	if err != nil {
 		return fmt.Errorf("fetching current index set position: %w", err)
@@ -228,52 +290,103 @@ func (idx *Indexer) indexerLoop(ctx context.Context) error {
 	idx.logger.DebugContext(ctx, "starting from",
 		elephantine.LogKeyEventID, pos)
 
+	// When the current run of failures began: the start of the first pass
+	// that failed since one last succeeded.
+	var failingSince time.Time
+
 	for {
-		if idx.askedToStop() {
+		if idx.askedToStop() || ctx.Err() != nil {
 			return nil
 		}
 
 		startPos, caughtUp := follower.GetState()
+		started := time.Now()
 
-		err := idx.loopIteration(ctx, follower)
-		if err != nil {
-			idx.metrics.indexerFailures.WithLabelValues(idx.name).Inc()
-
-			idx.logger.ErrorContext(ctx, "indexer failure",
-				elephantine.LogKeyError, err,
-				elephantine.LogKeyEventID, startPos)
-
-			select {
-			case <-time.After(5 * time.Second):
-			case <-ctx.Done():
-				return nil
-			}
-
-			// Rewind follower state.
-			follower.SetState(startPos, caughtUp)
+		err := idx.boundedIteration(ctx, follower, startPos)
+		if err == nil {
+			failingSince = time.Time{}
 
 			continue
 		}
 
-		newPos, caughtUp := follower.GetState()
+		// The lock is gone or the indexer was stopped, and the pass
+		// failed for that reason rather than one of its own.
+		if ctx.Err() != nil {
+			return nil
+		}
 
-		if newPos != startPos {
-			err = idx.q.UpdateSetPosition(ctx, postgres.UpdateSetPositionParams{
-				Name:     idx.name,
-				Position: newPos,
-				CaughtUp: caughtUp,
-			})
-			if err != nil {
-				return fmt.Errorf("update the position to %d: %w", newPos, err)
-			}
+		idx.metrics.indexerFailures.WithLabelValues(idx.name).Inc()
+
+		idx.logger.ErrorContext(ctx, "indexer failure",
+			elephantine.LogKeyError, err,
+			elephantine.LogKeyEventID, startPos)
+
+		if failingSince.IsZero() {
+			failingSince = started
+		}
+
+		// Measured from the start of the pass, so one that ran into
+		// its timeout is past the limit as soon as it fails.
+		if time.Since(failingSince) >= indexerRetryInPlace {
+			return fmt.Errorf(
+				"indexing has been failing since %s, releasing the lock: %w",
+				failingSince.Format(time.RFC3339), err)
 		}
 
 		select {
+		case <-time.After(5 * time.Second):
 		case <-ctx.Done():
 			return nil
-		default:
 		}
+
+		// Rewind follower state.
+		follower.SetState(startPos, caughtUp)
 	}
+}
+
+// boundedIteration runs one pass of the indexer loop and persists the position
+// it reached, all within indexerIterationTimeout.
+func (idx *Indexer) boundedIteration(
+	ctx context.Context, follower *koonkie.LogFollower, startPos int64,
+) error {
+	ctx, cancel := context.WithTimeoutCause(ctx, indexerIterationTimeout,
+		fmt.Errorf("the pass did not finish within %s",
+			indexerIterationTimeout))
+	defer cancel()
+
+	err := idx.loopIteration(ctx, follower)
+	if err != nil {
+		return withTimeoutCause(ctx, err)
+	}
+
+	newPos, caughtUp := follower.GetState()
+
+	if newPos == startPos {
+		return nil
+	}
+
+	err = idx.q.UpdateSetPosition(ctx, postgres.UpdateSetPositionParams{
+		Name:     idx.name,
+		Position: newPos,
+		CaughtUp: caughtUp,
+	})
+	if err != nil {
+		return withTimeoutCause(ctx,
+			fmt.Errorf("update the position to %d: %w", newPos, err))
+	}
+
+	return nil
+}
+
+// withTimeoutCause names the timeout in an error it caused, which otherwise
+// reads as a bare "context deadline exceeded" from wherever the pass happened
+// to be.
+func withTimeoutCause(ctx context.Context, err error) error {
+	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return err
+	}
+
+	return fmt.Errorf("%w: %w", context.Cause(ctx), err)
 }
 
 const (
@@ -512,7 +625,7 @@ func (idx *Indexer) createIndexWorker(
 		percolateName = n
 	}
 
-	index, err := newIndexWorker(ctx, idx,
+	index, err := newIndexWorker(ctx, idx.tenureCtx, idx,
 		name, percolateName, docType, conf, 8, idx.percolator)
 	if err != nil {
 		return nil, fmt.Errorf(

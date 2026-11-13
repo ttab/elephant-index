@@ -44,6 +44,33 @@ failures climb is a stuck indexer that is retrying; a position that stops
 advancing with no failures is an indexer that is not running at all, which is
 usually a job lock held by a replica that has wedged.
 
+**The one to alert on is `elephant_indexer_index_set_lag`.** Both of the above
+are reported by the indexer, which is the thing that has stopped when they
+matter.
+
+* `elephant_indexer_index_set_lag{set_name}` — how many events an enabled
+  index set is behind the newest event in the repository: the head of the
+  event log minus the position persisted in `index_set`. **Every replica
+  reports it**, from the reconciliation it runs every 30 seconds whether it
+  holds a lock or not, so unlike the follower position it is true everywhere
+  and does not go quiet with the indexer. It is zero for a set that has caught
+  up and sits idle, large and falling during a re-index, and absent for a
+  disabled set. Aggregate with `max by (set_name)`. The alert is a lag that
+  stays up:
+
+  ```promql
+  max by (set_name) (elephant_indexer_index_set_lag) > 1000
+  ```
+
+  held `for: 15m`, scoped to the active set by joining on
+  `elephant_indexer_active_index_set` if a re-index should not page. The lag
+  is left at its last value when the repository cannot be asked for its head,
+  logged as `failed to read the head of the event log`.
+* `elephant_indexer_eventlog_head` — the newest event ID in the repository, as
+  last read by the replica. It is what the lag is measured against, and a
+  head that stops moving while documents are being written is the repository's
+  problem rather than this service's.
+
 * `eventlog_follower_position{follower,state}` — the last event log position
   the follower reached. `follower` is the index set name, so during a re-index
   there are two series and the gap between them is the catch-up backlog.
@@ -54,7 +81,11 @@ usually a job lock held by a replica that has wedged.
   increment is one loop iteration that rewound and will retry in five seconds,
   so this is lag rather than loss. A steady rate means something upstream is
   refusing consistently; an isolated increment is a blip that already
-  recovered.
+  recovered. An iteration that ran into its two-minute bound counts here too.
+* `pg_job_lock_restarts_total{name="indexer-<set>"}` — the indexer released
+  its lock after a minute of failing and is going to contend for it again.
+  A sustained rate is an indexer that no replica can make progress with, and
+  the replicas start exiting once it has gone on for 30 minutes.
 * `elephant_indexer_doc_total{type,index,result}` — per-document outcomes from
   the bulk API, emitted per item so a partial batch success is visible.
   The `result` label is the bulk operation, `index` or `delete`, with an

@@ -349,6 +349,22 @@ or the cluster. If nothing is running it, check `pg_job_lock_*` and
 `task_restarts_total`: a wedged holder keeps the lock until it stops touching
 it.
 
+An indexer that keeps failing does not hold on to its lock. After a minute it
+releases it, logged as `failed to run indexer in job lock` and counted on
+`pg_job_lock_restarts_total{name="indexer-<set>"}`, and the replicas take
+turns. **After 30 minutes of that the replica exits**, logged as `indexer gave
+up`, so a pod restarting every half hour is an indexer that cannot make
+progress, not a crash to chase in its own right — read the error it logged
+before it went. A pass that hangs is failed after two minutes and takes the
+same route. See
+[following the event log](architecture.md#1-following-the-event-log).
+
+**On v1.5.0 an indexer that lost its lock and took it back stopped for good
+while holding it**: `pg_job_lock_held` at 1, the `job_lock` row touched every
+ten seconds, no failures counted and nothing logged after the lock was
+re-acquired. Stage sat like that for two days after a one-minute database
+outage. A rollout restart is the fix on that version.
+
 A replica that loses the lock goes back to contending for it, so every replica
 reporting `pg_job_lock_held{name="indexer-<set>"}` at 0 for longer than a
 minute is not a handover in progress. **Before v1.5.0 a lost lock stopped that
@@ -440,8 +456,11 @@ version and re-index into it. See
 
 1. **`elephant_indexer_doc_total{result=~".*_err"}`** — the only signal for
    silently missing documents, and the position moves past them regardless.
-2. **`eventlog_follower_position` for the active set** — flat means the write
-   half has stopped; everything else about indexing follows from it.
+2. **`elephant_indexer_index_set_lag` for the active set** — how many events
+   it is behind the repository, and the one to alert on: it is reported by
+   every replica, so it keeps climbing when the indexer itself has gone
+   quiet. `eventlog_follower_position` going flat is the same fault seen from
+   the indexer's side.
 3. **`elephant_indexer_ignored_mapping_total`** — each increment is a field
    that is permanently unqueryable in that index until a re-index.
 4. **`elephant_indexer_percolator_position` versus the active follower** — the

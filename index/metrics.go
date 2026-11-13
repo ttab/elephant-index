@@ -19,6 +19,8 @@ type Metrics struct {
 	enrichErrors     *prometheus.CounterVec
 	activeIndexSet   *prometheus.GaugeVec
 	indexSetSync     *prometheus.CounterVec
+	indexSetLag      *prometheus.GaugeVec
+	eventlogHead     prometheus.Gauge
 	logPos           *koonkie.PrometheusFollowerMetrics
 
 	Registerer prometheus.Registerer
@@ -143,6 +145,26 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		return nil, fmt.Errorf("register index set sync metric: %w", err)
 	}
 
+	indexSetLag := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "elephant_indexer_index_set_lag",
+			Help: "How many events an enabled index set is behind the head of the event log, " +
+				"as read from the database by every replica.",
+		},
+		[]string{"set_name"},
+	)
+	if err := reg.Register(indexSetLag); err != nil {
+		return nil, fmt.Errorf("register index set lag metric: %w", err)
+	}
+
+	eventlogHead := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "elephant_indexer_eventlog_head",
+		Help: "The newest event ID in the repository event log, as last read by this replica.",
+	})
+	if err := reg.Register(eventlogHead); err != nil {
+		return nil, fmt.Errorf("register eventlog head metric: %w", err)
+	}
+
 	logPos, err := koonkie.NewPrometheusFollowerMetrics(reg, "elephant-index")
 	if err != nil {
 		return nil, fmt.Errorf("register follower metrics: %w", err)
@@ -161,6 +183,8 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		enrichErrors:     enrichErrors,
 		activeIndexSet:   activeIndexSet,
 		indexSetSync:     indexSetSync,
+		indexSetLag:      indexSetLag,
+		eventlogHead:     eventlogHead,
 		Registerer:       reg,
 	}
 

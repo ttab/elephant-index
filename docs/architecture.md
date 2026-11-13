@@ -143,6 +143,35 @@ iteration at, waits five seconds, and retries — so a transient repository or
 OpenSearch outage is lag, never loss, and `elephant_indexer_failures_total`
 climbing with the position gauge flat is what that looks like from outside.
 
+**A failure escalates in three steps, each wider than the last**
+(`index/index.go`):
+
+1. **A pass that takes longer than two minutes is failed**
+   (`indexerIterationTimeout`). The job lock is pinged from its own goroutine,
+   so a pass that hangs does not cost the indexer its lock, and without the
+   bound a hung indexer is indistinguishable from an idle one.
+2. **After a minute of failing the indexer releases its lock**
+   (`indexerRetryInPlace`), by returning the error to `joblock.Run`. Another
+   replica can then take over, and whichever takes the lock next starts from
+   fresh state. `joblock.Run` paces the attempts and counts them on
+   `pg_job_lock_restarts_total{name="indexer-<set>"}`.
+3. **After 30 minutes of that the indexer gives up and the process exits**
+   (`IndexerGiveUpAfter`). By then the failure has survived fresh state and a
+   turn on every replica, so a new process is the remedy left, and a
+   restarting pod is something an operator is told about. This is the one
+   failure that stops a running coordinator. A tenure of five minutes
+   (`indexerHealthyRuntime`) clears the budget, and time spent waiting for a
+   lock another replica holds is not counted against it.
+
+**Nothing an indexer builds while it holds the lock outlives the tenure.**
+`indexerLoop` is started anew each time the lock is acquired and recreates its
+index workers, because their goroutines run on the tenure's context and exit
+with it. Up to v1.5.0 the workers were kept, so an indexer that lost its lock
+and took it back handed its next batch to workers with nothing left running,
+and waited on them for as long as it held the lock: a stage index set stopped
+for two days that way after a one-minute database outage, with a healthy lock
+and nothing logged.
+
 ### 2. Enrichment and flattening
 
 An event names a document; the indexer loads the document and its metadata

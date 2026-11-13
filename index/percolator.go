@@ -348,7 +348,14 @@ func (p *Percolator) percolationLoop(ctx context.Context) {
 	}
 }
 
-const minPercolateInterval = 5 * time.Second
+const (
+	minPercolateInterval = 5 * time.Second
+	// percolateEventTimeout bounds the percolation of one event. One that
+	// is still going after this is stuck, and returning the error is what
+	// releases the percolator lock: it is pinged from its own goroutine,
+	// so a stuck holder would otherwise keep it indefinitely.
+	percolateEventTimeout = 1 * time.Minute
+)
 
 func (p *Percolator) percolateEvents(ctx context.Context) error {
 	p.metrics.percolatorLife.WithLabelValues("acquire-lock").Inc()
@@ -441,6 +448,9 @@ func (p *Percolator) percolateEvents(ctx context.Context) error {
 }
 
 func (p *Percolator) handleEventPercolation(ctx context.Context, id int64) error {
+	ctx, cancel := context.WithTimeout(ctx, percolateEventTimeout)
+	defer cancel()
+
 	doc, err := p.docs.GetDocument(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
